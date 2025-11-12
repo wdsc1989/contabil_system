@@ -260,18 +260,39 @@ contabil_system/
 │   ├── TESTING_GUIDE.md            # Guia de testes
 │   └── sample_files/               # Arquivos de exemplo (criados dinamicamente)
 │
+├── scripts/                        # 🔧 Scripts auxiliares
+│   ├── build_exe_spec.py           # Especificação para build
+│   ├── SistemaContabil.spec        # Configuração PyInstaller
+│   └── auxiliares/                 # Scripts de desenvolvimento
+│       ├── capture_screenshots.py  # Captura de screenshots
+│       └── generate_pdf_tutorial*.py # Geração de PDFs
+│
 ├── data/                           # 💾 Banco de dados (criado automaticamente)
 │   └── contabil.db                 # SQLite database
 │
-└── docs/                           # 📚 Documentação
-    ├── INSTALACAO_FACIL.md
-    ├── GUIA_INSTALACAO_VISUAL.md
-    ├── QUICKSTART.md
-    ├── CRUD_FEATURES.md
-    ├── DETAILED_REPORTS.md
-    ├── UI_IMPROVEMENTS.md
-    ├── DISTRIBUICAO.md
-    └── LATEST_UPDATES.md
+├── build/                          # 🔨 Arquivos de build (gerados)
+├── dist/                           # 📦 Distribuição (executável gerado)
+│
+└── docs/                           # 📚 Documentação organizada
+    ├── README.md                   # Índice da documentação
+    ├── tutoriais/                  # Tutoriais do sistema
+    ├── guias/                      # Guias de instalação e uso
+    │   ├── QUICKSTART.md
+    │   ├── INSTALL.md
+    │   ├── INSTALACAO_FACIL.md
+    │   ├── INSTALACAO_COMPLETA.md
+    │   └── GUIA_INSTALACAO_VISUAL.md
+    ├── desenvolvimento/            # Documentação técnica
+    │   ├── PROJECT_STATUS.md
+    │   ├── IMPLEMENTATION_SUMMARY.md
+    │   ├── CRUD_FEATURES.md
+    │   ├── DETAILED_REPORTS.md
+    │   ├── UI_IMPROVEMENTS.md
+    │   └── LATEST_UPDATES.md
+    ├── distribuicao/               # Documentação de distribuição
+    │   ├── DISTRIBUICAO.md
+    │   └── README_EXECUTAVEL.txt
+    └── screenshots/                # Screenshots do sistema
 ```
 
 ---
