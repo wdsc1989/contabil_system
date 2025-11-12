@@ -8,9 +8,10 @@ import os
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config.database import SessionLocal
+from config.database import SessionLocal, init_db
 from services.auth_service import AuthService
 from models.client import Client
+from models.user import User
 
 # Configuração da página
 st.set_page_config(
@@ -22,6 +23,39 @@ st.set_page_config(
 
 # Inicializa estado da sessão
 AuthService.init_session_state()
+
+
+@st.cache_resource
+def initialize_database():
+    """
+    Inicializa o banco de dados e cria usuário admin se não existir
+    """
+    try:
+        # Cria todas as tabelas
+        init_db()
+        
+        # Verifica se existe algum usuário, se não, cria admin padrão
+        db = SessionLocal()
+        try:
+            user_count = db.query(User).count()
+            if user_count == 0:
+                # Cria usuário admin padrão
+                AuthService.create_user(
+                    db=db,
+                    username="admin",
+                    password="admin123",
+                    email="admin@contabil.com",
+                    role="admin"
+                )
+                db.commit()
+                print("✅ Usuário admin criado: admin / admin123")
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar/criar usuário admin: {e}")
+            db.rollback()
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"⚠️ Erro ao inicializar banco de dados: {e}")
 
 
 def login_page():
@@ -297,5 +331,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Inicializa banco de dados e cria admin se necessário
+    initialize_database()
     main()
 
