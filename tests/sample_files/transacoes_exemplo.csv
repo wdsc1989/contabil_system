@@ -1,0 +1,18 @@
+data;descricao;valor;tipo;categoria
+01/11/2025;Venda de produto A;2500,00;entrada;Vendas
+02/11/2025;Pagamento fornecedor;850,50;saida;Despesa Operacional
+03/11/2025;Serviço de consultoria;4200,00;entrada;Serviços
+05/11/2025;Aluguel do escritório;3000,00;saida;Despesa Operacional
+06/11/2025;Venda de produto B;1800,00;entrada;Vendas
+08/11/2025;Material de escritório;450,75;saida;Despesa Operacional
+10/11/2025;Evento corporativo;5500,00;entrada;Eventos
+12/11/2025;Salário funcionário;2800,00;saida;Despesa Operacional
+15/11/2025;Consultoria técnica;3200,00;entrada;Serviços
+16/11/2025;Energia elétrica;380,50;saida;Despesa Operacional
+18/11/2025;Venda produto C;2100,00;entrada;Vendas
+20/11/2025;Comissão vendedor;550,00;saida;Despesa Comercial
+22/11/2025;Serviço prestado;1750,00;entrada;Serviços
+25/11/2025;Internet e telefone;250,00;saida;Despesa Operacional
+28/11/2025;Venda final do mês;3200,00;entrada;Vendas
+
+

@@ -1,0 +1,10 @@
+Data Inicio,Data Evento,Contratante,Tipo Evento,Valor Serviço,Valor Deslocamento,Numero Convidados,Forma Pagamento,Status
+15/10/2025,20/12/2025,João Silva,Casamento,12000.00,500.00,200,50% entrada + 50% no evento,pendente
+20/10/2025,15/01/2026,Maria Santos,Aniversário 15 Anos,8500.00,300.00,150,3x sem juros,em_andamento
+25/10/2025,10/11/2025,Empresa Tech Ltda,Evento Corporativo,15000.00,0.00,80,À vista,concluido
+01/11/2025,05/12/2025,Pedro Costa,Formatura,10500.00,400.00,120,40% entrada + 60% após,pendente
+05/11/2025,25/11/2025,Ana Paula,Aniversário,4500.00,200.00,80,2x sem juros,concluido
+10/11/2025,30/12/2025,Carlos Eduardo,Casamento,18000.00,600.00,250,30% + 30% + 40%,em_andamento
+12/11/2025,15/02/2026,Consultoria ABC,Workshop,6000.00,0.00,40,À vista,pendente
+
+

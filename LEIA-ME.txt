@@ -1,0 +1,168 @@
+================================================================================
+                        SISTEMA CONTÁBIL
+                     Versão 1.0 - Novembro 2025
+================================================================================
+
+🎯 INSTALAÇÃO RÁPIDA (3 Cliques)
+================================================================================
+
+1. Clique duas vezes em: install.bat
+   (Aguarde 2-5 minutos)
+
+2. Clique duas vezes em: run.bat
+   (Sistema abrirá no navegador)
+
+3. Faça login:
+   Usuário: admin
+   Senha: admin123
+
+PRONTO! Sistema funcionando! 🎉
+
+================================================================================
+📋 CREDENCIAIS DE ACESSO
+================================================================================
+
+Administrador:
+   Usuário: admin
+   Senha: admin123
+   Acesso: Total
+
+Gerente:
+   Usuário: gerente1
+   Senha: gerente123
+   Acesso: 3 primeiros clientes
+
+Visualizador:
+   Usuário: viewer1
+   Senha: viewer123
+   Acesso: Apenas visualização
+
+⚠️ IMPORTANTE: Altere as senhas após o primeiro acesso!
+
+================================================================================
+📊 DADOS INCLUÍDOS
+================================================================================
+
+O sistema já vem com dados de teste:
+
+✓ 5 clientes (Eventos, Consultoria, Serviços, Comércio, Indústria)
+✓ 2 anos de dados (2023-2025)
+✓ 5.239 transações financeiras
+✓ 623 contratos
+✓ 1.888 contas a pagar/receber
+
+================================================================================
+🎮 COMO USAR
+================================================================================
+
+Sempre que quiser usar o sistema:
+
+1. Clique 2x em: run.bat
+2. Sistema abre no navegador
+3. Faça login
+4. Use normalmente
+
+Para parar:
+- Feche a janela preta (CMD)
+
+================================================================================
+🔄 RESETAR DADOS
+================================================================================
+
+Para voltar aos dados de teste originais:
+
+1. Clique 2x em: reset_data.bat
+2. Digite: S
+3. Aguarde
+4. Pronto!
+
+================================================================================
+📚 DOCUMENTAÇÃO COMPLETA
+================================================================================
+
+Para mais informações, consulte:
+
+- INSTALACAO_FACIL.md      → Guia de instalação detalhado
+- GUIA_INSTALACAO_VISUAL.md → Guia com imagens
+- README.md                 → Visão geral do sistema
+- QUICKSTART.md             → Início rápido
+- TESTING_GUIDE.md          → Guia de testes
+
+================================================================================
+🆘 PROBLEMAS?
+================================================================================
+
+Erro: "Python não encontrado"
+   → Instale Python: https://www.python.org/downloads/
+   → Marque "Add Python to PATH"
+
+Erro: "Sistema não abre"
+   → Abra manualmente: http://localhost:8501
+
+Erro: "Porta em uso"
+   → Feche outras instâncias
+   → Ou reinicie o computador
+
+Outros problemas:
+   → Consulte INSTALACAO_FACIL.md
+   → Execute install.bat novamente
+
+================================================================================
+💾 BACKUP
+================================================================================
+
+Para fazer backup dos seus dados:
+
+1. Copie a pasta: data/
+2. Guarde em local seguro
+3. Para restaurar: substitua a pasta data/
+
+================================================================================
+🚀 REQUISITOS DO SISTEMA
+================================================================================
+
+Mínimo:
+- Windows 7 ou superior
+- Python 3.8+
+- 2GB RAM
+- 500MB espaço em disco
+- Navegador web moderno
+
+Recomendado:
+- Windows 10/11
+- Python 3.10+
+- 4GB RAM
+- 1GB espaço em disco
+- Google Chrome
+
+================================================================================
+📞 SUPORTE
+================================================================================
+
+Dúvidas ou problemas?
+
+1. Leia a documentação (arquivos .md)
+2. Consulte o guia visual
+3. Execute install.bat novamente
+
+================================================================================
+✅ CHECKLIST RÁPIDO
+================================================================================
+
+Instalação:
+[ ] Python instalado
+[ ] Executado install.bat
+[ ] Aguardado conclusão
+[ ] Executado run.bat
+[ ] Sistema abriu no navegador
+[ ] Login funcionou
+
+Se todos marcados → Tudo certo! 🎉
+
+================================================================================
+                    Sistema Contábil v1.0
+                Desenvolvido com Streamlit + Python
+                    Todos os direitos reservados
+================================================================================
+
+

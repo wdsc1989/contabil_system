@@ -1,0 +1,13 @@
+Fornecedor,CNPJ,Vencimento,Valor,Categoria
+Fornecedor Alpha Ltda,12.345.678/0001-90,05/12/2025,2500.00,Material
+Energia Elétrica S.A.,23.456.789/0001-01,10/12/2025,850.50,Energia
+Telefonia Brasil,34.567.890/0001-12,15/12/2025,320.00,Telefone
+Locadora de Imóveis,45.678.901/0001-23,20/12/2025,4500.00,Aluguel
+Fornecedor Beta,56.789.012/0001-34,22/12/2025,1200.00,Material
+Água e Saneamento,67.890.123/0001-45,25/12/2025,180.00,Água
+Internet Fibra,78.901.234/0001-56,28/12/2025,150.00,Internet
+Contador Parceiro,89.012.345/0001-67,30/12/2025,800.00,Serviços Contábeis
+Segurança Patrimonial,90.123.456/0001-78,05/01/2026,600.00,Segurança
+Limpeza Profissional,01.234.567/0001-89,10/01/2026,450.00,Limpeza
+
+

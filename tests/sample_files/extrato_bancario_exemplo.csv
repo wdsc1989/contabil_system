@@ -1,0 +1,21 @@
+Data,Descrição,Valor,Saldo
+01/11/2025,Depósito - Cliente João Silva,2500.00,15000.00
+02/11/2025,PIX Recebido - Venda Produto A,1800.50,16800.50
+03/11/2025,TED Enviada - Fornecedor XYZ,-850.00,15950.50
+05/11/2025,Débito Automático - Aluguel,-3000.00,12950.50
+06/11/2025,Recebimento - Serviço Consultoria,4200.00,17150.50
+08/11/2025,Pagamento Cartão - Material Escritório,-450.75,16699.75
+10/11/2025,Depósito - Cliente Maria Santos,3100.00,19799.75
+12/11/2025,Transferência - Salário Funcionário,-2800.00,16999.75
+15/11/2025,PIX Recebido - Evento Corporativo,5500.00,22499.75
+16/11/2025,Débito - Energia Elétrica,-380.50,22119.25
+18/11/2025,Recebimento - Contrato Anual,8000.00,30119.25
+20/11/2025,Pagamento - Fornecedor ABC,-1200.00,28919.25
+22/11/2025,PIX Enviado - Comissão Vendedor,-550.00,28369.25
+25/11/2025,Depósito - Cliente Pedro Costa,2900.00,31269.25
+26/11/2025,Débito - Internet e Telefone,-250.00,31019.25
+28/11/2025,Recebimento - Serviço Prestado,1750.00,32769.25
+29/11/2025,Pagamento - IPTU,-890.00,31879.25
+30/11/2025,PIX Recebido - Venda Final do Mês,3200.00,35079.25
+
+
