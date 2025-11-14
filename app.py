@@ -155,32 +155,63 @@ def sidebar_navigation():
         
         st.markdown("---")
         
-        # Menu de navegação
-        st.subheader("Menu")
+        # Menu de navegação - Melhorado com visualização mais clara
+        st.markdown("### 🧭 Navegação")
         
-        # Páginas disponíveis para todos
-        st.page_link("app.py", label="Início", icon="🏠")
+        # Seção Principal - Agente IA em destaque
+        st.markdown("#### 🤖 Inteligência Artificial")
+        st.page_link("pages/11_Agente_IA.py", label="💬 Agente IA - Faça perguntas sobre seus dados", icon="🤖")
+        st.caption("Pergunte em linguagem natural e receba análises inteligentes")
         
-        st.markdown("**Dados**")
-        st.page_link("pages/2_Importacao_Dados.py", label="Importação", icon="📥")
-        st.page_link("pages/2_Transacoes.py", label="Transações", icon="💳")
-        st.page_link("pages/4_Contratos.py", label="Contratos", icon="📝")
-        st.page_link("pages/5_Contas.py", label="Contas", icon="💰")
+        st.markdown("---")
         
-        st.markdown("**Dashboards**")
-        st.page_link("pages/6_DRE.py", label="DRE", icon="📊")
-        st.page_link("pages/7_DFC.py", label="DFC", icon="💵")
-        st.page_link("pages/8_Sazonalidade.py", label="Sazonalidade", icon="📈")
-        st.page_link("pages/9_Relatorios.py", label="Relatórios", icon="📑")
+        # Seção Início
+        st.markdown("#### 🏠 Início")
+        st.page_link("app.py", label="Página Inicial", icon="🏠")
+        
+        st.markdown("---")
+        
+        # Seção Dados - com descrições claras
+        st.markdown("#### 📥 Gestão de Dados")
+        st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥")
+        st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
+        
+        st.page_link("pages/2_Transacoes.py", label="💳 Transações Financeiras", icon="💳")
+        st.caption("Visualize e gerencie transações")
+        
+        st.page_link("pages/4_Contratos.py", label="📝 Contratos e Eventos", icon="📝")
+        st.caption("Gerencie contratos e eventos")
+        
+        st.page_link("pages/5_Contas.py", label="💰 Contas a Pagar/Receber", icon="💰")
+        st.caption("Controle de contas a pagar e receber")
+        
+        st.markdown("---")
+        
+        # Seção Dashboards - com descrições claras
+        st.markdown("#### 📊 Dashboards e Relatórios")
+        st.page_link("pages/6_DRE.py", label="📈 DRE - Demonstração do Resultado", icon="📊")
+        st.caption("Receitas vs Despesas e resultado")
+        
+        st.page_link("pages/7_DFC.py", label="💵 DFC - Fluxo de Caixa", icon="💵")
+        st.caption("Análise de fluxo de caixa")
+        
+        st.page_link("pages/8_Sazonalidade.py", label="📉 Análise de Sazonalidade", icon="📈")
+        st.caption("Padrões sazonais e tendências")
+        
+        st.page_link("pages/9_Relatorios.py", label="📑 Relatórios e Exportação", icon="📑")
+        st.caption("Gere e exporte relatórios completos")
+        
+        st.markdown("---")
         
         # Páginas administrativas
         if user['role'] in ['admin', 'manager']:
-            st.markdown("---")
-            st.markdown("**Administração**")
-            st.page_link("pages/1_Gestao_Clientes.py", label="Gestão de Clientes", icon="👥")
+            st.markdown("#### ⚙️ Administração")
+            st.page_link("pages/1_Gestao_Clientes.py", label="👥 Gestão de Clientes", icon="👥")
+            st.caption("Cadastre e gerencie clientes")
         
         if user['role'] == 'admin':
-            st.page_link("pages/10_Admin.py", label="Administração", icon="⚙️")
+            st.page_link("pages/10_Admin.py", label="🔧 Configurações do Sistema", icon="⚙️")
+            st.caption("Configurações avançadas e IA")
         
         st.markdown("---")
         

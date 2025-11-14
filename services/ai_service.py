@@ -2004,14 +2004,15 @@ Processe e retorne em JSON com array "processed_data".
                 status_callback(f"Preparando dados para processamento ({len(df)} linhas encontradas)...")
             
             # Prepara amostra e dados completos
-            # Para PDFs, aumenta limite de linhas processadas
+            # Processa TODO o arquivo, não apenas uma amostra limitada
             is_pdf = pdf_full_data is not None
-            max_rows_sample = 30 if is_pdf else 20
-            max_rows_to_process = min(500 if is_pdf else 100, len(df)) if not df.empty else 0
+            max_rows_sample = 30 if is_pdf else 20  # Amostra apenas para exibição no prompt
             
+            # Processa TODAS as linhas do DataFrame
             if not df.empty:
                 data_sample = self._prepare_data_sample(df, max_rows=max_rows_sample)
-                file_data_df = df.head(max_rows_to_process).copy()
+                # Usa TODO o DataFrame, não apenas uma amostra
+                file_data_df = df.copy()
                 file_data_df['_original_index'] = file_data_df.index
             else:
                 data_sample = "Dados extraídos do texto do PDF"
@@ -2038,6 +2039,11 @@ Processe e retorne em JSON com array "processed_data".
             
             # Prepara dados para JSON
             if not df.empty:
+                # Informa quantidade total de linhas no metadata
+                total_rows = len(file_data_df)
+                if status_callback:
+                    status_callback(f"Processando {total_rows} linhas do arquivo...")
+                
                 file_data = json.dumps(
                     file_data_df.to_dict('records'),
                     indent=2,
@@ -2045,8 +2051,15 @@ Processe e retorne em JSON com array "processed_data".
                     ensure_ascii=False
                 )
             else:
-                # Se não tem DataFrame, usa texto completo do PDF
-                file_data = pdf_full_data.get('full_text', '')[:10000] if pdf_full_data else ''  # Limita a 10k chars
+                # Se não tem DataFrame, usa texto completo do PDF (SEM limitação)
+                if pdf_full_data and pdf_full_data.get('full_text'):
+                    full_text = pdf_full_data.get('full_text', '')
+                    # Usa TODO o texto, não apenas 10k chars
+                    file_data = full_text
+                    if status_callback:
+                        status_callback(f"Processando texto completo do PDF ({len(full_text)} caracteres)...")
+                else:
+                    file_data = ''
             
             # Adiciona metadados ao file_data
             if file_metadata:

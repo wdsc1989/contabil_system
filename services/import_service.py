@@ -3,6 +3,7 @@ Serviço de importação de dados com mapeamento de colunas
 """
 import pandas as pd
 from sqlalchemy.orm import Session
+from sqlalchemy import text, inspect
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from models.transaction import Transaction, BankStatement
@@ -14,7 +15,47 @@ from models.card_machine import CardMachineStatement
 from models.inventory import Inventory
 from models.group import Group, Subgroup
 from utils.validators import parse_date, parse_currency
+from config.database import engine
 import json
+
+
+def _ensure_columns_exist(db: Session, table_name: str):
+    """
+    Garante que as colunas group_id e subgroup_id existem na tabela
+    """
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table(table_name):
+            return
+        
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+        
+        if 'group_id' not in columns:
+            try:
+                db.execute(text(f"""
+                    ALTER TABLE {table_name} 
+                    ADD COLUMN group_id INTEGER REFERENCES groups(id)
+                """))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                # Ignora erro se coluna já existir ou outro problema
+                pass
+        
+        if 'subgroup_id' not in columns:
+            try:
+                db.execute(text(f"""
+                    ALTER TABLE {table_name} 
+                    ADD COLUMN subgroup_id INTEGER REFERENCES subgroups(id)
+                """))
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                # Ignora erro se coluna já existir ou outro problema
+                pass
+    except Exception as e:
+        # Se houver erro, continua - pode ser que as colunas já existam
+        pass
 
 
 def _get_row_group_subgroup(row, group_id, subgroup_id):
@@ -160,6 +201,9 @@ class ImportService:
         Colunas esperadas: date, description, value, balance (opcional)
         Retorna: {'statements': count, 'transactions': count}
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'bank_statements')
+        
         statements_count = 0
         transactions_count = 0
         
@@ -247,6 +291,9 @@ class ImportService:
         Importa contratos
         Colunas esperadas: contract_start, event_date, service_value, contractor_name, etc
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'contracts')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -304,6 +351,9 @@ class ImportService:
         Importa contas a pagar
         Colunas esperadas: account_name, due_date, value, cpf_cnpj (opcional)
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'accounts_payable')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -355,6 +405,9 @@ class ImportService:
         Importa contas a receber
         Colunas esperadas: account_name, due_date, value, cpf_cnpj (opcional)
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'accounts_receivable')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -416,6 +469,9 @@ class ImportService:
         Importa extratos de aplicações financeiras
         Colunas esperadas: date, investment_type, institution, operation_type, applied_value, redeemed_value, yield_value
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'financial_investments')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -460,6 +516,9 @@ class ImportService:
         Importa faturas de cartão de crédito
         Colunas esperadas: transaction_date, description, value, category, establishment, installment_number
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'credit_card_invoices')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -507,6 +566,9 @@ class ImportService:
         Importa extratos de máquina de cartão
         Colunas esperadas: date, gross_value, fee, net_value, card_brand, transaction_type
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'card_machine_statements')
+        
         imported_count = 0
         
         for _, row in df.iterrows():
@@ -560,6 +622,9 @@ class ImportService:
         Importa controle de estoque
         Colunas esperadas: product_name, quantity, unit_value, movement_date, movement_type
         """
+        # Garante que as colunas existem antes de importar
+        _ensure_columns_exist(db, 'inventory')
+        
         imported_count = 0
         
         for _, row in df.iterrows():

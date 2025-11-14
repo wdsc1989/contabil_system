@@ -151,8 +151,21 @@ if uploaded_file:
             sheets = ParserService.get_excel_sheets(file_content)
             
             if len(sheets) > 1:
-                selected_sheet = st.selectbox("Selecione a planilha:", sheets)
-                df = ParserService.parse_excel(file_content, selected_sheet)
+                col1, col2 = st.columns(2)
+                with col1:
+                    read_all = st.checkbox("📋 Ler todas as abas", value=False, 
+                                          help="Se marcado, combina dados de todas as abas em um único arquivo")
+                with col2:
+                    if not read_all:
+                        selected_sheet = st.selectbox("Selecione a planilha:", sheets)
+                    else:
+                        st.info(f"📊 {len(sheets)} abas serão processadas")
+                
+                if read_all:
+                    df = ParserService.parse_excel(file_content, all_sheets=True)
+                    st.success(f"✅ {len(sheets)} abas processadas e combinadas")
+                else:
+                    df = ParserService.parse_excel(file_content, selected_sheet)
             else:
                 df = ParserService.parse_excel(file_content)
         
@@ -203,7 +216,8 @@ if uploaded_file:
             st.markdown("---")
             st.subheader("2️⃣ Preview dos Dados Originais")
             st.dataframe(df.head(10), use_container_width=True)
-            st.caption(f"Total de linhas: {len(df)}")
+            st.success(f"✅ Arquivo carregado com sucesso: **{len(df)} linhas** e **{len(df.columns)} colunas**")
+            st.caption(f"📊 Total de linhas: {len(df)} | 📋 Total de colunas: {len(df.columns)}")
             
             # Detecção automática do tipo de dado
             st.markdown("---")

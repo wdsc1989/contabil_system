@@ -38,14 +38,34 @@ class ParserService:
             raise Exception(f"Erro ao fazer parse do CSV: {str(e)}")
 
     @staticmethod
-    def parse_excel(file_content: bytes, sheet_name: Optional[str] = None) -> pd.DataFrame:
+    def parse_excel(file_content: bytes, sheet_name: Optional[str] = None, all_sheets: bool = False) -> pd.DataFrame:
         """
         Faz parse de arquivo Excel
+        Se all_sheets=True, lê todas as abas e combina em um único DataFrame
         """
         try:
-            if sheet_name:
+            if all_sheets:
+                # Lê todas as abas e combina
+                excel_file = pd.ExcelFile(BytesIO(file_content))
+                all_dfs = []
+                
+                for sheet in excel_file.sheet_names:
+                    df_sheet = pd.read_excel(excel_file, sheet_name=sheet)
+                    if not df_sheet.empty:
+                        # Adiciona coluna indicando a aba de origem
+                        df_sheet['_sheet_name'] = sheet
+                        all_dfs.append(df_sheet)
+                
+                if all_dfs:
+                    # Combina todos os DataFrames
+                    df = pd.concat(all_dfs, ignore_index=True)
+                    return df
+                else:
+                    return pd.DataFrame()
+            elif sheet_name:
                 df = pd.read_excel(BytesIO(file_content), sheet_name=sheet_name)
             else:
+                # Lê apenas a primeira aba (comportamento padrão)
                 df = pd.read_excel(BytesIO(file_content))
             
             return df
