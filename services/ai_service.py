@@ -202,6 +202,237 @@ class AIService:
         # Se não encontrou padrões, cria DataFrame simples com o texto
         return pd.DataFrame({'text': lines[:100]})  # Limita a 100 linhas
     
+    def _repair_json(self, json_str: str, error: json.JSONDecodeError) -> str:
+        """
+        Tenta reparar JSON malformado corrigindo problemas comuns
+        """
+        repaired = json_str
+        
+        # Obtém posição do erro
+        error_pos = getattr(error, 'pos', None)
+        error_msg = str(error)
+        
+        # Se o erro menciona vírgula faltante, tenta adicionar
+        if "Expecting ','" in error_msg or "delimiter" in error_msg:
+            if error_pos and error_pos < len(repaired):
+                # Analisa o contexto ao redor do erro (mais amplo para capturar o padrão)
+                start = max(0, error_pos - 200)
+                end = min(len(repaired), error_pos + 50)
+                context = repaired[start:end]
+                
+                # Procura padrões comuns que indicam vírgula faltante
+                # Padrão: "valor" } ou "valor" ] ou número } ou número ]
+                # Mas não se já houver vírgula antes
+                before_error = repaired[:error_pos]
+                after_error = repaired[error_pos:]
+                
+                # Verifica se precisa adicionar vírgula antes de } ou ]
+                # Procura por: valor seguido de } ou ] sem vírgula
+                # Procura de trás para frente a partir do erro
+                search_start = max(0, error_pos - 200)
+                search_end = error_pos + 10
+                search_area = repaired[search_start:search_end]
+                
+                # Padrões mais específicos para detectar vírgula faltante
+                patterns_to_fix = [
+                    # String seguida de } ou ] sem vírgula
+                    (r'("(?:[^"\\]|\\.)+")\s*([}\]])', r'\1, \2'),
+                    # Número seguido de } ou ] sem vírgula
+                    (r'(\d+\.?\d*)\s*([}\]])', r'\1, \2'),
+                    # Boolean/null seguido de } ou ] sem vírgula
+                    (r'\b(true|false|null)\b\s*([}\]])', r'\1, \2'),
+                ]
+                
+                # Aplica os padrões na área de busca
+                fixed_area = search_area
+                for pattern, replacement in patterns_to_fix:
+                    # Aplica globalmente na área, mas apenas se não houver vírgula antes
+                    fixed_area = re.sub(pattern, replacement, fixed_area)
+                
+                if fixed_area != search_area:
+                    repaired = repaired[:search_start] + fixed_area + repaired[search_end:]
+        
+        # Aplica correções globais de vírgulas (mais agressivo)
+        # Remove vírgulas extras antes de } ou ]
+        repaired = re.sub(r',\s*}', r'}', repaired)
+        repaired = re.sub(r',\s*]', r']', repaired)
+        
+        # Remove vírgulas duplicadas
+        repaired = re.sub(r',\s*,', r',', repaired)
+        
+        # Tenta adicionar vírgulas faltantes globalmente (mais conservador)
+        # Apenas se não houver vírgula antes e não for o primeiro item
+        # Padrão: valor } ou valor ] onde valor não é seguido de vírgula
+        # Mas evita adicionar se já houver vírgula antes
+        repaired = re.sub(r'("(?:[^"\\]|\\.)+")\s+([}\]])', r'\1, \2', repaired)
+        repaired = re.sub(r'(\d+\.?\d*)\s+([}\]])', r'\1, \2', repaired)
+        repaired = re.sub(r'\b(true|false|null)\b\s+([}\]])', r'\1, \2', repaired)
+        
+        # Corrige strings não terminadas
+        if error_pos and error_pos < len(repaired):
+            before_error = repaired[:error_pos]
+            # Conta aspas não escapadas
+            quote_count = 0
+            escape_next = False
+            for char in before_error:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"':
+                    quote_count += 1
+            
+            if quote_count % 2 != 0:
+                # String não terminada, tenta fechar
+                after_error = repaired[error_pos:]
+                next_quote = after_error.find('"')
+                next_brace = after_error.find('}')
+                next_bracket = after_error.find(']')
+                
+                if next_quote != -1 and (next_brace == -1 or next_quote < next_brace) and (next_bracket == -1 or next_quote < next_bracket):
+                    repaired = repaired[:error_pos] + '"' + repaired[error_pos:]
+                elif next_brace != -1:
+                    repaired = repaired[:error_pos] + '"' + repaired[error_pos:]
+        
+        # Remove caracteres de controle
+        repaired = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', repaired)
+        
+        return repaired
+    
+    def _extract_partial_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """
+        Tenta extrair dados parciais de JSON malformado
+        """
+        try:
+            # Tenta encontrar e extrair apenas o processed_data
+            # Usa padrão mais flexível para encontrar o array
+            processed_data_match = re.search(r'"processed_data"\s*:\s*\[', json_str)
+            if not processed_data_match:
+                return None
+            
+            # Encontra o início do array
+            array_start = processed_data_match.end()
+            
+            # Procura por objetos { ... } dentro do array
+            objects = []
+            depth = 0
+            array_depth = 1  # Profundidade do array
+            current_obj = ""
+            in_string = False
+            escape_next = False
+            obj_start = -1
+            
+            for i in range(array_start, len(json_str)):
+                char = json_str[i]
+                
+                if escape_next:
+                    if obj_start >= 0:
+                        current_obj += char
+                    escape_next = False
+                    continue
+                
+                if char == '\\':
+                    if obj_start >= 0:
+                        current_obj += char
+                    escape_next = True
+                    continue
+                
+                if char == '"':
+                    in_string = not in_string
+                    if obj_start >= 0:
+                        current_obj += char
+                elif not in_string:
+                    if char == '[':
+                        array_depth += 1
+                        if obj_start >= 0:
+                            current_obj += char
+                    elif char == ']':
+                        array_depth -= 1
+                        if array_depth == 0:
+                            # Fim do array, tenta salvar último objeto se houver
+                            if obj_start >= 0 and depth == 0 and current_obj:
+                                try:
+                                    obj = json.loads(current_obj)
+                                    objects.append(obj)
+                                except:
+                                    pass
+                            break
+                        elif obj_start >= 0:
+                            current_obj += char
+                    elif char == '{':
+                        if depth == 0:
+                            obj_start = i
+                            current_obj = "{"
+                        else:
+                            current_obj += char
+                        depth += 1
+                    elif char == '}':
+                        if obj_start >= 0:
+                            current_obj += char
+                        depth -= 1
+                        if depth == 0 and obj_start >= 0:
+                            # Objeto completo encontrado
+                            try:
+                                obj = json.loads(current_obj)
+                                objects.append(obj)
+                            except json.JSONDecodeError:
+                                # Tenta reparar o objeto antes de parsear
+                                try:
+                                    repaired_obj = self._repair_json(current_obj, json.JSONDecodeError("", current_obj, 0))
+                                    obj = json.loads(repaired_obj)
+                                    objects.append(obj)
+                                except:
+                                    pass
+                            current_obj = ""
+                            obj_start = -1
+                    else:
+                        if obj_start >= 0:
+                            current_obj += char
+                else:
+                    if obj_start >= 0:
+                        current_obj += char
+            
+            # Constrói resultado parcial
+            if objects:
+                result = {
+                    'processed_data': objects,
+                    'summary': {},
+                    'issues': []
+                }
+                
+                # Tenta extrair summary
+                summary_match = re.search(r'"summary"\s*:\s*\{([^}]*)\}', json_str)
+                if summary_match:
+                    try:
+                        summary_str = "{" + summary_match.group(1) + "}"
+                        summary = json.loads(summary_str)
+                        result['summary'] = summary
+                    except:
+                        # Tenta criar summary básico
+                        result['summary'] = {
+                            'total_rows': len(objects),
+                            'processed': len(objects),
+                            'errors': 0
+                        }
+                
+                # Tenta extrair issues
+                issues_match = re.search(r'"issues"\s*:\s*\[(.*?)\]', json_str, re.DOTALL)
+                if issues_match:
+                    try:
+                        issues_str = "[" + issues_match.group(1) + "]"
+                        issues = json.loads(issues_str)
+                        result['issues'] = issues
+                    except:
+                        result['issues'] = ["Alguns dados podem ter sido perdidos devido a erro de parsing"]
+                
+                return result
+        except Exception as e:
+            print(f"Erro ao extrair JSON parcial: {e}")
+        
+        return None
+    
     def _prepare_data_sample(self, df: pd.DataFrame, max_rows: int = 5) -> str:
         """
         Prepara amostra dos dados para análise
@@ -1972,14 +2203,16 @@ Processe e retorne em JSON com array "processed_data".
                     try:
                         result = json.loads(json_str_clean)
                     except json.JSONDecodeError as e2:
-                        # Se ainda falhar, tenta uma última vez com limpeza mais agressiva
-                        # Remove todos os caracteres de controle
-                        json_str_final = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', json_str_clean)
+                        # Tenta reparar problemas comuns de JSON
+                        json_str_final = self._repair_json(json_str_clean, e2)
                         try:
                             result = json.loads(json_str_final)
-                        except:
-                            # Se ainda falhar, levanta o erro original com contexto
-                            raise e
+                        except json.JSONDecodeError as e3:
+                            # Última tentativa: extrai apenas o que é possível parsear
+                            result = self._extract_partial_json(json_str_clean)
+                            if not result:
+                                # Se ainda falhar, levanta o erro com contexto
+                                raise e2
                 
                 # Se processou apenas amostra, aplica padrões ao resto
                 processed_data = result.get('processed_data', [])
