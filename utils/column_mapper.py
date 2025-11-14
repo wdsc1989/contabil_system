@@ -1,8 +1,10 @@
 """
 Utilitário para mapeamento inteligente de colunas
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 import difflib
+import pandas as pd
+from sqlalchemy.orm import Session
 
 
 class ColumnMapper:
@@ -55,10 +57,36 @@ class ColumnMapper:
         return col_name
 
     @staticmethod
-    def suggest_mapping(source_columns: List[str], target_columns: List[str]) -> Dict[str, str]:
+    def suggest_mapping(
+        source_columns: List[str],
+        target_columns: List[str],
+        df: Optional[pd.DataFrame] = None,
+        db: Optional[Session] = None,
+        import_type: Optional[str] = None
+    ) -> Dict[str, str]:
         """
         Sugere mapeamento automático de colunas
+        Tenta usar IA se disponível, caso contrário usa método tradicional
         """
+        # Tenta usar IA se disponível
+        if df is not None and db is not None and import_type is not None:
+            try:
+                from services.ai_service import AIService
+                ai_service = AIService(db)
+                
+                if ai_service.is_available():
+                    ai_mapping = ai_service.suggest_column_mapping(df, import_type, target_columns)
+                    if ai_mapping:
+                        # Completa com 'ignore' para colunas não mapeadas pela IA
+                        for col in source_columns:
+                            if col not in ai_mapping:
+                                ai_mapping[col] = 'ignore'
+                        return ai_mapping
+            except Exception as e:
+                print(f"Erro ao usar IA para mapeamento: {e}")
+                # Continua com método tradicional
+        
+        # Método tradicional (fallback)
         mapping = {}
         used_targets = set()
         
@@ -128,5 +156,6 @@ class ColumnMapper:
         }
         
         return required_map.get(import_type, [])
+
 
 

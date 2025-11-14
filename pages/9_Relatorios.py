@@ -62,7 +62,7 @@ st.subheader("📋 Selecione o Tipo de Relatório")
 
 report_type = st.selectbox(
     "Tipo de relatório:",
-    options=['DRE', 'DFC', 'Transações', 'Contratos', 'Contas a Pagar', 'Contas a Receber', 'Relatório Completo']
+    options=['DRE', 'DFC', 'Projeção de DFC', 'Transações', 'Extratos Bancários', 'Contratos', 'Contas a Pagar', 'Contas a Receber', 'Relatório Completo']
 )
 
 st.markdown("---")
@@ -149,6 +149,131 @@ if st.button("📊 Gerar Relatório", use_container_width=True, type="primary"):
                 
                 st.markdown("---")
             
+            # Projeção de DFC
+            if report_type in ['Projeção de DFC', 'Relatório Completo']:
+                st.markdown("### 📈 Projeção de DFC - Fluxo de Caixa Futuro")
+                
+                dfc_projection = ReportService.get_dfc_projection(db, client_id, start_date, end_date)
+                
+                if dfc_projection['projecao_mensal']:
+                    # Métricas principais
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("💰 Entradas Previstas", format_currency(dfc_projection['total_entradas_previstas']))
+                    
+                    with col2:
+                        st.metric("💸 Saídas Previstas", format_currency(dfc_projection['total_saidas_previstas']))
+                    
+                    with col3:
+                        st.metric("📊 Saldo Final Projetado", format_currency(dfc_projection['saldo_final_projetado']))
+                    
+                    with col4:
+                        deficits_count = len(dfc_projection['deficits'])
+                        st.metric("⚠️ Déficits Identificados", deficits_count)
+                    
+                    # Tabela de projeção
+                    projection_df = pd.DataFrame([
+                        {
+                            'Mês': p['mes'],
+                            'Entradas Previstas': p['entradas_previstas'],
+                            'Saídas Previstas': p['saidas_previstas'],
+                            'Saldo do Mês': p['saldo_mes'],
+                            'Saldo Acumulado': p['saldo_acumulado']
+                        }
+                        for p in dfc_projection['projecao_mensal']
+                    ])
+                    
+                    st.dataframe(projection_df, use_container_width=True, hide_index=True)
+                    
+                    # Alertas de déficit
+                    if dfc_projection['deficits']:
+                        st.markdown("#### ⚠️ Alertas de Déficit de Caixa")
+                        st.warning("**ATENÇÃO:** Foram identificados meses com saldo negativo projetado!")
+                        
+                        deficits_df = pd.DataFrame([
+                            {
+                                'Mês': d['mes'],
+                                'Entradas': format_currency(d['entradas_previstas']),
+                                'Saídas': format_currency(d['saidas_previstas']),
+                                'Saldo Acumulado': format_currency(d['saldo_acumulado'])
+                            }
+                            for d in dfc_projection['deficits']
+                        ])
+                        
+                        st.dataframe(deficits_df, use_container_width=True, hide_index=True)
+                        
+                        st.info("💡 **Recomendações:**\n"
+                               "- Revise contas a receber e contas a pagar para os meses indicados\n"
+                               "- Considere negociar prazos ou buscar fontes alternativas de receita\n"
+                               "- Planeje cortes de despesas ou investimentos para evitar déficit")
+                    
+                    export_data['Projeção de DFC'] = projection_df
+                else:
+                    st.info("Nenhuma projeção disponível para o período. Verifique se há contas a pagar ou receber futuras.")
+                
+                st.markdown("---")
+            
+            # Extratos Bancários
+            if report_type in ['Extratos Bancários', 'Relatório Completo']:
+                st.markdown("### 🏦 Extratos Bancários")
+                
+                from models.transaction import BankStatement
+                
+                bank_statements_data = ReportService.get_bank_statements_data(db, client_id, start_date, end_date)
+                
+                if bank_statements_data['extratos']:
+                    # Estatísticas
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("💰 Créditos", format_currency(bank_statements_data['total_creditos']))
+                    
+                    with col2:
+                        st.metric("💸 Débitos", format_currency(bank_statements_data['total_debitos']))
+                    
+                    with col3:
+                        st.metric("📊 Saldo", format_currency(bank_statements_data['saldo_final']))
+                    
+                    with col4:
+                        st.metric("📝 Registros", bank_statements_data['total_registros'])
+                    
+                    # Tabela de extratos
+                    extratos_df = pd.DataFrame([
+                        {
+                            'Data': format_date(e['date']),
+                            'Banco': e['bank_name'] or '-',
+                            'Conta': e['account'] or '-',
+                            'Descrição': e['description'][:50] + '...' if len(e['description']) > 50 else e['description'],
+                            'Valor': e['value'],
+                            'Saldo': format_currency(e['balance']) if e['balance'] else '-'
+                        }
+                        for e in bank_statements_data['extratos']
+                    ])
+                    
+                    st.dataframe(extratos_df, use_container_width=True, hide_index=True)
+                    
+                    # Análise por banco
+                    if bank_statements_data['por_banco']:
+                        st.markdown("#### 📊 Análise por Banco")
+                        bank_df = pd.DataFrame([
+                            {
+                                'Banco': bank,
+                                'Créditos': format_currency(stats['creditos']),
+                                'Débitos': format_currency(stats['debitos']),
+                                'Saldo': format_currency(stats['creditos'] - stats['debitos']),
+                                'Transações': stats['count']
+                            }
+                            for bank, stats in bank_statements_data['por_banco'].items()
+                        ])
+                        st.dataframe(bank_df, use_container_width=True, hide_index=True)
+                    
+                    export_data['Extratos Bancários'] = extratos_df
+                else:
+                    st.info("Nenhum extrato bancário no período.")
+                
+                st.markdown("---")
+            
             # Transações
             if report_type in ['Transações', 'Relatório Completo']:
                 st.markdown("### 💳 Transações")
@@ -177,6 +302,66 @@ if st.button("📊 Gerar Relatório", use_container_width=True, type="primary"):
                     export_data['Transações'] = trans_df
                 else:
                     st.info("Nenhuma transação no período.")
+                
+                st.markdown("---")
+            
+            # Extratos Bancários
+            if report_type in ['Extratos Bancários', 'Relatório Completo']:
+                st.markdown("### 🏦 Extratos Bancários")
+                
+                from models.transaction import BankStatement
+                
+                bank_statements_data = ReportService.get_bank_statements_data(db, client_id, start_date, end_date)
+                
+                if bank_statements_data['extratos']:
+                    # Estatísticas
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("💰 Créditos", format_currency(bank_statements_data['total_creditos']))
+                    
+                    with col2:
+                        st.metric("💸 Débitos", format_currency(bank_statements_data['total_debitos']))
+                    
+                    with col3:
+                        st.metric("📊 Saldo", format_currency(bank_statements_data['saldo_final']))
+                    
+                    with col4:
+                        st.metric("📝 Registros", bank_statements_data['total_registros'])
+                    
+                    # Tabela de extratos
+                    extratos_df = pd.DataFrame([
+                        {
+                            'Data': format_date(e['date']),
+                            'Banco': e['bank_name'] or '-',
+                            'Conta': e['account'] or '-',
+                            'Descrição': e['description'][:50] + '...' if len(e['description']) > 50 else e['description'],
+                            'Valor': e['value'],
+                            'Saldo': format_currency(e['balance']) if e['balance'] else '-'
+                        }
+                        for e in bank_statements_data['extratos']
+                    ])
+                    
+                    st.dataframe(extratos_df, use_container_width=True, hide_index=True)
+                    
+                    # Análise por banco
+                    if bank_statements_data['por_banco']:
+                        st.markdown("#### 📊 Análise por Banco")
+                        bank_df = pd.DataFrame([
+                            {
+                                'Banco': bank,
+                                'Créditos': format_currency(stats['creditos']),
+                                'Débitos': format_currency(stats['debitos']),
+                                'Saldo': format_currency(stats['creditos'] - stats['debitos']),
+                                'Transações': stats['count']
+                            }
+                            for bank, stats in bank_statements_data['por_banco'].items()
+                        ])
+                        st.dataframe(bank_df, use_container_width=True, hide_index=True)
+                    
+                    export_data['Extratos Bancários'] = extratos_df
+                else:
+                    st.info("Nenhum extrato bancário no período.")
                 
                 st.markdown("---")
             
@@ -324,6 +509,11 @@ with st.expander("ℹ️ Sobre os Relatórios"):
     **DFC (Fluxo de Caixa)**
     - Entradas e saídas mensais
     - Saldo acumulado
+    
+    **Projeção de DFC**
+    - Projeção de fluxo de caixa futuro baseada em contas a pagar e receber
+    - Identificação de possíveis déficits
+    - Alertas e recomendações
     
     **Transações**
     - Lista detalhada de todas as transações

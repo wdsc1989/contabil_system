@@ -49,3 +49,5 @@ class UserClientPermission(Base):
         return f"<UserClientPermission(user_id={self.user_id}, client_id={self.client_id})>"
 
 
+
+

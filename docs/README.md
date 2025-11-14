@@ -69,3 +69,5 @@ docs/
 - Para instalação, veja [`guias/INSTALACAO_FACIL.md`](guias/INSTALACAO_FACIL.md) ou [`guias/INSTALACAO_COMPLETA.md`](guias/INSTALACAO_COMPLETA.md)
 - Para desenvolvimento, consulte a pasta [`desenvolvimento/`](desenvolvimento/)
 
+
+

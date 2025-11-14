@@ -23,6 +23,7 @@ class Transaction(Base):
     group_id = Column(Integer, ForeignKey('groups.id'))
     subgroup_id = Column(Integer, ForeignKey('subgroups.id'))
     account = Column(String(100))
+    bank_name = Column(String(100))  # Nome do banco (para extratos bancários)
     document_type = Column(String(50))  # extrato_bancario, fatura_cartao, etc
     imported_from = Column(String(255))  # nome do arquivo importado
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -50,10 +51,14 @@ class BankStatement(Base):
     description = Column(Text, nullable=False)
     value = Column(Float, nullable=False)
     balance = Column(Float)
-    imported_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    imported_at = Column(DateTime, default=None, nullable=True)  # None para manuais, datetime para importados
+    group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
+    subgroup_id = Column(Integer, ForeignKey('subgroups.id'), nullable=True)
 
     # Relacionamentos
     client = relationship('Client', back_populates='bank_statements')
+    group = relationship('Group', back_populates='bank_statements')
+    subgroup = relationship('Subgroup', back_populates='bank_statements')
 
     def __repr__(self):
         return f"<BankStatement(date='{self.date}', value={self.value})>"

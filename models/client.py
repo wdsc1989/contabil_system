@@ -28,6 +28,10 @@ class Client(Base):
     accounts_payable = relationship('AccountPayable', back_populates='client', cascade='all, delete-orphan')
     accounts_receivable = relationship('AccountReceivable', back_populates='client', cascade='all, delete-orphan')
     bank_statements = relationship('BankStatement', back_populates='client', cascade='all, delete-orphan')
+    financial_investments = relationship('FinancialInvestment', back_populates='client', cascade='all, delete-orphan')
+    credit_card_invoices = relationship('CreditCardInvoice', back_populates='client', cascade='all, delete-orphan')
+    card_machine_statements = relationship('CardMachineStatement', back_populates='client', cascade='all, delete-orphan')
+    inventory = relationship('Inventory', back_populates='client', cascade='all, delete-orphan')
     import_mappings = relationship('ImportMapping', back_populates='client', cascade='all, delete-orphan')
 
     def __repr__(self):

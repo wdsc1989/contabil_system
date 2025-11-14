@@ -42,7 +42,8 @@ def init_db():
     """
     Inicializa o banco de dados criando todas as tabelas
     """
-    from models import user, client, transaction, contract, account, group
+    from models import (user, client, transaction, contract, account, group, ai_config,
+                       financial_investment, credit_card, card_machine, inventory)
     Base.metadata.create_all(bind=engine)
 
 

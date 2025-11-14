@@ -67,7 +67,10 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
   - Salvamento de templates por tipo e cliente
   - Validação de campos obrigatórios
 - **Preview de Dados:** Visualize antes de importar
-- **Classificação:** Atribua grupos/subgrupos durante importação
+- **Classificação Contábil:**
+  - **PRIMÁRIO:** Grupos e Subgrupos (Plano de Contas) - Obrigatório para relatórios DRE/DFC
+  - **SECUNDÁRIO:** Categoria (opcional) - Usada apenas como fallback quando não há grupo/subgrupo
+  - **IA Inteligente:** Classificação automática por grupo/subgrupo durante importação
 
 ### CRUD Completo ✏️
 - **Transações:** Criar, editar, excluir (manual ou importadas)
@@ -399,9 +402,9 @@ date: Date NOT NULL
 description: Text NOT NULL
 value: Float NOT NULL
 type: String(20) NOT NULL  # entrada, saida
-category: String(100)
-group_id: Integer (FK → groups.id)
-subgroup_id: Integer (FK → subgroups.id)
+category: String(100)  # Classificação secundária/opcional
+group_id: Integer (FK → groups.id)  # Classificação PRINCIPAL - Plano de Contas
+subgroup_id: Integer (FK → subgroups.id)  # Classificação PRINCIPAL - Plano de Contas
 account: String(100)
 document_type: String(50)  # manual, extrato_bancario, etc
 imported_from: String(255)  # nome do arquivo ou 'manual'
@@ -415,6 +418,11 @@ Relacionamentos:
 Índices:
 - date (para queries por período)
 ```
+
+**📌 Classificação Contábil:**
+- **PRIMÁRIO (Obrigatório para DRE/DFC):** `group_id` e `subgroup_id` - Representam o Plano de Contas formal
+- **SECUNDÁRIO (Opcional):** `category` - Classificação adicional/descritiva, usada apenas como fallback quando não há grupo/subgrupo
+- **Prioridade nos Relatórios:** DRE e DFC priorizam agrupamento por grupo/subgrupo; categoria é usada apenas para transações sem classificação formal
 
 #### **bank_statements** (Extratos Bancários)
 ```python

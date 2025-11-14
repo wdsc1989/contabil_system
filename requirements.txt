@@ -33,6 +33,11 @@ pyyaml>=6.0.0
 python-dateutil>=2.8.0
 validators>=0.22.0
 
+# AI/ML (Opcional - instale apenas o que for usar)
+openai>=1.0.0  # Para OpenAI e Ollama
+google-generativeai>=0.3.0  # Para Google Gemini
+groq>=0.4.0  # Para Groq
+
 # Development
 pytest>=7.4.0
 faker>=21.0.0

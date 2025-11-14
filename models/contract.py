@@ -25,12 +25,18 @@ class Contract(Base):
     contractor_name = Column(String(200), nullable=False)
     payment_terms = Column(Text)
     status = Column(String(50), default='pendente')  # pendente, em_andamento, concluido, cancelado
+    group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
+    subgroup_id = Column(Integer, ForeignKey('subgroups.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relacionamentos
     client = relationship('Client', back_populates='contracts')
+    group = relationship('Group', back_populates='contracts')
+    subgroup = relationship('Subgroup', back_populates='contracts')
 
     def __repr__(self):
         return f"<Contract(contractor='{self.contractor_name}', event_date='{self.event_date}', status='{self.status}')>"
+
+
 
 
