@@ -25,3 +25,4 @@ class AIConfig(Base):
         return f"<AIConfig(provider='{self.provider}', enabled={self.enabled})>"
 
 
+

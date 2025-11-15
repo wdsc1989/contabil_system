@@ -28,6 +28,180 @@ class AIAgentService:
         self.ai_service = AIService(db)
         self.report_service = ReportService()
     
+    def pre_analyze_client(self, client_id: int) -> Dict[str, Any]:
+        """
+        Faz uma pré-análise do cliente para gerar sugestões proativas
+        Retorna KPIs, alertas e oportunidades
+        """
+        from datetime import date, timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        today = date.today()
+        last_month_start = (today - relativedelta(months=1)).replace(day=1)
+        last_month_end = today
+        
+        # Busca KPIs do último mês
+        kpis = self.report_service.get_kpis(self.db, client_id, last_month_start, last_month_end)
+        
+        # Busca dados do DRE
+        dre = self.report_service.get_dre_data(self.db, client_id, last_month_start, last_month_end)
+        
+        # Identifica alertas e oportunidades
+        alerts = []
+        opportunities = []
+        suggestions = []
+        
+        # Alertas
+        if kpis.get('contas_pagar', 0) > 0:
+            alerts.append({
+                'type': 'warning',
+                'message': f"⚠️ Há {format_currency(kpis.get('contas_pagar', 0))} em contas a pagar pendentes"
+            })
+        
+        if kpis.get('margem', 0) < 10:
+            alerts.append({
+                'type': 'critical',
+                'message': f"🔴 Margem de lucro baixa: {kpis.get('margem', 0):.2f}%"
+            })
+        
+        if dre.get('resultado', 0) < 0:
+            alerts.append({
+                'type': 'critical',
+                'message': f"🔴 Resultado negativo no período: {format_currency(abs(dre.get('resultado', 0)))}"
+            })
+        
+        # Oportunidades
+        if kpis.get('contas_receber', 0) > 0:
+            opportunities.append({
+                'type': 'info',
+                'message': f"💰 {format_currency(kpis.get('contas_receber', 0))} em contas a receber podem melhorar o fluxo de caixa"
+            })
+        
+        if kpis.get('contratos_ativos', 0) > 0:
+            opportunities.append({
+                'type': 'success',
+                'message': f"📝 {kpis.get('contratos_ativos', 0)} contratos ativos com valor total de {format_currency(kpis.get('valor_contratos', 0))}"
+            })
+        
+        # Sugestões baseadas nos dados
+        if dre.get('receitas', 0) > 0:
+            suggestions.append("Analisar receitas do último mês")
+            suggestions.append("Verificar distribuição de receitas por grupo")
+        
+        if dre.get('despesas', 0) > 0:
+            suggestions.append("Analisar despesas e identificar oportunidades de redução")
+            suggestions.append("Comparar despesas com período anterior")
+        
+        if kpis.get('margem', 0) > 0:
+            suggestions.append("Analisar margem de lucro e tendências")
+        
+        return {
+            'kpis': kpis,
+            'dre': dre,
+            'alerts': alerts,
+            'opportunities': opportunities,
+            'suggestions': suggestions
+        }
+    
+    def generate_greeting_with_suggestions(self, client_id: int, client_name: str) -> str:
+        """
+        Gera saudação proativa com sugestões baseadas na pré-análise do cliente
+        """
+        if not self.ai_service.is_available():
+            return f"Olá! Sou seu assistente contábil. Como posso ajudá-lo hoje com **{client_name}**?"
+        
+        # Faz pré-análise
+        pre_analysis = self.pre_analyze_client(client_id)
+        
+        # Prepara contexto para a IA
+        context = f"""
+Cliente: {client_name}
+KPIs do último mês:
+- Receitas: {format_currency(pre_analysis['kpis'].get('receitas', 0))}
+- Despesas: {format_currency(pre_analysis['kpis'].get('despesas', 0))}
+- Resultado: {format_currency(pre_analysis['kpis'].get('resultado', 0))}
+- Margem: {pre_analysis['kpis'].get('margem', 0):.2f}%
+- Contas a pagar pendentes: {format_currency(pre_analysis['kpis'].get('contas_pagar', 0))}
+- Contas a receber pendentes: {format_currency(pre_analysis['kpis'].get('contas_receber', 0))}
+
+Alertas: {len(pre_analysis['alerts'])}
+Oportunidades: {len(pre_analysis['opportunities'])}
+Sugestões: {', '.join(pre_analysis['suggestions'][:3])}
+"""
+        
+        prompt = f"""Você é um administrador contábil profissional e experiente, especializado em análise financeira e contábil.
+Seu papel é ser proativo, oferecendo insights valiosos e sugestões baseadas nos dados do cliente.
+
+Contexto do cliente {client_name}:
+{context}
+
+Gere uma saudação profissional e amigável em português que:
+1. Se apresente como administrador contábil do sistema
+2. Pergunte o que vamos analisar hoje
+3. Apresente 3-4 sugestões de análises baseadas nos dados acima
+4. Seja conciso mas informativo
+5. Use tom profissional mas acessível
+
+Formate a resposta em markdown, destacando as sugestões de forma clara."""
+
+        try:
+            client, error = self.ai_service._get_client()
+            if error:
+                # Fallback simples
+                suggestions_text = "\n".join([f"- {s}" for s in pre_analysis['suggestions'][:3]])
+                return f"""Olá! 👋 Sou seu **administrador contábil** do sistema.
+
+O que vamos analisar hoje sobre **{client_name}**?
+
+Com base nos dados do último mês, sugiro que analisemos:
+
+{suggestions_text}
+
+Como prefere prosseguir?"""
+            
+            config = self.ai_service.config
+            provider = config['provider']
+            model = config.get('model', '')
+            
+            if provider == 'openai':
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            elif provider == 'gemini':
+                response = client.generate_content(prompt)
+                return response.text
+            elif provider == 'groq':
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7
+                )
+                return response.choices[0].message.content
+            elif provider == 'ollama':
+                response = client.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    options={"temperature": 0.7}
+                )
+                return response['message']['content']
+            else:
+                # Fallback
+                suggestions_text = "\n".join([f"- {s}" for s in pre_analysis['suggestions'][:3]])
+                return f"Olá! Sou seu administrador contábil. O que vamos analisar hoje?\n\nSugestões:\n{suggestions_text}"
+                
+        except Exception as e:
+            # Fallback em caso de erro
+            suggestions_text = "\n".join([f"- {s}" for s in pre_analysis['suggestions'][:3]])
+            return f"""Olá! 👋 Sou seu **administrador contábil** do sistema.
+
+O que vamos analisar hoje sobre **{client_name}**?
+
+Sugestões de análises:
+{suggestions_text}"""
+    
     def analyze_query(self, query: str, client_id: int) -> Dict[str, Any]:
         """
         Analisa uma pergunta em linguagem natural e identifica intenção e parâmetros
@@ -42,7 +216,7 @@ class AIAgentService:
             }
         
         # Prompt para análise da pergunta
-        prompt = f"""Você é um assistente financeiro especializado em análise de dados contábeis.
+        prompt = f"""Você é um administrador contábil profissional e experiente, especializado em análise financeira e contábil.
 Analise a seguinte pergunta do usuário e retorne APENAS um JSON válido (sem markdown, sem texto adicional) com:
 {{
     "intent": "relatorio|consulta|analise|estatistica|comparacao",
@@ -463,12 +637,13 @@ Retorne APENAS o JSON, sem explicações ou markdown."""
         data = query_result.get('data', {})
         query_type = query_result.get('type', '')
         
-        prompt = f"""Com base nos dados fornecidos, gere uma resposta clara e objetiva em português.
+        prompt = f"""Você é um administrador contábil profissional. Com base nos dados fornecidos, gere uma resposta clara, objetiva e profissional em português.
 Inclua:
 - Resumo executivo (2-3 frases)
 - Principais insights e descobertas
 - Dados numéricos formatados (valores em R$)
-- Recomendações (se aplicável)
+- Recomendações profissionais (se aplicável)
+- Use tom de administrador contábil experiente
 - Formate usando markdown
 
 Pergunta original: {original_query}

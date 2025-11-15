@@ -35,3 +35,4 @@ class CreditCardInvoice(Base):
     def __repr__(self):
         return f"<CreditCardInvoice(date='{self.transaction_date}', value={self.value}, establishment='{self.establishment}')>"
 
+

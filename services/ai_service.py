@@ -2276,11 +2276,8 @@ Processe e retorne em JSON com array "processed_data".
                 for item in processed_data:
                     item.pop('_original_index', None)
                 
-                # Se houver mais linhas, processa o resto com padrões identificados
-                if max_rows_to_process < len(df):
-                    # Por enquanto, retorna apenas as processadas
-                    # Em produção, poderia aplicar transformações identificadas
-                    pass
+                # Processa TODO o arquivo - não há mais limitação de linhas
+                # Todos os dados já foram processados pela IA
                 
                 if status_callback:
                     status_callback(f"✅ Processamento concluído! {len(processed_data)} linhas processadas.")

@@ -39,13 +39,14 @@ def show_sidebar():
 
 show_sidebar()
 
-st.title("🤖 Agente Conversacional de IA")
-st.markdown("Faça perguntas em linguagem natural sobre seus dados financeiros e receba respostas inteligentes com análises e visualizações.")
+st.title("🤖 Administrador Contábil - Agente IA")
+st.markdown("Seu assistente contábil inteligente. Faça perguntas em linguagem natural e receba análises profissionais com insights e visualizações.")
 st.markdown("---")
 
 # Inicializa histórico de conversas
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+    st.session_state.greeting_sent = False
 
 # Seleção de cliente
 db = SessionLocal()
@@ -81,6 +82,18 @@ try:
     selected_client = next((c for c in clients if c.id == selected_client_id), None)
     if selected_client:
         st.info(f"📌 Cliente: **{selected_client.name}** | 📋 {selected_client.cpf_cnpj}")
+        
+        # Envia saudação proativa se ainda não foi enviada
+        if not st.session_state.get('greeting_sent', False) or st.session_state.get('last_client_id') != selected_client_id:
+            agent_service = AIAgentService(db)
+            greeting = agent_service.generate_greeting_with_suggestions(selected_client_id, selected_client.name)
+            st.session_state.chat_history.append({
+                'role': 'assistant',
+                'content': greeting,
+                'visualizations': []
+            })
+            st.session_state.greeting_sent = True
+            st.session_state.last_client_id = selected_client_id
 finally:
     db.close()
 
@@ -266,6 +279,10 @@ st.markdown("---")
 query = st.chat_input("Faça uma pergunta sobre seus dados financeiros...")
 
 if query:
+    # Detecta se é uma saudação
+    greeting_keywords = ['oi', 'olá', 'bom dia', 'boa tarde', 'boa noite', 'hello', 'hi', 'e aí']
+    is_greeting = any(keyword in query.lower() for keyword in greeting_keywords)
+    
     # Adiciona pergunta ao histórico
     st.session_state.chat_history.append({
         'role': 'user',
@@ -276,6 +293,18 @@ if query:
     db = SessionLocal()
     try:
         agent_service = AIAgentService(db)
+        
+        # Se for saudação, envia saudação proativa
+        if is_greeting:
+            client_obj = db.query(Client).filter(Client.id == selected_client_id).first()
+            if client_obj:
+                greeting = agent_service.generate_greeting_with_suggestions(selected_client_id, client_obj.name)
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'content': greeting,
+                    'visualizations': []
+                })
+                st.rerun()
         
         with st.spinner("🤔 Analisando sua pergunta..."):
             # Analisa a pergunta

@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="Início",
     page_icon="🏠",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Sidebar colapsada por padrão
 )
 
 # Inicializa estado da sessão
@@ -225,7 +225,9 @@ def main_page():
     """
     Página principal do sistema
     """
-    sidebar_navigation()
+    # Menu na tela principal ao invés de sidebar
+    from utils.top_navigation import show_top_navigation
+    show_top_navigation()
     
     st.title("🏠 Bem-vindo ao Sistema Contábil")
     

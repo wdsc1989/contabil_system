@@ -215,9 +215,25 @@ if uploaded_file:
         if df is not None and not df.empty:
             st.markdown("---")
             st.subheader("2️⃣ Preview dos Dados Originais")
-            st.dataframe(df.head(10), use_container_width=True)
-            st.success(f"✅ Arquivo carregado com sucesso: **{len(df)} linhas** e **{len(df.columns)} colunas**")
-            st.caption(f"📊 Total de linhas: {len(df)} | 📋 Total de colunas: {len(df.columns)}")
+            
+            # Remove linhas completamente vazias para melhor visualização
+            df_preview = df.dropna(how='all').copy()
+            
+            # Opção para ver preview completo ou limitado
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.success(f"✅ Arquivo carregado com sucesso: **{len(df)} linhas** e **{len(df.columns)} colunas**")
+            with col2:
+                show_full_preview = st.checkbox("📋 Ver todos os dados", value=False, 
+                                                help="Mostra todos os dados com barra de rolagem")
+            
+            # Exibe preview
+            if show_full_preview:
+                st.dataframe(df_preview, use_container_width=True, height=400)
+                st.caption(f"📊 Exibindo todas as {len(df_preview)} linhas (após remover linhas vazias)")
+            else:
+                st.dataframe(df_preview.head(10), use_container_width=True)
+                st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
             
             # Detecção automática do tipo de dado
             st.markdown("---")

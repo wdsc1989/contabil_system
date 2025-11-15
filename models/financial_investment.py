@@ -36,3 +36,4 @@ class FinancialInvestment(Base):
     def __repr__(self):
         return f"<FinancialInvestment(date='{self.date}', type='{self.investment_type}', value={self.applied_value or self.redeemed_value})>"
 
+

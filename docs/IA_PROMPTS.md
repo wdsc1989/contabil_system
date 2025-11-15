@@ -194,3 +194,4 @@ O system message é incluído no início do prompt do usuário.
 **Solução:** Verifique conexão com internet e configuração da API
 
 
+

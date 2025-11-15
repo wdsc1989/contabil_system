@@ -34,3 +34,4 @@ class Inventory(Base):
     def __repr__(self):
         return f"<Inventory(product='{self.product_name}', quantity={self.quantity}, type='{self.movement_type}')>"
 
+
