@@ -6,7 +6,7 @@ from sqlalchemy import func, extract
 from models.transaction import Transaction, BankStatement
 from models.account import AccountPayable, AccountReceivable
 from models.contract import Contract
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
 import pandas as pd
 
@@ -684,5 +684,165 @@ class ReportService:
         
         output.seek(0)
         return output.getvalue()
+    
+    @staticmethod
+    def get_consolidated_financial_data(
+        db: Session, 
+        client_id: int, 
+        start_date: date, 
+        end_date: date
+    ) -> Dict[str, Any]:
+        """
+        Retorna dados financeiros consolidados para relatórios gerenciais
+        Inclui disponíveis financeiros, obrigações, entradas/saídas detalhadas, etc.
+        """
+        # Dados do DRE
+        dre_data = ReportService.get_dre_data(db, client_id, start_date, end_date)
+        
+        # Dados do DFC
+        dfc_data = ReportService.get_dfc_data(db, client_id, start_date, end_date)
+        
+        # Disponíveis financeiros (saldo bancário)
+        bank_balances = {}
+        bank_transactions = db.query(Transaction).filter(
+            Transaction.client_id == client_id,
+            Transaction.document_type == 'extrato_bancario',
+            Transaction.date <= end_date
+        ).order_by(Transaction.date.desc(), Transaction.id.desc()).all()
+        
+        for trans in bank_transactions:
+            bank_name = trans.bank_name or trans.account or 'Banco'
+            if bank_name not in bank_balances:
+                balance = db.query(func.sum(Transaction.value)).filter(
+                    Transaction.client_id == client_id,
+                    Transaction.account == trans.account,
+                    Transaction.date <= end_date
+                ).scalar() or 0
+                bank_balances[bank_name] = {
+                    'account': trans.account or '',
+                    'balance': float(balance)
+                }
+        
+        total_bank_balance = sum(b['balance'] for b in bank_balances.values())
+        
+        # Aplicações financeiras
+        from models.financial_investment import FinancialInvestment
+        investments = db.query(FinancialInvestment).filter(
+            FinancialInvestment.client_id == client_id,
+            FinancialInvestment.date <= end_date
+        ).all()
+        
+        total_investments = sum(
+            float(inv.applied_value or 0) - float(inv.redeemed_value or 0) 
+            for inv in investments
+        )
+        
+        # Obrigações financeiras
+        accounts_payable_pending = db.query(
+            func.sum(AccountPayable.value)
+        ).filter(
+            AccountPayable.client_id == client_id,
+            AccountPayable.paid == False,
+            AccountPayable.due_date <= end_date
+        ).scalar() or 0
+        
+        accounts_payable_future = db.query(
+            func.sum(AccountPayable.value)
+        ).filter(
+            AccountPayable.client_id == client_id,
+            AccountPayable.paid == False,
+            AccountPayable.due_date > end_date
+        ).scalar() or 0
+        
+        # Contas a receber
+        accounts_receivable_pending = db.query(
+            func.sum(AccountReceivable.value)
+        ).filter(
+            AccountReceivable.client_id == client_id,
+            AccountReceivable.received == False,
+            AccountReceivable.due_date <= end_date
+        ).scalar() or 0
+        
+        accounts_receivable_future = db.query(
+            func.sum(AccountReceivable.value)
+        ).filter(
+            AccountReceivable.client_id == client_id,
+            AccountReceivable.received == False,
+            AccountReceivable.due_date > end_date
+        ).scalar() or 0
+        
+        # Dados acumulados do ano
+        year_start = date(start_date.year, 1, 1)
+        dre_year = ReportService.get_dre_data(db, client_id, year_start, end_date)
+        
+        # Comparação com período anterior
+        from datetime import timedelta
+        period_days = (end_date - start_date).days
+        previous_start = start_date - timedelta(days=period_days + 1)
+        previous_end = start_date - timedelta(days=1)
+        dre_previous = ReportService.get_dre_data(
+            db, client_id, previous_start, previous_end
+        )
+        
+        return {
+            'dre': dre_data,
+            'dfc': dfc_data,
+            'disponiveis_financeiros': {
+                'saldo_bancario': float(total_bank_balance),
+                'bancos': {name: data['balance'] for name, data in bank_balances.items()},
+                'aplicacoes': float(total_investments),
+                'total': float(total_bank_balance + total_investments)
+            },
+            'obrigacoes': {
+                'contas_pagar_pendentes': float(accounts_payable_pending),
+                'contas_pagar_futuras': float(accounts_payable_future),
+                'total_obrigacoes': float(accounts_payable_pending + accounts_payable_future)
+            },
+            'contas_receber': {
+                'pendentes': float(accounts_receivable_pending),
+                'futuras': float(accounts_receivable_future),
+                'total': float(accounts_receivable_pending + accounts_receivable_future)
+            },
+            'dre_ano': dre_year,
+            'dre_periodo_anterior': dre_previous
+        }
+    
+    @staticmethod
+    def get_financial_projections(
+        db: Session, 
+        client_id: int, 
+        months_ahead: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Gera projeções financeiras futuras
+        Retorna projeções de faturamento, caixa e contas a pagar/receber
+        """
+        from dateutil.relativedelta import relativedelta
+        
+        today = date.today()
+        start_date = today + timedelta(days=1)
+        end_date = today + relativedelta(months=months_ahead)
+        
+        # Usa método existente de projeção
+        projection = ReportService.get_dfc_projection(db, client_id, start_date, end_date)
+        
+        # Organiza projeções por mês
+        projection_by_month = {}
+        for proj in projection.get('projecao_mensal', []):
+            month_key = proj.get('mes', '')
+            projection_by_month[month_key] = {
+                'entradas_previstas': proj.get('entradas_previstas', 0),
+                'saidas_previstas': proj.get('saidas_previstas', 0),
+                'saldo_projetado': proj.get('saldo_mes', 0),
+                'saldo_acumulado': proj.get('saldo_acumulado', 0)
+            }
+        
+        return {
+            'projection': projection_by_month,
+            'deficits': projection.get('deficits', []),
+            'total_entradas_previstas': projection.get('total_entradas_previstas', 0),
+            'total_saidas_previstas': projection.get('total_saidas_previstas', 0),
+            'saldo_final_projetado': projection.get('saldo_final_projetado', 0)
+        }
 
 

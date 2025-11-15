@@ -219,12 +219,14 @@ Sugestões de análises:
         prompt = f"""Você é um administrador contábil profissional e experiente, especializado em análise financeira e contábil.
 Analise a seguinte pergunta do usuário e retorne APENAS um JSON válido (sem markdown, sem texto adicional) com:
 {{
-    "intent": "relatorio|consulta|analise|estatistica|comparacao",
-    "data_type": "transacoes|contratos|contas|dre|dfc|sazonalidade|kpis|extratos|estoque",
+    "intent": "relatorio_gerencial|relatorio|consulta|analise|estatistica|comparacao",
+    "data_type": "transacoes|contratos|contas|dre|dfc|sazonalidade|kpis|extratos|estoque|relatorio_gerencial",
     "period": {{
         "start": "YYYY-MM-DD ou null",
         "end": "YYYY-MM-DD ou null",
-        "type": "mes|trimestre|ano|personalizado|hoje|ultimo_mes|ultimo_trimestre|ultimo_ano"
+        "type": "mes|trimestre|ano|personalizado|hoje|ultimo_mes|ultimo_trimestre|ultimo_ano",
+        "month": "nome_do_mes ou null (ex: outubro, novembro)",
+        "year": "YYYY ou null"
     }},
     "filters": {{
         "group": "nome_do_grupo ou null",
@@ -232,12 +234,19 @@ Analise a seguinte pergunta do usuário e retorne APENAS um JSON válido (sem ma
         "category": "categoria ou null",
         "type": "entrada|saida|ambos ou null"
     }},
-    "output_format": "tabela|grafico|resumo|completo",
+    "output_format": "tabela|grafico|resumo|completo|relatorio_gerencial",
     "comparison": {{
         "enabled": true ou false,
         "period": "periodo_anterior|ano_anterior"
     }}
 }}
+
+IMPORTANTE: Se o usuário solicitar "gerar relatório gerencial", "relatório de [mês/ano]", "apuração financeira", "relatório gerencial de [período]", 
+ou qualquer variação similar, defina:
+- "intent": "relatorio_gerencial"
+- "data_type": "relatorio_gerencial"
+- "output_format": "relatorio_gerencial"
+- Extraia o mês e ano do período solicitado no campo "period"
 
 Pergunta: {query}
 
@@ -314,8 +323,36 @@ Retorne APENAS o JSON, sem explicações ou markdown."""
         period_type = period_info.get('type', 'personalizado')
         start_str = period_info.get('start')
         end_str = period_info.get('end')
+        month_name = period_info.get('month')
+        year_str = period_info.get('year')
         
         today = date.today()
+        
+        # Se tem mês e ano específicos (para relatório gerencial)
+        if month_name and year_str:
+            try:
+                month_map = {
+                    'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
+                    'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
+                    'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12
+                }
+                month_num = month_map.get(month_name.lower(), today.month)
+                year = int(year_str) if year_str else today.year
+                
+                # Primeiro e último dia do mês
+                from calendar import monthrange
+                start = date(year, month_num, 1)
+                end = date(year, month_num, monthrange(year, month_num)[1])
+                
+                return {
+                    'start': start,
+                    'end': end,
+                    'type': 'mes_especifico',
+                    'month': month_name,
+                    'year': year
+                }
+            except:
+                pass
         
         # Se já tem datas específicas, usa elas
         if start_str and end_str and start_str != 'null' and end_str != 'null':
@@ -378,6 +415,35 @@ Retorne APENAS o JSON, sem explicações ou markdown."""
         end_date = period.get('end', date.today())
         
         try:
+            # Relatório gerencial
+            if intent == 'relatorio_gerencial' or data_type == 'relatorio_gerencial':
+                from services.financial_report_agent_service import FinancialReportAgentService
+                from models.client import Client
+                
+                client = db.query(Client).filter(Client.id == client_id).first()
+                client_name = client.name if client else 'Cliente'
+                
+                report_agent = FinancialReportAgentService(db)
+                result = report_agent.generate_management_report(
+                    client_id, start_date, end_date, client_name
+                )
+                
+                if result.get('success'):
+                    return {
+                        'type': 'relatorio_gerencial',
+                        'data': result.get('report', ''),
+                        'period': result.get('period', {}),
+                        'client_name': result.get('client_name', ''),
+                        'financial_data': result.get('financial_data', {}),
+                        'kpis': result.get('kpis', {}),
+                        'visualizations': result.get('visualizations', [])
+                    }
+                else:
+                    return {
+                        'type': 'error',
+                        'error': result.get('error', 'Erro ao gerar relatório gerencial')
+                    }
+            
             # Relatórios completos
             if intent == 'relatorio':
                 if data_type == 'dre':

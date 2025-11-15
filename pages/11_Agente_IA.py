@@ -264,10 +264,127 @@ with chat_container:
                 st.write(message['content'])
         else:
             with st.chat_message("assistant"):
-                st.markdown(message['content'])
+                # Verifica se é relatório gerencial
+                if message.get('is_management_report'):
+                    period = message.get('period', {})
+                    client_name = message.get('client_name', '')
+                    visualizations = message.get('visualizations', [])
+                    
+                    # Container principal com estilo de PDF
+                    with st.container():
+                        # Cabeçalho do relatório (estilo PDF)
+                        st.markdown("""
+                        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;">
+                            <h1 style="color: #2c3e50; margin: 0; font-size: 28px;">📊 Relatório Gerencial</h1>
+                            <h2 style="color: #34495e; margin: 5px 0; font-size: 22px;">{}</h2>
+                        </div>
+                        """.format(client_name), unsafe_allow_html=True)
+                        
+                        if period.get('start') and period.get('end'):
+                            from datetime import datetime
+                            start = datetime.fromisoformat(period['start']).date()
+                            end = datetime.fromisoformat(period['end']).date()
+                            st.markdown(f"""
+                            <div style="background-color: #ecf0f1; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+                                <strong>Período:</strong> {start.strftime('%d/%m/%Y')} a {end.strftime('%d/%m/%Y')}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Divide o conteúdo do relatório em seções e intercala com gráficos
+                        report_content = message['content']
+                        
+                        # Mapeia visualizações por seção
+                        viz_by_section = {}
+                        for viz in visualizations:
+                            section = viz.get('section', 'geral')
+                            if section not in viz_by_section:
+                                viz_by_section[section] = []
+                            viz_by_section[section].append(viz)
+                        
+                        # Exibe conteúdo do relatório com gráficos intercalados
+                        # Para relatórios gerenciais, exibimos o texto completo primeiro
+                        # e depois os gráficos organizados por seção
+                        st.markdown("---")
+                        st.markdown("### 📄 Análise e Diagnóstico")
+                        st.markdown(report_content)
+                        
+                        # Exibe gráficos organizados por seção
+                        if visualizations:
+                            st.markdown("---")
+                            st.markdown("### 📊 Visualizações e Gráficos")
+                            
+                            # Disponíveis e Obrigações
+                            if 'disponiveis_obrigacoes' in viz_by_section:
+                                st.markdown("#### 💰 Disponíveis Financeiros vs Obrigações")
+                                for viz in viz_by_section['disponiveis_obrigacoes']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # Receitas e Despesas
+                            if 'receitas_despesas' in viz_by_section:
+                                st.markdown("#### 📈 Receitas vs Despesas")
+                                for viz in viz_by_section['receitas_despesas']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # Entradas Detalhadas
+                            if 'entradas_detalhadas' in viz_by_section:
+                                st.markdown("#### 💵 Entradas Detalhadas por Grupo/Subgrupo")
+                                for viz in viz_by_section['entradas_detalhadas']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # Saídas Detalhadas
+                            if 'saidas_detalhadas' in viz_by_section:
+                                st.markdown("#### 💸 Saídas Detalhadas por Grupo/Subgrupo")
+                                for viz in viz_by_section['saidas_detalhadas']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # Fluxo de Caixa
+                            if 'fluxo_caixa' in viz_by_section:
+                                st.markdown("#### 💳 Fluxo de Caixa Mensal")
+                                for viz in viz_by_section['fluxo_caixa']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # Projeções
+                            if 'projecoes' in viz_by_section:
+                                st.markdown("#### 🔮 Projeções Futuras")
+                                for viz in viz_by_section['projecoes']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                            
+                            # KPIs
+                            if 'kpis' in viz_by_section:
+                                st.markdown("#### 📊 Indicadores Principais (KPIs)")
+                                for viz in viz_by_section['kpis']:
+                                    if viz['type'] == 'chart':
+                                        st.plotly_chart(viz['data'], use_container_width=True)
+                                st.markdown("---")
+                        
+                        # Botão para exportar relatório
+                        st.markdown("---")
+                        col_exp1, col_exp2 = st.columns([1, 4])
+                        with col_exp1:
+                            report_text = message['content']
+                            st.download_button(
+                                label="📥 Exportar Relatório (Markdown)",
+                                data=report_text,
+                                file_name=f"relatorio_gerencial_{period.get('start', '')}.md",
+                                mime="text/markdown"
+                            )
+                else:
+                    st.markdown(message['content'])
                 
-                # Exibe visualizações se houver
-                if 'visualizations' in message and message['visualizations']:
+                # Exibe visualizações se houver (para outros tipos de resposta)
+                if not message.get('is_management_report') and 'visualizations' in message and message['visualizations']:
                     for viz in message['visualizations']:
                         if viz['type'] == 'chart':
                             st.plotly_chart(viz['data'], use_container_width=True)
@@ -332,22 +449,42 @@ if query:
                 })
                 st.rerun()
             
-            # Formata resposta
-            with st.spinner("✍️ Gerando resposta..."):
-                response_text = agent_service.format_response(query_result, query_analysis, query)
-            
-            # Cria visualizações
-            visualizations = create_visualizations(query_result, query_analysis)
-            
-            # Adiciona resposta ao histórico
-            st.session_state.chat_history.append({
-                'role': 'assistant',
-                'content': response_text,
-                'visualizations': visualizations,
-                'query_result': query_result
-            })
-            
-            st.rerun()
+            # Verifica se é relatório gerencial
+            if query_result.get('type') == 'relatorio_gerencial':
+                # Para relatório gerencial, usa o conteúdo diretamente da IA
+                report_content = query_result.get('data', '')
+                period = query_result.get('period', {})
+                client_name = query_result.get('client_name', '')
+                visualizations = query_result.get('visualizations', [])
+                
+                # Adiciona relatório ao histórico
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'content': report_content,
+                    'visualizations': visualizations,
+                    'query_result': query_result,
+                    'is_management_report': True,
+                    'period': period,
+                    'client_name': client_name
+                })
+                st.rerun()
+            else:
+                # Formata resposta normal
+                with st.spinner("✍️ Gerando resposta..."):
+                    response_text = agent_service.format_response(query_result, query_analysis, query)
+                
+                # Cria visualizações
+                visualizations = create_visualizations(query_result, query_analysis)
+                
+                # Adiciona resposta ao histórico
+                st.session_state.chat_history.append({
+                    'role': 'assistant',
+                    'content': response_text,
+                    'visualizations': visualizations,
+                    'query_result': query_result
+                })
+                
+                st.rerun()
             
     except Exception as e:
         st.error(f"❌ Erro ao processar pergunta: {str(e)}")
@@ -372,6 +509,7 @@ with col1:
 with col2:
     if st.button("📋 Exemplos de Perguntas", use_container_width=True):
         examples = [
+            "Gerar relatório gerencial de Outubro 2025",
             "Quais são as receitas do último mês?",
             "Mostre as despesas por grupo",
             "Gere um DRE do último trimestre",
