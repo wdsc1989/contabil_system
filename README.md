@@ -39,6 +39,16 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
 
 ## ✨ Funcionalidades
 
+### Agente IA Conversacional 🤖
+- **Administrador Contábil Inteligente:** Interface conversacional para consultas em linguagem natural
+- **Saudação Proativa:** Análise automática do cliente ao iniciar conversa com sugestões baseadas em KPIs
+- **Consultas Inteligentes:** Pergunte sobre receitas, despesas, DRE, DFC, contratos, contas e muito mais
+- **Relatórios Dinâmicos:** Geração automática de relatórios baseados em perguntas
+- **Visualizações Automáticas:** Gráficos e tabelas gerados dinamicamente conforme o contexto
+- **Histórico de Conversas:** Mantém contexto da conversa para perguntas de follow-up
+- **Exportação de Resultados:** Baixe resultados em Excel diretamente do chat
+- **Análise de Intenção:** IA identifica automaticamente o tipo de consulta e parâmetros necessários
+
 ### Controle de Acesso 🔐
 - **3 Perfis de Usuário:**
   - **Admin**: Acesso total ao sistema
@@ -58,19 +68,25 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
 ### Importação Inteligente 📥
 - **4 Formatos Suportados:**
   - **CSV**: Detecção automática de delimitador e encoding
-  - **Excel**: Suporte a múltiplas planilhas
-  - **PDF**: Extração automática de tabelas
+  - **Excel**: Suporte a múltiplas planilhas (leitura completa de todas as abas)
+  - **PDF**: Extração completa de todas as páginas, texto e tabelas
   - **OFX**: Extratos bancários padrão brasileiro
-- **Mapeamento de Colunas:**
-  - Sugestão automática baseada em sinônimos
-  - Interface visual de mapeamento
-  - Salvamento de templates por tipo e cliente
-  - Validação de campos obrigatórios
-- **Preview de Dados:** Visualize antes de importar
+- **IA para Processamento:**
+  - **Detecção Automática de Tipo:** IA identifica automaticamente o tipo de dado (extrato bancário, transações, contratos, etc.)
+  - **Mapeamento Inteligente:** IA analisa estrutura do arquivo e sugere mapeamento de colunas
+  - **Processamento Completo:** Leitura e processamento de arquivos completos (sem limitações de linhas)
+  - **Classificação Automática:** IA classifica cada linha por grupo e subgrupo baseado em descrição e contexto
+  - **Extração de Informações:** Extração automática de nome do banco, datas precisas e outros metadados
+- **Preview de Dados:**
+  - Visualização completa ou limitada (opcional)
+  - Remoção automática de linhas em branco
+  - Scrollbar para navegação em arquivos grandes
+  - Edição direta dos dados antes da importação
 - **Classificação Contábil:**
   - **PRIMÁRIO:** Grupos e Subgrupos (Plano de Contas) - Obrigatório para relatórios DRE/DFC
   - **SECUNDÁRIO:** Categoria (opcional) - Usada apenas como fallback quando não há grupo/subgrupo
   - **IA Inteligente:** Classificação automática por grupo/subgrupo durante importação
+  - **Feedback em Tempo Real:** Status de processamento visível durante análise pela IA
 
 ### CRUD Completo ✏️
 - **Transações:** Criar, editar, excluir (manual ou importadas)
@@ -113,10 +129,12 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
 - Recomendações comerciais
 
 ### Relatórios e Exportação 📑
-- **Tipos:** DRE, DFC, Transações, Contratos, Contas, Completo
+- **Tipos:** DRE, DFC, DFC Projeção, Transações, Contratos, Contas, Completo
+- **DFC Projeção:** Projeção de fluxo de caixa futuro com base em contas a pagar/receber
 - **Formato:** Excel com múltiplas abas
 - **Filtros:** Período personalizável
 - **Dados:** Formatados e organizados
+- **Geração via IA:** Relatórios personalizados gerados através do Agente IA
 
 ### Grupos e Subgrupos 🏷️
 - **Classificação Hierárquica:** Grupo → Subgrupo
@@ -235,27 +253,32 @@ contabil_system/
 │   ├── auth_service.py             # Autenticação e permissões
 │   ├── parser_service.py           # Parse de arquivos (CSV, Excel, PDF, OFX)
 │   ├── import_service.py           # Importação com mapeamento
-│   └── report_service.py           # Geração de relatórios e análises
+│   ├── report_service.py           # Geração de relatórios e análises
+│   ├── ai_service.py               # Serviço de IA (OpenAI, Gemini, Groq, Ollama)
+│   └── ai_agent_service.py         # Agente conversacional de IA
 │
 ├── pages/                          # 📄 Páginas do Streamlit
 │   ├── __init__.py
 │   ├── 1_Gestao_Clientes.py        # 👥 CRUD de clientes + permissões
-│   ├── 2_Importacao_Dados.py       # 📥 Importação com mapeamento
+│   ├── 2_Importacao_Dados.py       # 📥 Importação inteligente com IA
 │   ├── 2_Transacoes.py             # 💳 CRUD de transações
+│   ├── 3_Extratos_Bancarios.py     # 🏦 Gestão de extratos bancários
 │   ├── 4_Contratos.py              # 📝 CRUD de contratos
 │   ├── 5_Contas.py                 # 💰 CRUD de contas
 │   ├── 6_DRE.py                    # 📊 Dashboard DRE
 │   ├── 7_DFC.py                    # 💵 Dashboard DFC
 │   ├── 8_Sazonalidade.py           # 📈 Dashboard Sazonalidade
 │   ├── 9_Relatorios.py             # 📑 Exportação de relatórios
-│   └── 10_Admin.py                 # ⚙️ Administração do sistema
+│   ├── 10_Admin.py                 # ⚙️ Administração do sistema + Configuração de IA
+│   └── 11_Agente_IA.py             # 🤖 Agente conversacional de IA
 │
 ├── utils/                          # 🛠️ Utilitários
 │   ├── __init__.py
 │   ├── validators.py               # Validações (CPF, CNPJ, datas, moeda)
 │   ├── formatters.py               # Formatadores (CPF, CNPJ, moeda, datas)
 │   ├── column_mapper.py            # Mapeamento inteligente de colunas
-│   └── ui_components.py            # Componentes visuais reutilizáveis
+│   ├── ui_components.py            # Componentes visuais reutilizáveis
+│   └── top_navigation.py           # Menu de navegação superior
 │
 ├── tests/                          # 🧪 Testes e dados
 │   ├── __init__.py
@@ -713,15 +736,26 @@ get_dre_data(db: Session, client_id, start_date, end_date) -> Dict
     #   'despesas': float,
     #   'resultado': float,
     #   'margem': float,
-    #   'receitas_por_categoria': list,
+    #   'receitas_por_grupo': list,  # Agrupado por grupo/subgrupo (prioritário)
+    #   'despesas_por_grupo': list,
+    #   'receitas_por_categoria': list,  # Fallback para sem grupo/subgrupo
     #   'despesas_por_categoria': list
     # }
 
-get_dfc_data(db: Session, client_id, start_date, end_date) -> Dict
+get_dfc_data(db: Session, client_id, start_date, end_date, group_id=None) -> Dict
     # Gera dados para DFC
     # Retorna: {
     #   'fluxo_mensal': list,  # [{mes, entradas, saidas, saldo_mes, saldo_acumulado}]
-    #   'saldo_final': float
+    #   'saldo_final': float,
+    #   'fluxo_por_grupo': dict  # Detalhamento por grupo (se group_id fornecido)
+    # }
+
+get_dfc_projection(db: Session, client_id, months_ahead=3) -> Dict
+    # Gera projeção de fluxo de caixa futuro
+    # Baseado em contas a pagar/receber pendentes
+    # Retorna: {
+    #   'projection': list,  # [{mes, entradas_previstas, saidas_previstas, saldo_projetado}]
+    #   'alerts': list  # Alertas de déficit projetado
     # }
 
 get_seasonality_data(db: Session, client_id) -> Dict
@@ -742,6 +776,76 @@ get_kpis(db: Session, client_id, start_date, end_date) -> Dict
 export_to_excel(data: Dict[str, pd.DataFrame], filename) -> bytes
     # Exporta múltiplas abas para Excel
     # data = {'Aba1': df1, 'Aba2': df2, ...}
+```
+
+---
+
+### AIService (services/ai_service.py)
+
+**Responsabilidade:** Integração com serviços de IA (OpenAI, Gemini, Groq, Ollama)
+
+**Métodos Principais:**
+```python
+is_available() -> bool
+    # Verifica se IA está configurada e disponível
+
+process_and_structure_data(
+    df: pd.DataFrame,
+    import_type: str,
+    groups_subgroups: List[Dict],
+    pdf_full_data: Optional[Dict] = None,
+    status_callback: Optional[Callable] = None
+) -> Dict
+    # Processa dados com IA para mapeamento e classificação
+    # Retorna: {
+    #   'success': bool,
+    #   'processed_data': list,  # Dados processados e classificados
+    #   'summary': dict,  # Resumo (bank_name, total_lines, etc)
+    #   'issues': list  # Problemas encontrados
+    # }
+
+detect_data_type(df: pd.DataFrame, pdf_full_data: Optional[Dict] = None) -> str
+    # Detecta automaticamente o tipo de dado usando IA
+    # Retorna: 'bank_statements', 'transactions', 'contracts', etc.
+```
+
+**Provedores Suportados:**
+- OpenAI (GPT-3.5, GPT-4)
+- Google Gemini
+- Groq (Llama models)
+- Ollama (modelos locais)
+
+---
+
+### AIAgentService (services/ai_agent_service.py)
+
+**Responsabilidade:** Agente conversacional para consultas em linguagem natural
+
+**Métodos Principais:**
+```python
+pre_analyze_client(client_id: int) -> Dict
+    # Faz pré-análise do cliente para gerar sugestões
+    # Retorna KPIs, alertas, oportunidades e sugestões
+
+generate_greeting_with_suggestions(client_id: int, client_name: str) -> str
+    # Gera saudação proativa com sugestões baseadas em dados
+
+analyze_query(query: str, client_id: int) -> Dict
+    # Analisa pergunta e identifica intenção e parâmetros
+    # Retorna: {
+    #   'intent': str,  # relatorio, consulta, analise, etc
+    #   'data_type': str,  # transacoes, dre, dfc, etc
+    #   'period': dict,  # {start, end, type}
+    #   'filters': dict,  # {group, subgroup, category, type}
+    #   'output_format': str  # tabela, grafico, resumo, completo
+    # }
+
+execute_query(db: Session, client_id: int, query_analysis: Dict) -> Dict
+    # Executa consulta ao banco de dados baseada na análise
+    # Retorna dados formatados para visualização
+
+format_response(query_result: Dict, query_analysis: Dict, original_query: str) -> str
+    # Formata resposta em markdown com insights profissionais
 ```
 
 **Uso:**
@@ -866,6 +970,20 @@ show_stat_cards(stats: list)
     # Múltiplos cards em colunas
 ```
 
+### top_navigation.py
+
+**Menu de Navegação Superior:**
+```python
+show_top_navigation()
+    # Exibe menu de navegação na parte superior da tela
+    # Inclui:
+    # - Header com logo e informações do usuário
+    # - Seleção de cliente
+    # - Agente IA em destaque
+    # - Menu organizado em tabs (Início, Dados, Relatórios, Admin)
+    # - Botão de logout
+```
+
 ---
 
 ## 📄 Páginas
@@ -874,8 +992,9 @@ show_stat_cards(stats: list)
 
 **Funcionalidades:**
 - Login/logout
-- Seleção de cliente na sidebar
-- Menu de navegação contextual por perfil
+- Menu de navegação superior (top navigation) com tabs organizadas
+- Agente IA em destaque no menu principal
+- Seleção de cliente visível no header
 - Dashboard inicial com cards informativos
 - Guia rápido de uso
 
@@ -907,14 +1026,20 @@ st.session_state.selected_client_id: int
 ### 2_Importacao_Dados.py
 
 **Funcionalidades:**
-- Upload de arquivos (CSV, Excel, PDF, OFX)
-- Seleção de tipo de importação
-- Detecção automática de formato
-- Preview de dados
-- Mapeamento inteligente de colunas
-- Salvamento de templates
-- Seleção de grupo/subgrupo
-- Importação com validação
+- Upload de arquivos (CSV, Excel, PDF, OFX) - detecção automática de tipo
+- **Processamento com IA:**
+  - Detecção automática do tipo de dado pelo conteúdo
+  - Análise completa da estrutura do arquivo
+  - Mapeamento inteligente de colunas
+  - Classificação automática por grupo/subgrupo
+  - Extração de informações (nome do banco, datas precisas)
+  - Feedback em tempo real do status de processamento
+- Preview de dados:
+  - Opção para visualização completa ou limitada
+  - Remoção automática de linhas em branco
+  - Edição direta dos dados antes da importação
+- Seleção de linhas para importação
+- Validação e correção de dados
 
 **Tipos de Importação:**
 - Transações financeiras
@@ -922,10 +1047,14 @@ st.session_state.selected_client_id: int
 - Contratos/eventos
 - Contas a pagar
 - Contas a receber
+- Aplicações financeiras
+- Faturas de cartão de crédito
+- Extratos de maquininha
+- Controle de estoque
 
 **Fluxo:**
 ```
-Upload → Parse → Preview → Mapear → Validar → Importar
+Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável → Importar
 ```
 
 ---
@@ -1115,6 +1244,13 @@ Upload → Parse → Preview → Mapear → Validar → Importar
 - Criar subgrupo
 - Excluir grupo/subgrupo
 
+#### Configuração de IA:
+- Seleção de provedor (OpenAI, Google Gemini, Groq, Ollama)
+- Configuração de chaves de API
+- Seleção de modelo (com opção de entrada manual)
+- Teste de conexão com IA
+- Configuração de parâmetros (temperature, max_tokens)
+
 #### Estatísticas:
 - Total de usuários/clientes
 - Total de transações/contratos
@@ -1122,6 +1258,46 @@ Upload → Parse → Preview → Mapear → Validar → Importar
 - Informações do sistema
 
 **Permissões:** Admin apenas
+
+---
+
+### 11_Agente_IA.py
+
+**Funcionalidades:**
+- Interface de chat conversacional
+- Seleção de cliente para análise
+- **Saudação Proativa:**
+  - Análise automática do cliente ao iniciar
+  - Sugestões baseadas em KPIs e dados do último mês
+  - Alertas e oportunidades identificadas automaticamente
+- **Processamento de Perguntas:**
+  - Análise de intenção usando IA
+  - Identificação automática de tipo de consulta
+  - Extração de parâmetros (período, filtros, formato)
+- **Consultas Suportadas:**
+  - Transações e extratos
+  - DRE e DFC
+  - Contratos e contas
+  - KPIs e estatísticas
+  - Análises comparativas
+  - Relatórios personalizados
+- **Visualizações Automáticas:**
+  - Gráficos gerados dinamicamente (Plotly)
+  - Tabelas interativas
+  - KPIs destacados
+- **Exportação:**
+  - Download de resultados em Excel
+  - Histórico de conversas
+- **Histórico Persistente:**
+  - Mantém contexto da conversa
+  - Permite perguntas de follow-up
+
+**Exemplos de Perguntas:**
+- "Quais são as receitas do último mês?"
+- "Gere um DRE do último trimestre"
+- "Compare as receitas deste ano com o ano passado"
+- "Qual é o saldo atual e quantas contas estão pendentes?"
+- "Mostre o fluxo de caixa dos últimos 6 meses"
 
 ---
 
@@ -1579,19 +1755,21 @@ copy data\contabil.db backups\contabil_%data%.db
 ## 📊 Estatísticas do Projeto
 
 ### Código:
-- **Arquivos Python:** 30+
-- **Linhas de Código:** ~5.500+
+- **Arquivos Python:** 35+
+- **Linhas de Código:** ~8.000+
 - **Modelos:** 10
-- **Serviços:** 4
-- **Páginas:** 10
-- **Utilitários:** 4
+- **Serviços:** 6 (incluindo IA)
+- **Páginas:** 11 (incluindo Agente IA)
+- **Utilitários:** 5
 
 ### Funcionalidades:
 - **Páginas com CRUD:** 7
 - **Dashboards:** 3
+- **Agente IA Conversacional:** 1
 - **Formatos de Importação:** 4
-- **Tipos de Relatório:** 7
+- **Tipos de Relatório:** 8 (incluindo DFC Projeção)
 - **Perfis de Usuário:** 3
+- **Provedores de IA:** 4 (OpenAI, Gemini, Groq, Ollama)
 
 ### Dados de Teste:
 - **Clientes:** 5
@@ -1619,6 +1797,12 @@ copy data\contabil.db backups\contabil_%data%.db
 ### Visualização:
 - `plotly>=5.18.0` - Gráficos interativos
 - `altair>=5.2.0` - Gráficos declarativos
+
+### IA e Processamento:
+- `openai>=1.0.0` - OpenAI API (opcional)
+- `google-generativeai>=0.3.0` - Google Gemini API (opcional)
+- `groq>=0.4.0` - Groq API (opcional)
+- `ollama>=0.1.0` - Ollama local models (opcional)
 
 ### Utilitários:
 - `python-dateutil>=2.8.0` - Manipulação de datas
@@ -1736,16 +1920,18 @@ copy data\contabil.db backups\contabil_%data%.db
 **Sistema completo e profissional para gestão contábil!**
 
 ### ✅ Características:
-- 📊 10 páginas funcionais
+- 📊 11 páginas funcionais (incluindo Agente IA)
 - 🗃️ 10 modelos de dados
-- 🔧 4 serviços principais
-- 📥 4 formatos de importação
-- 📈 3 dashboards analíticos
+- 🔧 6 serviços principais (incluindo IA)
+- 🤖 Agente IA conversacional com análise inteligente
+- 📥 4 formatos de importação com processamento completo por IA
+- 📈 3 dashboards analíticos + DFC Projeção
 - 🔐 3 níveis de acesso
 - 📋 Drill-down completo
 - ✏️ CRUD em todos os módulos
-- 🎨 Interface moderna
+- 🎨 Interface moderna com menu superior
 - 📚 Documentação completa
+- 🧠 Classificação automática por IA (grupos/subgrupos)
 
 ### 🚀 Pronto para:
 - ✅ Uso imediato
