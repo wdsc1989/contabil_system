@@ -24,6 +24,14 @@ class AIConfigManager:
     DEFAULT_BASE_URLS = {
         'ollama': 'http://localhost:11434'
     }
+    
+    # Configuração fixa (fallback) para desenvolvimento e testes rápidos
+    # IMPORTANTE: Configure as variáveis de ambiente AI_FIXED_* para usar esta funcionalidade
+    # Exemplo: export AI_FIXED_API_KEY="sua-chave-aqui"
+    FIXED_PROVIDER = os.getenv('AI_FIXED_PROVIDER', 'openai')
+    FIXED_MODEL = os.getenv('AI_FIXED_MODEL', DEFAULT_MODELS.get('openai', 'gpt-4o-mini'))
+    FIXED_API_KEY = os.getenv('AI_FIXED_API_KEY', None)  # Deve ser configurado via variável de ambiente
+    FIXED_CONFIG_ENABLED = os.getenv('AI_FIXED_CONFIG_ENABLED', 'true').lower() == 'true'
 
     @staticmethod
     def get_config(db: Session) -> Optional[AIConfig]:
@@ -112,7 +120,11 @@ class AIConfigManager:
         Verifica se há alguma configuração de IA ativa
         """
         config = AIConfigManager.get_config(db)
-        return config is not None and config.api_key and config.enabled
+        if config and config.api_key and config.enabled:
+            return True
+        
+        # Considera configuração fixa como fallback
+        return AIConfigManager._get_fixed_config() is not None
 
     @staticmethod
     def get_config_dict(db: Session) -> Optional[Dict[str, Any]]:
@@ -121,7 +133,7 @@ class AIConfigManager:
         """
         config = AIConfigManager.get_config(db)
         if not config:
-            return None
+            return AIConfigManager._get_fixed_config()
         
         return {
             'provider': config.provider,
@@ -129,5 +141,25 @@ class AIConfigManager:
             'model': config.model,
             'base_url': config.base_url,
             'enabled': config.enabled
+        }
+
+    @staticmethod
+    def _get_fixed_config() -> Optional[Dict[str, Any]]:
+        """
+        Retorna configuração fixa pronta para uso (fallback) quando não houver registro no banco.
+        """
+        if not AIConfigManager.FIXED_CONFIG_ENABLED:
+            return None
+        
+        api_key = (AIConfigManager.FIXED_API_KEY or '').strip()
+        if not api_key:
+            return None
+        
+        return {
+            'provider': AIConfigManager.FIXED_PROVIDER,
+            'api_key': api_key,
+            'model': AIConfigManager.FIXED_MODEL,
+            'base_url': AIConfigManager.DEFAULT_BASE_URLS.get(AIConfigManager.FIXED_PROVIDER),
+            'enabled': True
         }
 
