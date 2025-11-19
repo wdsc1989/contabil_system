@@ -70,8 +70,18 @@ ssh -i ~/.ssh/sua_chave root@SEU_IP_VPS
 
 ### 2.2 Executar Script de Setup
 
+**⚠️ IMPORTANTE: Execute estes comandos na VPS (após conectar via SSH), NÃO no Windows!**
+
+**Primeiro, conecte na VPS:**
+```powershell
+# No Windows PowerShell
+ssh root@72.61.56.204
+# Digite a senha quando solicitado
+```
+
+**Depois, na VPS (após conectar):**
 ```bash
-# Clone o repositório temporariamente para obter os scripts
+# Na VPS, clone o repositório temporariamente para obter os scripts
 cd /tmp
 git clone https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git temp_setup
 cd temp_setup/contabil_system
@@ -79,9 +89,11 @@ cd temp_setup/contabil_system
 # Torna o script executável
 chmod +x deploy/setup_vps_hostinger.sh
 
-# Execute o script (como root)
-sudo bash deploy/setup_vps_hostinger.sh
+# Execute o script (como root - você já está como root)
+bash deploy/setup_vps_hostinger.sh
 ```
+
+**Nota:** Se você ainda não fez commit/push do código para o GitHub, faça isso primeiro no Windows antes de clonar na VPS.
 
 O script irá:
 - ✅ Atualizar o sistema
@@ -145,38 +157,89 @@ SELECT version();
 
 ### 4.1 Preparar Arquivo de Backup Local
 
-No seu computador local, certifique-se de ter o backup do SQLite:
+**⚠️ IMPORTANTE: Execute estes comandos no seu computador Windows, NÃO na VPS!**
 
-```bash
-# Lista os backups disponíveis
-ls -lh backups/sqlite/
+No seu computador local (Windows PowerShell), certifique-se de ter o backup do SQLite:
+
+```powershell
+# No Windows PowerShell
+cd C:\Users\DELL\Documents\Projetos\Contabil\contabil_system
+
+# Lista os backups disponíveis (se existir diretório backups)
+# Ou verifica se o banco existe
+Test-Path data\contabil.db
 ```
 
-### 4.2 Transferir Backup para VPS
+### 4.2 Transferir Backup para VPS (Opcional)
 
-```bash
-# No seu computador local, transfere o backup
-scp backups/sqlite/backup_*.db.gz root@SEU_IP_VPS:/tmp/
+**⚠️ Execute no Windows PowerShell, não na VPS!**
+
+Se você quiser transferir o banco SQLite do Windows para a VPS:
+
+```powershell
+# No Windows PowerShell (NÃO na VPS!)
+# Transfere o banco SQLite
+scp "C:/Users/DELL/Documents/Projetos/Contabil/contabil_system/data/contabil.db" root@72.61.56.204:/tmp/contabil.db
+```
+
+**OU** se preferir fazer backup primeiro e depois transferir:
+
+```powershell
+# No Windows PowerShell
+# Cria backup compactado
+cd C:\Users\DELL\Documents\Projetos\Contabil\contabil_system
+# Use Git Bash ou WSL para executar o script de backup, ou copie manualmente
+Copy-Item data\contabil.db backups\contabil_backup.db
+
+# Transfere o backup
+scp "C:/Users/DELL/Documents/Projetos/Contabil/contabil_system/backups/contabil_backup.db" root@72.61.56.204:/tmp/contabil.db
 ```
 
 ### 4.3 Clonar Repositório na VPS
 
+**⚠️ Execute estes comandos na VPS (após conectar via SSH), NÃO no Windows!**
+
 ```bash
-# Na VPS, clone o repositório
+# Na VPS (após conectar: ssh root@72.61.56.204)
+# Clone o repositório
 cd /opt
-sudo git clone https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git contabil
+git clone https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git contabil
 cd contabil/contabil_system
 
 # Ajusta permissões
-sudo chown -R contabil:contabil /opt/contabil
+chown -R contabil:contabil /opt/contabil
+```
+
+**Nota:** Se você ainda não fez commit/push do código para o GitHub, faça isso primeiro no Windows:
+
+```powershell
+# No Windows PowerShell
+cd C:\Users\DELL\Documents\Projetos\Contabil\contabil_system
+git add .
+git commit -m "Preparação para deploy em produção"
+git push origin main
 ```
 
 ### 4.4 Configurar Variáveis de Ambiente
 
+**⚠️ Execute na VPS!**
+
 ```bash
-# Cria arquivo .env
-sudo -u contabil cp env.example.txt .env
-sudo -u contabil nano .env
+# Na VPS, cria arquivo .env
+cd /opt/contabil/contabil_system
+cp env.example.txt .env
+nano .env
+```
+
+**OU** se preferir editar como root primeiro e depois ajustar permissões:
+
+```bash
+# Na VPS
+cd /opt/contabil/contabil_system
+cp env.example.txt .env
+nano .env
+# Depois ajusta permissões
+chown contabil:contabil .env
 ```
 
 Configure as seguintes variáveis:
@@ -205,26 +268,42 @@ POSTGRES_PORT=5432
 
 ### 4.5 Executar Migração
 
+**⚠️ Execute na VPS!**
+
 ```bash
-# Ativa ambiente virtual
+# Na VPS, ativa ambiente virtual
 cd /opt/contabil/contabil_system
-sudo -u contabil python3.12 -m venv venv
-sudo -u contabil source venv/bin/activate
+python3.12 -m venv venv
+source venv/bin/activate
 
 # Instala dependências
-sudo -u contabil pip install -r requirements.txt
+pip install -r requirements.txt
 
-# Descompacta backup do SQLite (se necessário)
-cd /tmp
-gunzip backup_*.db.gz
-SQLITE_BACKUP=/tmp/backup_*.db
+# Se você transferiu o banco SQLite do Windows, ele está em /tmp/contabil.db
+# Se não transferiu, você precisará fazer isso primeiro (veja seção 4.2)
+
+# Verifica se o arquivo SQLite existe
+ls -lh /tmp/contabil.db
 
 # Executa migração
-cd /opt/contabil/contabil_system
-sudo -u contabil python scripts/migrate_sqlite_to_postgres.py \
-    "$SQLITE_BACKUP" \
-    "postgresql://contabil_user:SUA_SENHA@localhost:5432/contabil_db"
+# IMPORTANTE: Use a senha que foi gerada pelo script de setup (seção 2.2)
+python scripts/migrate_sqlite_to_postgres.py \
+    /tmp/contabil.db \
+    "postgresql://contabil_user:SUA_SENHA_AQUI@localhost:5432/contabil_db"
 ```
+
+**Nota:** Se você não transferiu o banco SQLite, você tem duas opções:
+
+1. **Transferir agora do Windows:**
+   ```powershell
+   # No Windows PowerShell
+   scp "C:/Users/DELL/Documents/Projetos/Contabil/contabil_system/data/contabil.db" root@72.61.56.204:/tmp/
+   ```
+
+2. **Ou começar com banco vazio e importar dados depois:**
+   - Pule a migração por enquanto
+   - Configure a aplicação
+   - Importe dados via interface web depois
 
 ### 4.6 Validar Migração
 
