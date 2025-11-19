@@ -26,3 +26,5 @@ class AIConfig(Base):
 
 
 
+
+

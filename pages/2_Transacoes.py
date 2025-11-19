@@ -17,6 +17,7 @@ from models.transaction import Transaction
 from models.group import Group, Subgroup
 from utils.formatters import format_currency, format_date
 from utils.ui_components import show_client_selector, show_sidebar_navigation
+from sqlalchemy.orm import joinedload
 
 st.set_page_config(page_title="Transações", page_icon="💳", layout="wide")
 
@@ -67,8 +68,11 @@ try:
         with col4:
             search = st.text_input("🔍 Buscar", placeholder="Descrição...")
         
-        # Query de transações
-        query = db.query(Transaction).filter(Transaction.client_id == client_id)
+        # Query de transações com joins para carregar grupos e subgrupos (evita N+1 queries)
+        query = db.query(Transaction).options(
+            joinedload(Transaction.group),
+            joinedload(Transaction.subgroup)
+        ).filter(Transaction.client_id == client_id)
         
         if tipo_filter:
             query = query.filter(Transaction.type.in_(tipo_filter))
@@ -106,12 +110,18 @@ try:
             trans_data = []
             for trans in transactions:
                 tipo_icon = '💰' if trans.type == 'entrada' else '💸'
+                # Obtém nomes de grupo e subgrupo usando os relacionamentos carregados
+                group_name = trans.group.name if trans.group else '-'
+                subgroup_name = trans.subgroup.name if trans.subgroup else '-'
+                
                 trans_data.append({
                     'ID': trans.id,
                     'Data': format_date(trans.date),
                     'Tipo': f"{tipo_icon} {trans.type.title()}",
                     'Descrição': trans.description[:50] + '...' if len(trans.description) > 50 else trans.description,
                     'Valor': format_currency(trans.value),
+                    'Grupo': group_name,
+                    'Subgrupo': subgroup_name,
                     'Categoria': trans.category or '-',
                     'Origem': trans.imported_from or 'Manual'
                 })

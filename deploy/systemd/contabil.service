@@ -1,0 +1,37 @@
+[Unit]
+Description=Sistema Contábil - Streamlit Application
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=contabil
+Group=contabil
+WorkingDirectory=/opt/contabil
+Environment="PATH=/opt/contabil/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/contabil/.env
+
+# Comando para iniciar a aplicação
+ExecStart=/opt/contabil/venv/bin/streamlit run app.py \
+    --server.port=8501 \
+    --server.address=127.0.0.1 \
+    --server.headless=true \
+    --server.enableCORS=false \
+    --server.enableXsrfProtection=true \
+    --browser.gatherUsageStats=false
+
+# Reinicia automaticamente em caso de falha
+Restart=always
+RestartSec=10
+
+# Limites de recursos
+LimitNOFILE=65536
+MemoryMax=2G
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=contabil
+
+[Install]
+WantedBy=multi-user.target
+

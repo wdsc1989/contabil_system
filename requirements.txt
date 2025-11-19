@@ -5,6 +5,7 @@ streamlit-authenticator>=0.2.3
 # Database
 sqlalchemy>=2.0.0
 alembic>=1.13.0
+psycopg2-binary>=2.9.0  # Driver PostgreSQL para produção
 
 # Data Processing
 pandas>=2.0.0

@@ -19,6 +19,7 @@ from services.report_service import ReportService
 from models.client import Client
 from models.transaction import Transaction
 from utils.formatters import format_currency, format_date
+from sqlalchemy.orm import joinedload
 
 st.set_page_config(page_title="DFC", page_icon="💵", layout="wide")
 
@@ -319,7 +320,10 @@ try:
                     
                     # Entradas do mês
                     st.markdown("#### 💰 Entradas do Mês")
-                    trans_entradas = db.query(Transaction).filter(
+                    trans_entradas = db.query(Transaction).options(
+                        joinedload(Transaction.group),
+                        joinedload(Transaction.subgroup)
+                    ).filter(
                         Transaction.client_id == client_id,
                         Transaction.type == 'entrada',
                         Transaction.date >= primeiro_dia,
@@ -327,16 +331,20 @@ try:
                     ).order_by(Transaction.date).all()
                     
                     if trans_entradas:
-                        # Agrupa por categoria
+                        # Agrupa por grupo/subgrupo
                         from collections import defaultdict
-                        entradas_por_cat = defaultdict(list)
+                        entradas_por_grupo_subgrupo = defaultdict(list)
                         for t in trans_entradas:
-                            entradas_por_cat[t.category or 'Sem categoria'].append(t)
+                            grupo = t.group.name if t.group else 'Sem grupo'
+                            subgrupo = t.subgroup.name if t.subgroup else 'Sem subgrupo'
+                            key = (grupo, subgrupo)
+                            entradas_por_grupo_subgrupo[key].append(t)
                         
-                        for cat, trans_list in entradas_por_cat.items():
-                            total_cat = sum(t.value for t in trans_list)
+                        for (grupo, subgrupo), trans_list in entradas_por_grupo_subgrupo.items():
+                            total = sum(t.value for t in trans_list)
+                            label = f"{grupo} > {subgrupo}"
                             
-                            with st.expander(f"📂 {cat} - {format_currency(total_cat)} ({len(trans_list)} transações)"):
+                            with st.expander(f"📂 {label} - {format_currency(total)} ({len(trans_list)} transações)"):
                                 trans_data = []
                                 for t in trans_list[:5]:  # Mostra até 5
                                     trans_data.append({
@@ -357,7 +365,10 @@ try:
                     
                     # Saídas do mês
                     st.markdown("#### 💸 Saídas do Mês")
-                    trans_saidas = db.query(Transaction).filter(
+                    trans_saidas = db.query(Transaction).options(
+                        joinedload(Transaction.group),
+                        joinedload(Transaction.subgroup)
+                    ).filter(
                         Transaction.client_id == client_id,
                         Transaction.type == 'saida',
                         Transaction.date >= primeiro_dia,
@@ -365,15 +376,19 @@ try:
                     ).order_by(Transaction.date).all()
                     
                     if trans_saidas:
-                        # Agrupa por categoria
-                        saidas_por_cat = defaultdict(list)
+                        # Agrupa por grupo/subgrupo
+                        saidas_por_grupo_subgrupo = defaultdict(list)
                         for t in trans_saidas:
-                            saidas_por_cat[t.category or 'Sem categoria'].append(t)
+                            grupo = t.group.name if t.group else 'Sem grupo'
+                            subgrupo = t.subgroup.name if t.subgroup else 'Sem subgrupo'
+                            key = (grupo, subgrupo)
+                            saidas_por_grupo_subgrupo[key].append(t)
                         
-                        for cat, trans_list in saidas_por_cat.items():
-                            total_cat = sum(t.value for t in trans_list)
+                        for (grupo, subgrupo), trans_list in saidas_por_grupo_subgrupo.items():
+                            total = sum(t.value for t in trans_list)
+                            label = f"{grupo} > {subgrupo}"
                             
-                            with st.expander(f"📂 {cat} - {format_currency(total_cat)} ({len(trans_list)} transações)"):
+                            with st.expander(f"📂 {label} - {format_currency(total)} ({len(trans_list)} transações)"):
                                 trans_data = []
                                 for t in trans_list[:5]:  # Mostra até 5
                                     trans_data.append({

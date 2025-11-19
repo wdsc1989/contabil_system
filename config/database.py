@@ -1,24 +1,42 @@
 """
-Configuração do banco de dados SQLite com SQLAlchemy
+Configuração do banco de dados SQLite/PostgreSQL com SQLAlchemy
+Suporta SQLite para desenvolvimento local e PostgreSQL para produção
 """
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Diretório do banco de dados
+# Diretório do banco de dados (apenas para SQLite)
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 os.makedirs(DB_DIR, exist_ok=True)
 
-# URL do banco de dados SQLite
-DATABASE_URL = f"sqlite:///{os.path.join(DB_DIR, 'contabil.db')}"
-
-# Engine do SQLAlchemy
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},  # Necessário para SQLite
-    echo=False  # Set to True para debug SQL
+# URL do banco de dados - suporta SQLite (dev) e PostgreSQL (prod)
+# Para PostgreSQL, use: postgresql://usuario:senha@host:porta/database
+# Exemplo: postgresql://contabil_user:senha123@localhost:5432/contabil_db
+DATABASE_URL = os.getenv(
+    'DATABASE_URL',
+    f"sqlite:///{os.path.join(DB_DIR, 'contabil.db')}"  # Default: SQLite local
 )
+
+# Configuração do engine baseada no tipo de banco
+if DATABASE_URL.startswith('postgresql'):
+    # Configuração para PostgreSQL
+    engine = create_engine(
+        DATABASE_URL,
+        echo=False,  # Set to True para debug SQL
+        pool_pre_ping=True,  # Verifica conexões antes de usar
+        pool_size=10,  # Tamanho do pool de conexões
+        max_overflow=20,  # Conexões adicionais permitidas
+        pool_recycle=3600  # Recicla conexões após 1 hora
+    )
+else:
+    # Configuração para SQLite (desenvolvimento local)
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},  # Necessário para SQLite
+        echo=False  # Set to True para debug SQL
+    )
 
 # Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

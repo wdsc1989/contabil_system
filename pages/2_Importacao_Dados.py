@@ -24,6 +24,26 @@ st.set_page_config(page_title="Importação de Dados", page_icon="📥", layout=
 AuthService.init_session_state()
 AuthService.require_auth()
 
+# Verifica se há resultado de importação concluída
+if 'import_result' in st.session_state and st.session_state.import_result:
+    result = st.session_state.import_result
+    # Mostra notificação se a importação foi concluída recentemente (últimos 5 minutos)
+    from datetime import datetime, timedelta
+    try:
+        timestamp = datetime.fromisoformat(result.get('timestamp', ''))
+        if datetime.now() - timestamp < timedelta(minutes=5):
+            if result.get('status') == 'success':
+                st.success(f"✅ **Importação Concluída:** {result.get('message', '')}")
+            elif result.get('status') == 'warning':
+                st.warning(f"⚠️ **Importação:** {result.get('message', '')}")
+            
+            # Botão para limpar notificação
+            if st.button("✖️ Fechar notificação", key="clear_import_notification"):
+                del st.session_state.import_result
+                st.rerun()
+    except:
+        pass
+
 
 def show_sidebar():
     """Mostra a sidebar de navegação"""
@@ -245,10 +265,33 @@ if uploaded_file:
                 import_type = None
                 detection_result = None
                 
+                # Verifica se o tipo já foi confirmado anteriormente - se sim, pula toda a detecção
+                if st.session_state.get('type_confirmed', False) and 'detected_import_type' in st.session_state:
+                    import_type = st.session_state.detected_import_type
+                    st.info(f"✅ **Tipo confirmado:** {import_type}")
                 # Se for OFX, já sabemos que é extrato bancário
-                if file_type == 'OFX':
+                elif file_type == 'OFX':
                     import_type = 'bank_statements'
                     st.info("🏦 **Tipo detectado automaticamente:** Extratos Bancários (formato OFX)")
+                    
+                    # Requer confirmação explícita do usuário
+                    if 'type_confirmed' not in st.session_state or not st.session_state.type_confirmed:
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
+                                st.session_state.detected_import_type = import_type
+                                st.session_state.type_confirmed = True
+                                st.rerun()
+                        with col2:
+                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True):
+                                st.session_state.show_manual_selection = True
+                                st.session_state.type_confirmed = False  # Limpa confirmação anterior
+                                st.rerun()
+                        
+                        # Se ainda não foi confirmado, para aqui
+                        if 'detected_import_type' not in st.session_state:
+                            st.stop()
+                        import_type = st.session_state.detected_import_type
                 elif ai_service.is_available():
                     # Tenta detectar com IA
                     with st.spinner("🤖 Analisando arquivo para detectar tipo de dado..."):
@@ -314,11 +357,13 @@ if uploaded_file:
                             if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
                                 import_type = suggested_type
                                 st.session_state.detected_import_type = import_type
+                                st.session_state.type_confirmed = True
                                 st.rerun()
                         
                         with col_btn2:
                             if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True):
                                 st.session_state.show_manual_selection = True
+                                st.session_state.type_confirmed = False  # Limpa confirmação anterior
                                 st.rerun()
                         
                         # Se já foi confirmado anteriormente, usa o tipo confirmado
@@ -356,6 +401,7 @@ if uploaded_file:
                     )
                     if st.button("✅ Confirmar Tipo", use_container_width=True):
                         st.session_state.detected_import_type = import_type
+                        st.session_state.type_confirmed = True
                         st.session_state.show_manual_selection = False
                         st.rerun()
                 
@@ -364,6 +410,11 @@ if uploaded_file:
                     if 'detected_import_type' not in st.session_state:
                         st.stop()
                     import_type = st.session_state.detected_import_type
+                
+                # Verifica se o tipo foi confirmado pelo usuário antes de processar
+                if not st.session_state.get('type_confirmed', False):
+                    st.info("ℹ️ Por favor, confirme o tipo de dado detectado acima para continuar com o processamento.")
+                    st.stop()
                 
                 st.markdown("---")
                 st.subheader("4️⃣ Processamento Automático com IA")
@@ -438,6 +489,11 @@ if uploaded_file:
                     st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
                     st.stop()
                 
+                # Compara quantidade de linhas originais vs processadas
+                original_rows = len(df)
+                processed_rows = len(processed_data)
+                rows_diff = original_rows - processed_rows
+                
                 st.success("✅ Processamento concluído!")
                 
                 # Extrai nome do banco se disponível (para extratos bancários)
@@ -458,6 +514,15 @@ if uploaded_file:
                         st.metric("Válidas", summary.get('processed', len(processed_data)))
                 with col4:
                     st.metric("Erros", summary.get('errors', 0))
+                
+                # Alerta se houver diferença significativa entre linhas originais e processadas
+                if rows_diff > 0:
+                    if rows_diff <= 5:
+                        st.info(f"ℹ️ **Atenção:** {rows_diff} linha(s) do arquivo original não foram processadas (podem ser cabeçalhos, rodapés ou linhas inválidas).")
+                    else:
+                        st.warning(f"⚠️ **Atenção:** {rows_diff} linha(s) do arquivo original ({original_rows} total) não foram processadas ({processed_rows} processadas). Verifique se há dados faltando.")
+                elif rows_diff == 0:
+                    st.success(f"✅ Todas as {original_rows} linha(s) do arquivo foram processadas com sucesso!")
                 
                 # Mostra problemas se houver
                 issues = result.get('issues', [])
@@ -758,49 +823,13 @@ if uploaded_file:
                 st.markdown("---")
                 st.subheader("9️⃣ Importação Final")
                 
-                # Opções adicionais para classificação
+                # A IA já classificou cada linha individualmente com grupo/subgrupo
+                # Não há necessidade de seleção manual, pois cada transação pode ser entrada, saída, resgate, etc.
                 group_id = None
                 subgroup_id = None
                 bank_name = "Banco"
                 
-                # Seleção de grupo/subgrupo para todos os tipos
-                groups = db.query(Group).filter(Group.client_id == client_id).all()
-                if groups:
-                    st.markdown("### 📁 Classificação por Grupos/Subgrupos")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        selected_group = st.selectbox(
-                            "Grupo (opcional):",
-                            options=[None] + groups,
-                            format_func=lambda x: "Nenhum" if x is None else x.name,
-                            key="import_group"
-                        )
-                        if selected_group:
-                            group_id = selected_group.id
-                    
-                    with col2:
-                        if selected_group:
-                            subgroups = db.query(Subgroup).filter(Subgroup.group_id == group_id).all()
-                            if subgroups:
-                                selected_subgroup = st.selectbox(
-                                    "Subgrupo (opcional):",
-                                    options=[None] + subgroups,
-                                    format_func=lambda x: "Nenhum" if x is None else x.name,
-                                    key="import_subgroup"
-                                )
-                                if selected_subgroup:
-                                    subgroup_id = selected_subgroup.id
-                        else:
-                            st.selectbox(
-                                "Subgrupo (opcional):",
-                                options=[None],
-                                format_func=lambda x: "Selecione um grupo primeiro",
-                                disabled=True,
-                                key="import_subgroup_disabled"
-                            )
-                    
-                    st.caption("💡 Os grupos/subgrupos selecionados serão aplicados a todos os registros importados.")
-                    st.markdown("---")
+                st.info("💡 **Classificação Automática:** A IA já classificou cada linha individualmente com grupo e subgrupo baseado no contexto (entrada, saída, resgate, etc.). Você pode editar a classificação na tabela de revisão acima se necessário.")
                 
                 # Configurações específicas por tipo
                 if import_type == 'bank_statements':
@@ -819,79 +848,124 @@ if uploaded_file:
                 )
                 
                 if import_btn and len(st.session_state.selected_rows) > 0:
-                    with st.spinner("Importando dados..."):
-                        # Filtra apenas linhas selecionadas
-                        selected_indices = sorted(list(st.session_state.selected_rows))
-                        data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
-                        import_df = pd.DataFrame(data_to_import)
-                        
-                        # Importa dados
+                    # Filtra apenas linhas selecionadas
+                    selected_indices = sorted(list(st.session_state.selected_rows))
+                    data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
+                    import_df = pd.DataFrame(data_to_import)
+                    
+                    # Container para mostrar progresso de importação
+                    import_progress_container = st.empty()
+                    
+                    def update_import_progress(message):
+                        import_progress_container.info(f"💾 **Importando:** {message}")
+                    
+                    # Importa dados com feedback de progresso
+                    with st.spinner("💾 Preparando importação..."):
                         imported_count = 0
+                        import_result = None  # Para armazenar resultado de bank_statements
                         
+                        # A IA já classificou cada linha com group_id e subgroup_id
+                        # Passamos None para group_id e subgroup_id para forçar uso da classificação por linha
                         if import_type == 'transactions':
                             imported_count = ImportService.import_transactions(
                                 db, client_id, import_df, 'imported', uploaded_file.name,
-                                group_id, subgroup_id
+                                None, None, progress_callback=update_import_progress
                             )
                         
                         elif import_type == 'bank_statements':
-                            result = ImportService.import_bank_statements(
+                            import_result = ImportService.import_bank_statements(
                                 db, client_id, import_df, bank_name, uploaded_file.name,
-                                group_id, subgroup_id
+                                None, None, progress_callback=update_import_progress
                             )
-                            imported_count = result.get('statements', 0)
-                            transactions_created = result.get('transactions', 0)
+                            imported_count = import_result.get('statements', 0)
+                            transactions_created = import_result.get('transactions', 0)
                             if imported_count > 0:
                                 st.success(f"✅ {imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s) automaticamente!")
                         
                         elif import_type == 'contracts':
                             imported_count = ImportService.import_contracts(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         
                         elif import_type == 'accounts_payable':
                             imported_count = ImportService.import_accounts_payable(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         
                         elif import_type == 'accounts_receivable':
                             imported_count = ImportService.import_accounts_receivable(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         elif import_type == 'financial_investments':
                             imported_count = ImportService.import_financial_investments(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         elif import_type == 'credit_card_invoices':
                             imported_count = ImportService.import_credit_card_invoices(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         elif import_type == 'card_machine_statements':
                             imported_count = ImportService.import_card_machine_statements(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
                         elif import_type == 'inventory':
                             imported_count = ImportService.import_inventory(
-                                db, client_id, import_df, group_id, subgroup_id
+                                db, client_id, import_df, None, None,
+                                progress_callback=update_import_progress
                             )
-                        
-                        if import_type != 'bank_statements' and imported_count > 0:
-                            st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
-                            st.balloons()
-                        
-                        # Limpa estado após importação bem-sucedida
-                        if (import_type == 'bank_statements' and imported_count > 0) or (import_type != 'bank_statements' and imported_count > 0):
-                            if 'processed_data' in st.session_state:
-                                del st.session_state.processed_data
-                            if 'selected_rows' in st.session_state:
-                                del st.session_state.selected_rows
-                            if 'last_file_hash' in st.session_state:
-                                del st.session_state.last_file_hash
-                            if 'bank_name_override' in st.session_state:
-                                del st.session_state.bank_name_override
-                        
-                        if import_type != 'bank_statements' and imported_count == 0:
-                            st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
+                    
+                    # Limpa o container de progresso após importação
+                    import_progress_container.empty()
+                    
+                    # Armazena resultado da importação no session_state para notificações
+                    from datetime import datetime
+                    if import_type == 'bank_statements' and imported_count > 0:
+                        transactions_created = import_result.get('transactions', 0)
+                        st.session_state.import_result = {
+                            'status': 'success',
+                            'import_type': import_type,
+                            'count': imported_count,
+                            'transactions_created': transactions_created,
+                            'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s) automaticamente!",
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        # Mensagem já foi exibida acima
+                    elif import_type != 'bank_statements' and imported_count > 0:
+                        st.session_state.import_result = {
+                            'status': 'success',
+                            'import_type': import_type,
+                            'count': imported_count,
+                            'message': f"{imported_count} registro(s) importado(s) com sucesso!",
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
+                        st.balloons()
+                    elif imported_count == 0:
+                        st.session_state.import_result = {
+                            'status': 'warning',
+                            'import_type': import_type,
+                            'count': 0,
+                            'message': "⚠️ Nenhum registro foi importado. Verifique os dados.",
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
+                    
+                    # Limpa estado após importação bem-sucedida
+                    if (import_type == 'bank_statements' and imported_count > 0) or (import_type != 'bank_statements' and imported_count > 0):
+                        if 'processed_data' in st.session_state:
+                            del st.session_state.processed_data
+                        if 'selected_rows' in st.session_state:
+                            del st.session_state.selected_rows
+                        if 'last_file_hash' in st.session_state:
+                            del st.session_state.last_file_hash
+                        if 'bank_name_override' in st.session_state:
+                            del st.session_state.bank_name_override
             
             finally:
                 db.close()

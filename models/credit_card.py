@@ -36,3 +36,5 @@ class CreditCardInvoice(Base):
         return f"<CreditCardInvoice(date='{self.transaction_date}', value={self.value}, establishment='{self.establishment}')>"
 
 
+
+

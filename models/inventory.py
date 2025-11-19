@@ -35,3 +35,5 @@ class Inventory(Base):
         return f"<Inventory(product='{self.product_name}', quantity={self.quantity}, type='{self.movement_type}')>"
 
 
+
+

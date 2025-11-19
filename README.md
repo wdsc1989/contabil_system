@@ -4,7 +4,7 @@ Sistema web completo de gestão contábil multi-cliente com importação intelig
 
 **Versão:** 1.0.0  
 **Data:** Novembro 2025  
-**Tecnologia:** Python 3.8+ | Streamlit | SQLite | SQLAlchemy
+**Tecnologia:** Python 3.8+ | Streamlit | SQLite/PostgreSQL | SQLAlchemy
 
 ---
 
@@ -213,7 +213,7 @@ streamlit run app.py
 |--------|-----------|--------|-----------|
 | **Frontend** | Streamlit | 1.29+ | Interface web |
 | **Backend** | Python | 3.8+ | Lógica de negócio |
-| **Banco de Dados** | SQLite | 3.x | Armazenamento |
+| **Banco de Dados** | SQLite/PostgreSQL | 3.x/16 | Armazenamento (SQLite dev, PostgreSQL prod) |
 | **ORM** | SQLAlchemy | 2.0+ | Mapeamento objeto-relacional |
 | **Visualização** | Plotly | 5.18+ | Gráficos interativos |
 | **Processamento** | Pandas | 2.0+ | Manipulação de dados |
@@ -1718,6 +1718,50 @@ copy data\contabil.db backups\contabil_%data%.db
 3. Configure firewall
 4. Backups automáticos
 5. Migre para PostgreSQL (se >100 usuários)
+
+---
+
+## 🚀 Deploy em Produção (VPS)
+
+### Deploy na Hostinger VPS
+
+O sistema agora suporta deploy em produção com PostgreSQL e configuração completa de servidor.
+
+**Documentação completa:**
+- 📖 [Guia de Deploy - Hostinger VPS](docs/deploy/HOSTINGER_DEPLOY.md)
+- 💾 [Guia de Backup e Restauração](docs/deploy/BACKUP_GUIDE.md)
+
+**Recursos incluídos:**
+- ✅ Scripts de setup automatizado da VPS
+- ✅ Migração automática SQLite → PostgreSQL
+- ✅ Sistema de backup automático (diário, semanal, mensal)
+- ✅ Configuração Nginx com SSL (Let's Encrypt)
+- ✅ Serviço systemd para gerenciamento
+- ✅ Scripts de deploy automatizado
+
+**Quick Start:**
+```bash
+# 1. Setup inicial da VPS
+sudo bash deploy/setup_vps_hostinger.sh
+
+# 2. Configure variáveis de ambiente
+cp env.example.txt .env
+nano .env
+
+# 3. Migre dados (se necessário)
+python scripts/migrate_sqlite_to_postgres.py data/contabil.db postgresql://...
+
+# 4. Deploy
+sudo bash deploy/deploy.sh
+```
+
+**Sistema de Backup:**
+- Backups automáticos diários, semanais e mensais
+- Retenção configurável (7 dias, 4 semanas, 12 meses)
+- Scripts de restauração incluídos
+- Verificação de integridade automática
+
+Para mais detalhes, consulte a [documentação completa de deploy](docs/deploy/HOSTINGER_DEPLOY.md).
 
 ---
 

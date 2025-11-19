@@ -17,6 +17,7 @@ from services.auth_service import AuthService
 from services.report_service import ReportService
 from models.client import Client
 from models.transaction import Transaction
+from models.group import Group, Subgroup
 from utils.formatters import format_currency, format_date
 
 st.set_page_config(page_title="DRE", page_icon="📊", layout="wide")
@@ -197,18 +198,19 @@ try:
     
     st.markdown("---")
     
-    # Receitas por categoria
+    # Receitas por grupo/subgrupo
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("💵 Receitas por Categoria")
+        st.subheader("💵 Receitas por Grupo/Subgrupo")
         
-        if dre_data['receitas_por_categoria']:
-            categorias = [r['categoria'] for r in dre_data['receitas_por_categoria']]
-            valores = [r['valor'] for r in dre_data['receitas_por_categoria']]
+        if dre_data['receitas_por_subgrupo']:
+            # Cria labels compostos "Grupo > Subgrupo"
+            labels = [f"{r['grupo']} > {r['subgrupo']}" for r in dre_data['receitas_por_subgrupo']]
+            valores = [r['valor'] for r in dre_data['receitas_por_subgrupo']]
             
             fig = go.Figure(data=[go.Bar(
-                x=categorias,
+                x=labels,
                 y=valores,
                 marker_color='#3498db',
                 text=[format_currency(v) for v in valores],
@@ -217,9 +219,10 @@ try:
             
             fig.update_layout(
                 height=400,
-                xaxis_title="Categoria",
+                xaxis_title="Grupo > Subgrupo",
                 yaxis_title="Valor (R$)",
-                showlegend=False
+                showlegend=False,
+                xaxis_tickangle=-45
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -227,14 +230,15 @@ try:
             st.info("ℹ️ Nenhuma receita registrada no período.")
     
     with col2:
-        st.subheader("💳 Despesas por Categoria")
+        st.subheader("💳 Despesas por Grupo/Subgrupo")
         
-        if dre_data['despesas_por_categoria']:
-            categorias = [d['categoria'] for d in dre_data['despesas_por_categoria']]
-            valores = [d['valor'] for d in dre_data['despesas_por_categoria']]
+        if dre_data['despesas_por_subgrupo']:
+            # Cria labels compostos "Grupo > Subgrupo"
+            labels = [f"{d['grupo']} > {d['subgrupo']}" for d in dre_data['despesas_por_subgrupo']]
+            valores = [d['valor'] for d in dre_data['despesas_por_subgrupo']]
             
             fig = go.Figure(data=[go.Bar(
-                x=categorias,
+                x=labels,
                 y=valores,
                 marker_color='#e67e22',
                 text=[format_currency(v) for v in valores],
@@ -243,9 +247,10 @@ try:
             
             fig.update_layout(
                 height=400,
-                xaxis_title="Categoria",
+                xaxis_title="Grupo > Subgrupo",
                 yaxis_title="Valor (R$)",
-                showlegend=False
+                showlegend=False,
+                xaxis_tickangle=-45
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -264,22 +269,34 @@ try:
         # RECEITAS DETALHADAS
         st.markdown("### (+) RECEITAS OPERACIONAIS")
         
-        if dre_data['receitas_por_categoria']:
-            # Agrupa receitas por categoria com detalhes
-            for idx, rec in enumerate(dre_data['receitas_por_categoria'], 1):
-                categoria = rec['categoria']
+        if dre_data['receitas_por_subgrupo']:
+            # Agrupa receitas por grupo/subgrupo com detalhes
+            for idx, rec in enumerate(dre_data['receitas_por_subgrupo'], 1):
+                grupo = rec['grupo']
+                subgrupo = rec['subgrupo']
+                label = f"{grupo} > {subgrupo}"
                 valor = rec['valor']
                 percentual = (valor / dre_data['receitas'] * 100) if dre_data['receitas'] > 0 else 0
                 
-                with st.expander(f"💰 {categoria} - {format_currency(valor)} ({percentual:.1f}%)"):
-                    # Busca transações desta categoria
-                    trans_receitas = db.query(Transaction).filter(
-                        Transaction.client_id == client_id,
-                        Transaction.type == 'entrada',
-                        Transaction.category == categoria,
-                        Transaction.date >= start_date,
-                        Transaction.date <= end_date
-                    ).order_by(Transaction.date.desc()).all()
+                with st.expander(f"💰 {label} - {format_currency(valor)} ({percentual:.1f}%)"):
+                    # Busca transações deste grupo/subgrupo
+                    # Primeiro busca o grupo e subgrupo pelos nomes
+                    grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
+                    subgrupo_obj = None
+                    if grupo_obj:
+                        subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
+                    
+                    if grupo_obj and subgrupo_obj:
+                        trans_receitas = db.query(Transaction).filter(
+                            Transaction.client_id == client_id,
+                            Transaction.type == 'entrada',
+                            Transaction.group_id == grupo_obj.id,
+                            Transaction.subgroup_id == subgrupo_obj.id,
+                            Transaction.date >= start_date,
+                            Transaction.date <= end_date
+                        ).order_by(Transaction.date.desc()).all()
+                    else:
+                        trans_receitas = []
                     
                     if trans_receitas:
                         st.markdown(f"**Total de transações:** {len(trans_receitas)}")
@@ -314,22 +331,34 @@ try:
         # DESPESAS DETALHADAS
         st.markdown("### (-) DESPESAS OPERACIONAIS")
         
-        if dre_data['despesas_por_categoria']:
-            # Agrupa despesas por categoria com detalhes
-            for idx, desp in enumerate(dre_data['despesas_por_categoria'], 1):
-                categoria = desp['categoria']
+        if dre_data['despesas_por_subgrupo']:
+            # Agrupa despesas por grupo/subgrupo com detalhes
+            for idx, desp in enumerate(dre_data['despesas_por_subgrupo'], 1):
+                grupo = desp['grupo']
+                subgrupo = desp['subgrupo']
+                label = f"{grupo} > {subgrupo}"
                 valor = desp['valor']
                 percentual = (valor / dre_data['despesas'] * 100) if dre_data['despesas'] > 0 else 0
                 
-                with st.expander(f"💸 {categoria} - {format_currency(valor)} ({percentual:.1f}%)"):
-                    # Busca transações desta categoria
-                    trans_despesas = db.query(Transaction).filter(
-                        Transaction.client_id == client_id,
-                        Transaction.type == 'saida',
-                        Transaction.category == categoria,
-                        Transaction.date >= start_date,
-                        Transaction.date <= end_date
-                    ).order_by(Transaction.date.desc()).all()
+                with st.expander(f"💸 {label} - {format_currency(valor)} ({percentual:.1f}%)"):
+                    # Busca transações deste grupo/subgrupo
+                    # Primeiro busca o grupo e subgrupo pelos nomes
+                    grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
+                    subgrupo_obj = None
+                    if grupo_obj:
+                        subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
+                    
+                    if grupo_obj and subgrupo_obj:
+                        trans_despesas = db.query(Transaction).filter(
+                            Transaction.client_id == client_id,
+                            Transaction.type == 'saida',
+                            Transaction.group_id == grupo_obj.id,
+                            Transaction.subgroup_id == subgrupo_obj.id,
+                            Transaction.date >= start_date,
+                            Transaction.date <= end_date
+                        ).order_by(Transaction.date.desc()).all()
+                    else:
+                        trans_despesas = []
                     
                     if trans_despesas:
                         st.markdown(f"**Total de transações:** {len(trans_despesas)}")
@@ -396,10 +425,11 @@ try:
                 st.caption("Quanto das receitas vira despesa")
         
         with col3:
-            # Maior categoria de receita
-            if dre_data['receitas_por_categoria']:
-                maior_rec = max(dre_data['receitas_por_categoria'], key=lambda x: x['valor'])
-                st.metric("Maior Receita", maior_rec['categoria'])
+            # Maior receita por grupo/subgrupo
+            if dre_data['receitas_por_subgrupo']:
+                maior_rec = max(dre_data['receitas_por_subgrupo'], key=lambda x: x['valor'])
+                label = f"{maior_rec['grupo']} > {maior_rec['subgrupo']}"
+                st.metric("Maior Receita", label)
                 st.caption(format_currency(maior_rec['valor']))
         
         st.markdown("---")

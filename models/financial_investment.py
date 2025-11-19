@@ -37,3 +37,5 @@ class FinancialInvestment(Base):
         return f"<FinancialInvestment(date='{self.date}', type='{self.investment_type}', value={self.applied_value or self.redeemed_value})>"
 
 
+
+

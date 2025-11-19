@@ -35,3 +35,5 @@ class CardMachineStatement(Base):
         return f"<CardMachineStatement(date='{self.date}', net_value={self.net_value}, type='{self.transaction_type}')>"
 
 
+
+

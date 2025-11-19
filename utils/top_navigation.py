@@ -13,6 +13,31 @@ def show_top_navigation():
     """
     user = AuthService.get_current_user()
     
+    # Verifica se há resultado de importação concluída para mostrar notificação
+    if 'import_result' in st.session_state and st.session_state.import_result:
+        result = st.session_state.import_result
+        from datetime import datetime, timedelta
+        try:
+            timestamp = datetime.fromisoformat(result.get('timestamp', ''))
+            # Mostra notificação se foi concluída nos últimos 10 minutos
+            if datetime.now() - timestamp < timedelta(minutes=10):
+                col_notif1, col_notif2 = st.columns([4, 1])
+                with col_notif1:
+                    if result.get('status') == 'success':
+                        st.success(f"✅ **Importação Concluída:** {result.get('message', '')}")
+                    elif result.get('status') == 'warning':
+                        st.warning(f"⚠️ **Importação:** {result.get('message', '')}")
+                    # Link para página de importação
+                    st.page_link("pages/2_Importacao_Dados.py", label="📥 Ver página de Importação", icon="📥")
+                
+                with col_notif2:
+                    if st.button("✖️ Fechar", key="top_nav_clear_import_notification"):
+                        del st.session_state.import_result
+                        st.rerun()
+        except Exception as e:
+            # Se houver erro ao processar notificação, apenas ignora
+            pass
+    
     # Header com informações do usuário e logout
     col_header1, col_header2, col_header3 = st.columns([3, 2, 1])
     

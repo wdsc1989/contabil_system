@@ -2279,8 +2279,24 @@ Processe e retorne em JSON com array "processed_data".
                 # Processa TODO o arquivo - não há mais limitação de linhas
                 # Todos os dados já foram processados pela IA
                 
+                # Adiciona informação sobre quantidade de linhas no summary se não existir
+                if 'summary' not in result:
+                    result['summary'] = {}
+                
+                # Adiciona informação sobre linhas originais vs processadas
+                if not df.empty:
+                    original_count = len(df)
+                    processed_count = len(processed_data)
+                    result['summary']['original_rows'] = original_count
+                    result['summary']['processed_rows'] = processed_count
+                    result['summary']['rows_difference'] = original_count - processed_count
+                
                 if status_callback:
-                    status_callback(f"✅ Processamento concluído! {len(processed_data)} linhas processadas.")
+                    if not df.empty:
+                        original_count = len(df)
+                        status_callback(f"✅ Processamento concluído! {len(processed_data)} de {original_count} linhas processadas.")
+                    else:
+                        status_callback(f"✅ Processamento concluído! {len(processed_data)} linhas processadas.")
                 
                 return {
                     'success': True,
