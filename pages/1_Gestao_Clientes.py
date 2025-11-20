@@ -111,13 +111,13 @@ try:
                 
                 if st.button("💾 Salvar Alterações", type="primary"):
                     try:
-                            client.name = new_name
-                            client.cpf_cnpj = new_cpf_cnpj
-                            client.tipo_empresa = new_tipo if new_tipo else None
-                            client.active = new_active
-                            db.commit()
-                            st.success("✅ Cliente atualizado com sucesso!")
-                            st.rerun()
+                        client.name = new_name
+                        client.cpf_cnpj = new_cpf_cnpj
+                        client.tipo_empresa = new_tipo if new_tipo else None
+                        client.active = new_active
+                        db.commit()
+                        st.success("✅ Cliente atualizado com sucesso!")
+                        st.rerun()
                     except Exception as e:
                         db.rollback()
                         st.error(f"❌ Erro ao atualizar cliente: {str(e)}")
@@ -146,25 +146,25 @@ try:
                     st.error("❌ Nome e CPF/CNPJ são obrigatórios!")
                 else:
                     try:
-                    # Verifica se já existe
-                    existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
-                    if existing:
+                        # Verifica se já existe
+                        existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
+                        if existing:
                             st.error(f"❌ Já existe um cliente com o CPF/CNPJ: {cpf_cnpj}")
-                    else:
-                        new_client = Client(
-                            name=name,
-                            cpf_cnpj=cpf_cnpj,
-                            tipo_empresa=tipo_empresa if tipo_empresa else None,
+                        else:
+                            new_client = Client(
+                                name=name,
+                                cpf_cnpj=cpf_cnpj,
+                                tipo_empresa=tipo_empresa if tipo_empresa else None,
                                 active=active
-                        )
-                        db.add(new_client)
-                        db.commit()
+                            )
+                            db.add(new_client)
+                            db.commit()
                             
                             # Cria configuração padrão de relatórios
-                        ReportConfigService.ensure_default_config(db, new_client.id)
+                            ReportConfigService.ensure_default_config(db, new_client.id)
                             
-                        st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
-                        st.rerun()
+                            st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
+                            st.rerun()
                     except Exception as e:
                         db.rollback()
                         st.error(f"❌ Erro ao cadastrar cliente: {str(e)}")
@@ -235,9 +235,9 @@ try:
                             st.error(f"❌ Erro ao remover permissão: {str(e)}")
                 else:
                     st.info("ℹ️ Nenhum usuário com acesso a este cliente.")
-                                    
-                                    st.markdown("---")
-                                
+                
+                st.markdown("---")
+                
                 # Adicionar permissão
                 st.markdown("### Adicionar Permissão")
                 
@@ -262,15 +262,15 @@ try:
                                     client_id=selected_permission_client_id
                                 )
                                 db.add(new_perm)
-                                    db.commit()
+                                db.commit()
                                 st.success("✅ Permissão adicionada com sucesso!")
-                                    st.rerun()
+                                st.rerun()
                             except Exception as e:
                                 db.rollback()
                                 st.error(f"❌ Erro ao adicionar permissão: {str(e)}")
                     else:
                         st.info("ℹ️ Todos os usuários já têm acesso a este cliente.")
-                        else:
+                else:
                     st.info("ℹ️ Nenhum usuário cadastrado.")
     
     # TAB 4: Configuração de Relatórios
@@ -496,7 +496,7 @@ try:
                                     'type': 'intermediate_to_report'
                                 })
                                 connection_labels.append(f"{intermediate_types[intermediate_type]} → {report_label}")
-                        else:
+                    else:
                         # Caminho direto: Dado → Relatório
                         for report_type, report_label in report_labels.items():
                             if all_configs.get(report_type, {}).get(data_type, True):
