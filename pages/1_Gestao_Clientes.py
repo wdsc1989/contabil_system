@@ -493,7 +493,7 @@ try:
                                     'type': 'intermediate_to_report'
                                 })
                                 connection_labels.append(f"{intermediate_types[intermediate_type]} → {report_label}")
-                        else:
+                    else:
                         # Caminho direto: Dado → Relatório
                         for report_type, report_label in report_labels.items():
                             if all_configs.get(report_type, {}).get(data_type, True):
