@@ -115,9 +115,71 @@ class ParserService:
             raise Exception(f"Erro ao fazer parse do PDF: {str(e)}")
     
     @staticmethod
-    def parse_pdf_complete(file_content: bytes) -> Dict[str, Any]:
+    def _is_pdf_image_based(file_content: bytes) -> bool:
+        """
+        Detecta se um PDF é baseado em imagens (sem texto extraível)
+        """
+        try:
+            with pdfplumber.open(BytesIO(file_content)) as pdf:
+                # Verifica as primeiras 3 páginas
+                pages_to_check = min(3, len(pdf.pages))
+                total_text_length = 0
+                
+                for i in range(pages_to_check):
+                    page = pdf.pages[i]
+                    text = page.extract_text() or ''
+                    total_text_length += len(text.strip())
+                
+                # Se tiver muito pouco texto (menos de 50 caracteres por página), provavelmente é baseado em imagem
+                avg_text_per_page = total_text_length / pages_to_check if pages_to_check > 0 else 0
+                return avg_text_per_page < 50
+        except:
+            return False
+    
+    @staticmethod
+    def _text_to_dataframe_from_ocr(text: str) -> Optional[pd.DataFrame]:
+        """
+        Tenta criar DataFrame a partir de texto extraído via OCR
+        """
+        lines = text.split('\n')
+        records = []
+        
+        # Padrões para identificar linhas de dados
+        date_pattern = r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}'
+        currency_pattern = r'R?\$?\s*-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?'
+        
+        for line in lines:
+            line = line.strip()
+            if not line or len(line) < 5:
+                continue
+            
+            has_date = bool(re.search(date_pattern, line))
+            has_currency = bool(re.search(currency_pattern, line))
+            
+            if has_date or has_currency:
+                date_match = re.search(date_pattern, line)
+                currency_matches = re.findall(currency_pattern, line)
+                
+                record = {
+                    'raw_text': line,
+                    'date': date_match.group(0) if date_match else '',
+                    'value': currency_matches[0] if currency_matches else '',
+                    'description': line
+                }
+                records.append(record)
+        
+        if records:
+            return pd.DataFrame(records)
+        
+        # Se não encontrou padrões, cria DataFrame simples com todas as linhas
+        return pd.DataFrame({'text': [line for line in lines if line.strip()]})
+    
+    @staticmethod
+    def parse_pdf_complete(file_content: bytes, use_ocr_if_needed: bool = True) -> Dict[str, Any]:
         """
         Extrai informações completas de um PDF incluindo texto, tabelas, metadados e contexto
+        
+        Se o PDF for baseado em imagens (sem texto extraível), usa OCR automaticamente se use_ocr_if_needed=True
         
         Retorna estrutura rica com:
         - dataframe: DataFrame com tabelas extraídas
@@ -127,11 +189,13 @@ class ParserService:
         - headers_footers: Cabeçalhos/rodapés extraídos
         """
         try:
+            # Primeiro, tenta extrair texto normalmente
             pages_info = []
             all_tables = []
             full_text_parts = []
             headers = []
             footers = []
+            ocr_used = False
             
             with pdfplumber.open(BytesIO(file_content)) as pdf:
                 # Metadados do PDF
@@ -203,6 +267,18 @@ class ParserService:
             
             # Tenta extrair nome do banco e informações de conta do texto
             full_text = '\n\n'.join(full_text_parts)
+            
+            # Se o texto extraído for muito pequeno e use_ocr_if_needed estiver habilitado, tenta OCR
+            if use_ocr_if_needed and len(full_text.strip()) < 100 and ParserService._is_pdf_image_based(file_content):
+                try:
+                    # Tenta usar OCR
+                    ocr_result = ParserService.parse_pdf_with_ocr(file_content)
+                    ocr_result['metadata']['ocr_used'] = True
+                    return ocr_result
+                except Exception as ocr_error:
+                    # Se OCR falhar, continua com o texto extraído (mesmo que seja pouco)
+                    pass
+            
             bank_name = ParserService._extract_bank_name(full_text, header_text)
             account_info = ParserService._extract_account_info(full_text, header_text)
             
@@ -212,6 +288,8 @@ class ParserService:
                 'bank_name': bank_name,
                 'account_info': account_info
             }
+            
+            metadata['ocr_used'] = ocr_used
             
             return {
                 'dataframe': dataframe,
@@ -419,13 +497,59 @@ class ParserService:
         
         Retorna:
         {
-            'type': 'CSV' | 'Excel' | 'PDF' | 'OFX',
+            'type': 'CSV' | 'Excel' | 'PDF' | 'OFX' | 'Image',
             'confidence': 0.0-1.0,
             'method': 'extension' | 'content',
             'reason': 'explicação'
         }
         """
         filename_lower = filename.lower()
+        
+        # Detecção de arquivos de imagem
+        image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.webp']
+        if any(filename_lower.endswith(ext) for ext in image_extensions):
+            # Verifica assinaturas de arquivos de imagem
+            if file_content[:2] == b'\xFF\xD8':  # JPEG
+                return {
+                    'type': 'Image',
+                    'confidence': 0.98,
+                    'method': 'extension+content',
+                    'reason': 'Arquivo de imagem JPEG detectado'
+                }
+            elif file_content[:8] == b'\x89PNG\r\n\x1a\n':  # PNG
+                return {
+                    'type': 'Image',
+                    'confidence': 0.98,
+                    'method': 'extension+content',
+                    'reason': 'Arquivo de imagem PNG detectado'
+                }
+            elif file_content[:2] == b'BM':  # BMP
+                return {
+                    'type': 'Image',
+                    'confidence': 0.98,
+                    'method': 'extension+content',
+                    'reason': 'Arquivo de imagem BMP detectado'
+                }
+            elif file_content[:4] == b'RIFF' and b'WEBP' in file_content[:12]:  # WEBP
+                return {
+                    'type': 'Image',
+                    'confidence': 0.98,
+                    'method': 'extension+content',
+                    'reason': 'Arquivo de imagem WEBP detectado'
+                }
+            elif file_content[:4] in [b'II*\x00', b'MM\x00*']:  # TIFF
+                return {
+                    'type': 'Image',
+                    'confidence': 0.98,
+                    'method': 'extension+content',
+                    'reason': 'Arquivo de imagem TIFF detectado'
+                }
+            return {
+                'type': 'Image',
+                'confidence': 0.85,
+                'method': 'extension',
+                'reason': f'Extensão de imagem: {filename_lower.split(".")[-1]}'
+            }
         
         # Detecção por extensão (mais confiável)
         if filename_lower.endswith(('.csv', '.txt')):
@@ -629,7 +753,142 @@ class ParserService:
             column_types[col] = 'text'
         
         return column_types
-
-
+    
+    @staticmethod
+    def parse_pdf_with_ocr(file_content: bytes) -> Dict[str, Any]:
+        """
+        Extrai texto de PDF usando OCR (para PDFs baseados em imagens)
+        """
+        try:
+            # Tenta importar bibliotecas de OCR
+            try:
+                import pytesseract
+                from pdf2image import convert_from_bytes
+                from PIL import Image
+            except ImportError:
+                raise Exception("Bibliotecas de OCR não instaladas. Instale: pip install pytesseract pdf2image Pillow")
+            
+            pages_info = []
+            full_text_parts = []
+            
+            # Converte PDF para imagens
+            try:
+                images = convert_from_bytes(file_content, dpi=300)
+            except Exception as e:
+                # Fallback: tenta com easyocr se disponível
+                try:
+                    import easyocr
+                    reader = easyocr.Reader(['pt', 'en'])
+                    # Para easyocr, precisamos processar página por página
+                    # Por enquanto, retorna erro sugerindo pytesseract
+                    raise Exception(f"Erro ao converter PDF para imagens: {str(e)}. Certifique-se de que poppler está instalado.")
+                except ImportError:
+                    raise Exception(f"Erro ao converter PDF para imagens: {str(e)}. Instale poppler: sudo apt-get install poppler-utils (Linux) ou brew install poppler (Mac)")
+            
+            # Processa cada imagem com OCR
+            for page_num, image in enumerate(images, 1):
+                try:
+                    # Extrai texto usando pytesseract
+                    page_text = pytesseract.image_to_string(image, lang='por+eng')
+                    full_text_parts.append(page_text)
+                    
+                    pages_info.append({
+                        'page_num': page_num,
+                        'text': page_text,
+                        'tables': [],
+                        'has_header': page_num == 1,
+                        'has_footer': page_num == len(images),
+                        'num_tables': 0,
+                        'ocr_used': True
+                    })
+                except Exception as e:
+                    # Se OCR falhar em uma página, continua com as outras
+                    full_text_parts.append(f"[Erro OCR na página {page_num}: {str(e)}]")
+            
+            full_text = '\n\n'.join(full_text_parts)
+            
+            # Tenta criar DataFrame do texto extraído
+            dataframe = ParserService._text_to_dataframe_from_ocr(full_text)
+            
+            return {
+                'dataframe': dataframe,
+                'full_text': full_text,
+                'pages': pages_info,
+                'metadata': {
+                    'num_pages': len(images),
+                    'ocr_used': True
+                },
+                'headers_footers': {
+                    'header_text': '',
+                    'footer_text': '',
+                    'bank_name': '',
+                    'account_info': ''
+                }
+            }
+        except Exception as e:
+            raise Exception(f"Erro ao processar PDF com OCR: {str(e)}")
+    
+    @staticmethod
+    def parse_image(file_content: bytes, file_extension: str) -> Dict[str, Any]:
+        """
+        Extrai texto de arquivos de imagem usando OCR
+        Suporta: JPG, JPEG, PNG, TIFF, BMP, WEBP
+        """
+        try:
+            # Tenta importar bibliotecas de OCR
+            try:
+                import pytesseract
+                from PIL import Image
+            except ImportError:
+                raise Exception("Bibliotecas de OCR não instaladas. Instale: pip install pytesseract Pillow")
+            
+            # Abre imagem
+            try:
+                image = Image.open(BytesIO(file_content))
+            except Exception as e:
+                raise Exception(f"Erro ao abrir imagem: {str(e)}")
+            
+            # Extrai texto usando OCR
+            try:
+                text = pytesseract.image_to_string(image, lang='por+eng')
+            except Exception as e:
+                # Fallback: tenta easyocr se disponível
+                try:
+                    import easyocr
+                    reader = easyocr.Reader(['pt', 'en'])
+                    result = reader.readtext(image)
+                    text = '\n'.join([item[1] for item in result])
+                except ImportError:
+                    raise Exception(f"Erro ao processar OCR: {str(e)}")
+            
+            # Tenta criar DataFrame do texto extraído
+            dataframe = ParserService._text_to_dataframe_from_ocr(text)
+            
+            return {
+                'dataframe': dataframe,
+                'full_text': text,
+                'pages': [{
+                    'page_num': 1,
+                    'text': text,
+                    'tables': [],
+                    'has_header': False,
+                    'has_footer': False,
+                    'num_tables': 0,
+                    'ocr_used': True
+                }],
+                'metadata': {
+                    'num_pages': 1,
+                    'ocr_used': True,
+                    'file_type': file_extension.lower()
+                },
+                'headers_footers': {
+                    'header_text': '',
+                    'footer_text': '',
+                    'bank_name': '',
+                    'account_info': ''
+                }
+            }
+        except Exception as e:
+            raise Exception(f"Erro ao processar imagem: {str(e)}")
 
 

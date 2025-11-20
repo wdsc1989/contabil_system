@@ -23,6 +23,9 @@ class FinancialReportAgentService:
     """
     Serviço especializado em gerar relatórios gerenciais completos
     seguindo layout padronizado do modelo "APURAÇÃO FINANCEIRA"
+    
+    Nota: Todas as queries usam SQLAlchemy ORM, garantindo compatibilidade total com PostgreSQL
+    em produção. O ORM abstrai as diferenças entre bancos de dados.
     """
     
     def __init__(self, db: Session):
@@ -876,4 +879,5 @@ Retorne o relatório formatado em markdown, pronto para exibição."""
             pass
         
         return visualizations
+
 

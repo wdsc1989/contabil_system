@@ -21,6 +21,9 @@ from utils.formatters import format_currency, format_date
 class AIAgentService:
     """
     Serviço para processar perguntas em linguagem natural e gerar respostas com dados
+    
+    Nota: Todas as queries usam SQLAlchemy ORM, garantindo compatibilidade total com PostgreSQL
+    em produção. O ORM abstrai as diferenças entre bancos de dados.
     """
     
     def __init__(self, db: Session):
@@ -132,17 +135,25 @@ Sugestões: {', '.join(pre_analysis['suggestions'][:3])}
         prompt = f"""Você é um administrador contábil profissional e experiente, especializado em análise financeira e contábil.
 Seu papel é ser proativo, oferecendo insights valiosos e sugestões baseadas nos dados do cliente.
 
+**Recursos do Sistema:**
+- Análise de dados em tempo real (PostgreSQL)
+- Processamento completo garantindo análise de todos os registros
+- Suporte a OCR para imagens e PDFs escaneados
+- Relatórios gerenciais completos com visualizações interativas
+
 Contexto do cliente {client_name}:
 {context}
 
 Gere uma saudação profissional e amigável em português que:
 1. Se apresente como administrador contábil do sistema
-2. Pergunte o que vamos analisar hoje
-3. Apresente 3-4 sugestões de análises baseadas nos dados acima
-4. Seja conciso mas informativo
-5. Use tom profissional mas acessível
+2. Mencione brevemente os recursos disponíveis (análise em tempo real, relatórios visuais, etc.)
+3. Pergunte o que vamos analisar hoje
+4. Apresente 3-4 sugestões de análises baseadas nos dados acima
+5. Seja conciso mas informativo
+6. Use tom profissional mas acessível
+7. Use emojis apropriados para melhor visualização
 
-Formate a resposta em markdown, destacando as sugestões de forma clara."""
+Formate a resposta em markdown, destacando as sugestões de forma clara com formatação rica."""
 
         try:
             client, error = self.ai_service._get_client()
@@ -217,6 +228,13 @@ Sugestões de análises:
         
         # Prompt para análise da pergunta
         prompt = f"""Você é um administrador contábil profissional e experiente, especializado em análise financeira e contábil.
+O sistema possui recursos avançados incluindo:
+- Processamento completo de dados garantindo que todas as linhas sejam analisadas
+- Suporte a OCR para processamento de imagens (JPG, PNG, TIFF) e PDFs escaneados
+- Análise de dados em banco PostgreSQL em produção
+- Classificação automática por grupo/subgrupo com IA
+- Validação completa de importações
+
 Analise a seguinte pergunta do usuário e retorne APENAS um JSON válido (sem markdown, sem texto adicional) com:
 {{
     "intent": "relatorio_gerencial|relatorio|consulta|analise|estatistica|comparacao",
@@ -704,19 +722,28 @@ Retorne APENAS o JSON, sem explicações ou markdown."""
         query_type = query_result.get('type', '')
         
         prompt = f"""Você é um administrador contábil profissional. Com base nos dados fornecidos, gere uma resposta clara, objetiva e profissional em português.
-Inclua:
+
+**Contexto do Sistema:**
+- Dados analisados em tempo real do banco PostgreSQL
+- Processamento completo garantindo análise de todos os registros
+- Suporte a múltiplos tipos de dados: transações, contratos, contas, extratos, estoque, etc.
+- Classificação automática por grupo/subgrupo
+
+**Formato da Resposta:**
 - Resumo executivo (2-3 frases)
 - Principais insights e descobertas
-- Dados numéricos formatados (valores em R$)
+- Dados numéricos formatados (valores em R$ com vírgula e ponto no padrão brasileiro)
 - Recomendações profissionais (se aplicável)
 - Use tom de administrador contábil experiente
-- Formate usando markdown
+- Formate usando markdown com formatação rica (negrito, listas, tabelas quando apropriado)
+- Destaque valores importantes com **negrito**
+- Use emojis apropriados para melhor visualização (💰, 📈, 📉, ⚠️, ✅)
 
 Pergunta original: {original_query}
 Tipo de consulta: {query_type}
 Dados: {json.dumps(data, default=str, ensure_ascii=False)}
 
-Retorne a resposta formatada em markdown."""
+Retorne a resposta formatada em markdown, pronta para exibição visual."""
 
         try:
             client, error = self.ai_service._get_client()
@@ -794,4 +821,5 @@ Retorne a resposta formatada em markdown."""
         
         else:
             return f"## Resultado\n\nDados disponíveis: {query_type}"
+
 

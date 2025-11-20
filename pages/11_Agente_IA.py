@@ -34,7 +34,16 @@ from utils.sidebar import show_sidebar
 show_sidebar()
 
 st.title("🤖 Administrador Contábil - Agente IA")
-st.markdown("Seu assistente contábil inteligente. Faça perguntas em linguagem natural e receba análises profissionais com insights e visualizações.")
+st.markdown("""
+Seu assistente contábil inteligente. Faça perguntas em linguagem natural e receba análises profissionais com insights e visualizações.
+
+**Recursos disponíveis:**
+- 📊 Análise de dados financeiros em tempo real (PostgreSQL)
+- 📈 Relatórios gerenciais completos com visualizações interativas
+- 🖼️ Suporte a OCR para processamento de imagens e PDFs escaneados
+- 🤖 Processamento inteligente garantindo análise completa de todos os dados
+- 📑 Exportação de relatórios em múltiplos formatos
+""")
 st.markdown("---")
 
 # Inicializa histórico de conversas
@@ -263,26 +272,97 @@ with chat_container:
                     period = message.get('period', {})
                     client_name = message.get('client_name', '')
                     visualizations = message.get('visualizations', [])
+                    # Obtém dados financeiros e KPIs do query_result se disponível
+                    query_result = message.get('query_result', {})
+                    financial_data = query_result.get('financial_data', {}) if query_result else {}
+                    kpis = query_result.get('kpis', {}) if query_result else {}
                     
-                    # Container principal com estilo de PDF
+                    # Container principal com estilo visual melhorado
                     with st.container():
-                        # Cabeçalho do relatório (estilo PDF)
+                        # Cabeçalho do relatório (estilo visual melhorado)
                         st.markdown("""
-                        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 5px solid #3498db;">
-                            <h1 style="color: #2c3e50; margin: 0; font-size: 28px;">📊 Relatório Gerencial</h1>
-                            <h2 style="color: #34495e; margin: 5px 0; font-size: 22px;">{}</h2>
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 15px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            <h1 style="color: white; margin: 0; font-size: 32px; font-weight: bold;">📊 Relatório Gerencial</h1>
+                            <h2 style="color: rgba(255,255,255,0.95); margin: 10px 0 0 0; font-size: 24px; font-weight: 500;">{}</h2>
                         </div>
                         """.format(client_name), unsafe_allow_html=True)
                         
                         if period.get('start') and period.get('end'):
                             from datetime import datetime
-                            start = datetime.fromisoformat(period['start']).date()
-                            end = datetime.fromisoformat(period['end']).date()
+                            start_date = datetime.fromisoformat(period['start']).date()
+                            end_date = datetime.fromisoformat(period['end']).date()
+                            
+                            # Cards de KPIs principais no topo
+                            if kpis:
+                                col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                                
+                                with col_kpi1:
+                                    st.metric(
+                                        label="💰 Resultado",
+                                        value=format_currency(kpis.get('resultado_periodo', 0)),
+                                        delta=f"{kpis.get('crescimento_receita_percent', 0):.1f}% vs anterior" if kpis.get('crescimento_receita_percent') else None
+                                    )
+                                
+                                with col_kpi2:
+                                    st.metric(
+                                        label="📈 Margem Operacional",
+                                        value=f"{kpis.get('margem_operacional', 0):.2f}%",
+                                        delta="Meta: 10%" if kpis.get('margem_operacional', 0) < 10 else None
+                                    )
+                                
+                                with col_kpi3:
+                                    st.metric(
+                                        label="💵 Receitas",
+                                        value=format_currency(kpis.get('receitas_periodo', 0))
+                                    )
+                                
+                                with col_kpi4:
+                                    st.metric(
+                                        label="💸 Despesas",
+                                        value=format_currency(kpis.get('despesas_periodo', 0))
+                                    )
+                            
                             st.markdown(f"""
-                            <div style="background-color: #ecf0f1; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-                                <strong>Período:</strong> {start.strftime('%d/%m/%Y')} a {end.strftime('%d/%m/%Y')}
+                            <div style="background-color: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #3498db;">
+                                <strong style="font-size: 16px;">📅 Período:</strong> <span style="font-size: 16px;">{start_date.strftime('%d/%m/%Y')} a {end_date.strftime('%d/%m/%Y')}</span>
                             </div>
                             """, unsafe_allow_html=True)
+                            
+                            # Cards de disponíveis e obrigações
+                            if financial_data:
+                                disponiveis = financial_data.get('disponiveis_financeiros', {})
+                                obrigacoes = financial_data.get('obrigacoes', {})
+                                
+                                col_disp1, col_disp2, col_disp3 = st.columns(3)
+                                
+                                with col_disp1:
+                                    st.markdown("""
+                                    <div style="background-color: #d5f4e6; padding: 15px; border-radius: 10px; border-left: 4px solid #2ecc71;">
+                                        <h3 style="margin: 0 0 10px 0; color: #27ae60; font-size: 14px;">💰 DISPONÍVEIS</h3>
+                                        <p style="margin: 0; font-size: 20px; font-weight: bold; color: #1e8449;">{}</p>
+                                    </div>
+                                    """.format(format_currency(disponiveis.get('total', 0))), unsafe_allow_html=True)
+                                
+                                with col_disp2:
+                                    st.markdown("""
+                                    <div style="background-color: #fadbd8; padding: 15px; border-radius: 10px; border-left: 4px solid #e74c3c;">
+                                        <h3 style="margin: 0 0 10px 0; color: #c0392b; font-size: 14px;">💸 OBRIGAÇÕES</h3>
+                                        <p style="margin: 0; font-size: 20px; font-weight: bold; color: #922b21;">{}</p>
+                                    </div>
+                                    """.format(format_currency(obrigacoes.get('total_obrigacoes', 0))), unsafe_allow_html=True)
+                                
+                                with col_disp3:
+                                    saldo_liquido = disponiveis.get('total', 0) - obrigacoes.get('total_obrigacoes', 0)
+                                    cor_saldo = "#2ecc71" if saldo_liquido >= 0 else "#e74c3c"
+                                    bg_saldo = "#d5f4e6" if saldo_liquido >= 0 else "#fadbd8"
+                                    st.markdown(f"""
+                                    <div style="background-color: {bg_saldo}; padding: 15px; border-radius: 10px; border-left: 4px solid {cor_saldo};">
+                                        <h3 style="margin: 0 0 10px 0; color: {cor_saldo}; font-size: 14px;">⚖️ SALDO LÍQUIDO</h3>
+                                        <p style="margin: 0; font-size: 20px; font-weight: bold; color: {cor_saldo};">{format_currency(saldo_liquido)}</p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                            
+                            st.markdown("---")
                         
                         # Divide o conteúdo do relatório em seções e intercala com gráficos
                         report_content = message['content']
@@ -298,9 +378,14 @@ with chat_container:
                         # Exibe conteúdo do relatório com gráficos intercalados
                         # Para relatórios gerenciais, exibimos o texto completo primeiro
                         # e depois os gráficos organizados por seção
-                        st.markdown("---")
                         st.markdown("### 📄 Análise e Diagnóstico")
+                        
+                        # Container com estilo de documento profissional
+                        st.markdown("""
+                        <div style="background-color: #ffffff; padding: 25px; border-radius: 10px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); line-height: 1.8; font-size: 15px;">
+                        """, unsafe_allow_html=True)
                         st.markdown(report_content)
+                        st.markdown("</div>", unsafe_allow_html=True)
                         
                         # Exibe gráficos organizados por seção
                         if visualizations:
@@ -363,17 +448,63 @@ with chat_container:
                                         st.plotly_chart(viz['data'], use_container_width=True)
                                 st.markdown("---")
                         
-                        # Botão para exportar relatório
+                        # Botões para exportar relatório
                         st.markdown("---")
-                        col_exp1, col_exp2 = st.columns([1, 4])
+                        col_exp1, col_exp2, col_exp3 = st.columns([1, 1, 2])
                         with col_exp1:
                             report_text = message['content']
                             st.download_button(
-                                label="📥 Exportar Relatório (Markdown)",
+                                label="📥 Exportar Markdown",
                                 data=report_text,
                                 file_name=f"relatorio_gerencial_{period.get('start', '')}.md",
-                                mime="text/markdown"
+                                mime="text/markdown",
+                                use_container_width=True
                             )
+                        with col_exp2:
+                            # Exportar como HTML formatado
+                            if period.get('start') and period.get('end'):
+                                from datetime import datetime
+                                start_export = datetime.fromisoformat(period['start']).date()
+                                end_export = datetime.fromisoformat(period['end']).date()
+                                
+                                # Converte markdown para HTML básico
+                                html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório Gerencial - {client_name}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; padding: 40px; line-height: 1.8; max-width: 1200px; margin: 0 auto; }}
+        h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
+        h2 {{ color: #34495e; margin-top: 30px; }}
+        h3 {{ color: #555; margin-top: 20px; }}
+        .period {{ background-color: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .content {{ margin-top: 20px; }}
+        .content p {{ margin: 10px 0; }}
+        .content ul, .content ol {{ margin: 10px 0; padding-left: 30px; }}
+        .content strong {{ color: #2c3e50; }}
+    </style>
+</head>
+<body>
+    <h1>📊 Relatório Gerencial</h1>
+    <h2>{client_name}</h2>
+    <div class="period">
+        <strong>Período:</strong> {start_export.strftime('%d/%m/%Y')} a {end_export.strftime('%d/%m/%Y')}
+    </div>
+    <div class="content">
+        {report_content.replace(chr(10), '<br>').replace('**', '<strong>').replace('**', '</strong>')}
+    </div>
+</body>
+</html>
+"""
+                                st.download_button(
+                                    label="📄 Exportar HTML",
+                                    data=html_content,
+                                    file_name=f"relatorio_gerencial_{period.get('start', '')}.html",
+                                    mime="text/html",
+                                    use_container_width=True
+                                )
                 else:
                     st.markdown(message['content'])
                 
@@ -513,7 +644,13 @@ with col2:
             "Qual foi o melhor mês em receitas?",
             "Compare as receitas deste ano com o ano passado",
             "Quais são as principais despesas?",
-            "Crie um relatório de sazonalidade"
+            "Crie um relatório de sazonalidade",
+            "Analise a performance de vendedores",
+            "Mostre o dashboard de contas a pagar e receber",
+            "Qual é a margem operacional atual?",
+            "Quais são os contratos ativos?",
+            "Analise despesas CPF vs CNPJ",
+            "Mostre o diário de gastos do mês"
         ]
         st.info("💡 **Exemplos de perguntas que você pode fazer:**\n\n" + "\n".join(f"- {ex}" for ex in examples))
 
@@ -567,6 +704,8 @@ with col3:
                     )
             except:
                 pass  # Ignora erros na exportação
+
+
 
 
 

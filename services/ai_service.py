@@ -152,13 +152,11 @@ class AIService:
         if headers_footers.get('account_info'):
             context_parts.append(f"- Informações de conta: {headers_footers['account_info']}")
         
-        # Texto completo (amostra das primeiras 2000 caracteres)
+        # Texto completo - INCLUI TODO O TEXTO (não apenas amostra)
         full_text = pdf_data.get('full_text', '')
         if full_text:
-            text_preview = full_text[:2000]  # Primeiros 2000 caracteres
-            context_parts.append(f"- Texto do documento (amostra):\n{text_preview}")
-            if len(full_text) > 2000:
-                context_parts.append(f"- ... (texto completo tem {len(full_text)} caracteres)")
+            # Inclui TODO o texto, não apenas amostra
+            context_parts.append(f"- Texto completo do documento ({len(full_text)} caracteres):\n{full_text}")
         
         return "\n".join(context_parts)
     
@@ -199,8 +197,8 @@ class AIService:
         if records:
             return pd.DataFrame(records)
         
-        # Se não encontrou padrões, cria DataFrame simples com o texto
-        return pd.DataFrame({'text': lines[:100]})  # Limita a 100 linhas
+        # Se não encontrou padrões, cria DataFrame simples com TODO o texto (SEM limitação)
+        return pd.DataFrame({'text': lines})  # Processa TODAS as linhas
     
     def _repair_json(self, json_str: str, error: json.JSONDecodeError) -> str:
         """
@@ -1361,7 +1359,8 @@ Mapeie as colunas do arquivo para os campos do sistema considerando nomes, conte
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar transações financeiras
@@ -1461,7 +1460,16 @@ Analise o arquivo de transações financeiras e estruture os dados para importa�
 7. CONTA: Identifique se houver informação de banco/conta
 
 **Tarefa:**
-Processe TODAS as linhas do arquivo e retorne dados estruturados prontos para importação, incluindo classificação automática por grupo e subgrupo.
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- Se houver linhas duplicadas ou vazias, processe-as mesmo assim
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
+Retorne dados estruturados prontos para importação, incluindo classificação automática por grupo e subgrupo.
 
 **CRÍTICO - Correspondência de Linhas:**
 - O campo "original_row" DEVE corresponder EXATAMENTE ao número da linha no arquivo original
@@ -1517,7 +1525,8 @@ Processe TODAS as linhas do arquivo e retorne dados estruturados prontos para im
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar extratos bancários
@@ -1605,6 +1614,18 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
 
 7. SALDO: Identifique se houver coluna de saldo
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- Se houver linhas duplicadas ou vazias, processe-as mesmo assim
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
+Retorne dados estruturados prontos para importação, incluindo classificação automática por grupo e subgrupo.
+
 **CRÍTICO - Correspondência de Linhas:**
 - O campo "original_row" DEVE corresponder EXATAMENTE ao número da linha no arquivo original
 - Se o arquivo tem 10 linhas, original_row deve ir de 1 a 10
@@ -1647,7 +1668,8 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar contas a pagar
@@ -1672,6 +1694,15 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
@@ -1682,7 +1713,8 @@ Processe e retorne em JSON com array "processed_data", incluindo classification_
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar contas a receber
@@ -1707,6 +1739,15 @@ Processe e retorne em JSON com array "processed_data", incluindo classification_
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
@@ -1717,7 +1758,8 @@ Processe e retorne em JSON com array "processed_data", incluindo classification_
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar contratos
@@ -1756,6 +1798,15 @@ Analise o arquivo e estruture os dados para importação.
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
@@ -1766,7 +1817,8 @@ Processe e retorne em JSON com array "processed_data", incluindo classification_
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar extratos de aplicações financeiras
@@ -1799,6 +1851,15 @@ Analise o arquivo e estruture os dados para importação.
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data".
 """
         return prompt
@@ -1809,7 +1870,8 @@ Processe e retorne em JSON com array "processed_data".
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar faturas de cartão de crédito
@@ -1842,6 +1904,15 @@ Analise o arquivo e estruture os dados para importação.
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data".
 """
         return prompt
@@ -1852,7 +1923,8 @@ Processe e retorne em JSON com array "processed_data".
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar extratos de máquina de cartão
@@ -1884,6 +1956,15 @@ Analise o arquivo e estruture os dados para importação.
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
+
 Processe e retorne em JSON com array "processed_data".
 """
         return prompt
@@ -1894,7 +1975,8 @@ Processe e retorne em JSON com array "processed_data".
         columns: List[str],
         data_sample: str,
         is_pdf_source: bool = False,
-        groups_subgroups: Optional[List[Dict[str, Any]]] = None
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None,
+        total_rows: int = 0
     ) -> str:
         """
         Cria prompt específico para processar controle de estoque
@@ -1924,6 +2006,15 @@ Analise o arquivo e estruture os dados para importação.
 **Colunas encontradas:** {', '.join(columns) if columns else 'Dados extraídos do texto'}
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
+
+**Tarefa:**
+🚨 **PROCESSE TODAS AS LINHAS SEM EXCEÇÃO** 🚨
+
+O arquivo contém **{total_rows} linha(s)** - você DEVE retornar **EXATAMENTE {total_rows} registro(s) processado(s)**.
+
+- Se alguma linha não puder ser processada completamente, inclua-a com flag de erro ou valores padrão, mas **NÃO A OMITA**
+- Cada linha do arquivo original DEVE ter um registro correspondente no resultado
+- O número de registros em "processed_data" DEVE ser igual ao número de linhas do arquivo
 
 Processe e retorne em JSON com array "processed_data".
 """
@@ -2053,32 +2144,41 @@ Processe e retorne em JSON com array "processed_data".
             # Para PDFs, inclui flag indicando que há contexto adicional
             is_pdf_source = pdf_full_data is not None
             
+            # Calcula número total de linhas para incluir no prompt
+            total_rows_count = 0
+            if not df.empty:
+                total_rows_count = len(df)
+            elif pdf_full_data and pdf_full_data.get('full_text'):
+                total_rows_count = len(pdf_full_data.get('full_text', '').split('\n'))
+            
             if import_type == 'transactions':
                 prompt = self._create_prompt_process_transactions(
                     file_data, columns, data_sample, 
                     is_pdf_source=is_pdf_source,
-                    groups_subgroups=groups_subgroups
+                    groups_subgroups=groups_subgroups,
+                    total_rows=total_rows_count
                 )
             elif import_type == 'bank_statements':
                 prompt = self._create_prompt_process_bank_statements(
                     file_data, columns, data_sample, 
                     is_pdf_source=is_pdf_source,
-                    groups_subgroups=groups_subgroups
+                    groups_subgroups=groups_subgroups,
+                    total_rows=total_rows_count
                 )
             elif import_type == 'contracts':
-                prompt = self._create_prompt_process_contracts(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_contracts(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'accounts_payable':
-                prompt = self._create_prompt_process_accounts_payable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_accounts_payable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'accounts_receivable':
-                prompt = self._create_prompt_process_accounts_receivable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_accounts_receivable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'financial_investments':
-                prompt = self._create_prompt_process_financial_investments(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_financial_investments(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'credit_card_invoices':
-                prompt = self._create_prompt_process_credit_card_invoices(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_credit_card_invoices(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'card_machine_statements':
-                prompt = self._create_prompt_process_card_machine_statements(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_card_machine_statements(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             elif import_type == 'inventory':
-                prompt = self._create_prompt_process_inventory(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
+                prompt = self._create_prompt_process_inventory(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups, total_rows=total_rows_count)
             else:
                 return {
                     'success': False,
@@ -2268,26 +2368,54 @@ Processe e retorne em JSON com array "processed_data".
                     result['summary'] = {}
                 
                 # Adiciona informação sobre linhas originais vs processadas
+                original_count = 0
                 if not df.empty:
                     original_count = len(df)
-                    processed_count = len(processed_data)
-                    result['summary']['original_rows'] = original_count
-                    result['summary']['processed_rows'] = processed_count
-                    result['summary']['rows_difference'] = original_count - processed_count
+                elif pdf_full_data and pdf_full_data.get('full_text'):
+                    # Para PDFs com texto, conta linhas do texto
+                    full_text = pdf_full_data.get('full_text', '')
+                    original_count = len(full_text.split('\n'))
+                
+                processed_count = len(processed_data)
+                result['summary']['original_rows'] = original_count
+                result['summary']['processed_rows'] = processed_count
+                result['summary']['rows_difference'] = original_count - processed_count
+                
+                # VALIDAÇÃO: Verifica se todas as linhas foram processadas
+                validation_issues = []
+                if original_count > 0 and processed_count != original_count:
+                    missing_count = original_count - processed_count
+                    validation_issues.append(
+                        f"⚠️ ATENÇÃO: {missing_count} linha(s) não foram processadas. "
+                        f"Esperado: {original_count}, Processado: {processed_count}"
+                    )
+                    result['summary']['validation_warning'] = True
+                    result['summary']['missing_rows'] = missing_count
+                else:
+                    result['summary']['validation_warning'] = False
+                
+                # Adiciona issues de validação
+                if validation_issues:
+                    if 'issues' not in result:
+                        result['issues'] = []
+                    result['issues'].extend(validation_issues)
                 
                 if status_callback:
-                    if not df.empty:
-                        original_count = len(df)
-                        status_callback(f"✅ Processamento concluído! {len(processed_data)} de {original_count} linhas processadas.")
+                    if original_count > 0:
+                        if processed_count == original_count:
+                            status_callback(f"✅ Processamento concluído! Todas as {processed_count} linhas foram processadas com sucesso.")
+                        else:
+                            status_callback(f"⚠️ Processamento concluído com aviso: {processed_count} de {original_count} linhas processadas.")
                     else:
-                        status_callback(f"✅ Processamento concluído! {len(processed_data)} linhas processadas.")
+                        status_callback(f"✅ Processamento concluído! {processed_count} linhas processadas.")
                 
                 return {
                     'success': True,
                     'processed_data': processed_data,
                     'summary': result.get('summary', {}),
                     'issues': result.get('issues', []),
-                    'error': None
+                    'error': None,
+                    'validation_warning': result['summary'].get('validation_warning', False)
                 }
                 
             except json.JSONDecodeError as e:
@@ -2532,8 +2660,85 @@ Processe e retorne em JSON com array "processed_data".
             print(f"Erro na inferência: {e}")
         
         return {}
-
-
+    
+    @staticmethod
+    def should_use_ai_for_file(
+        df: pd.DataFrame,
+        file_type: str,
+        pdf_full_data: Optional[Dict[str, Any]] = None,
+        is_image_file: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Detecta se é recomendado usar IA para processar o arquivo
+        
+        Retorna:
+        {
+            'recommended': bool,
+            'reason': str,
+            'priority': str  # 'high', 'medium', 'low'
+        }
+        """
+        recommendation = {
+            'recommended': False,
+            'reason': '',
+            'priority': 'low'
+        }
+        
+        # Arquivos de imagem sempre requerem OCR + IA
+        if is_image_file:
+            recommendation['recommended'] = True
+            recommendation['reason'] = 'Arquivo de imagem detectado - requer OCR e processamento com IA'
+            recommendation['priority'] = 'high'
+            return recommendation
+        
+        # PDFs baseados em imagens requerem OCR + IA
+        if pdf_full_data:
+            if pdf_full_data.get('metadata', {}).get('ocr_used', False):
+                recommendation['recommended'] = True
+                recommendation['reason'] = 'PDF com imagens detectado - OCR foi necessário'
+                recommendation['priority'] = 'high'
+                return recommendation
+            
+            # Verifica se tem pouco texto (pode ser baseado em imagem)
+            full_text = pdf_full_data.get('full_text', '')
+            if len(full_text.strip()) < 100:
+                recommendation['recommended'] = True
+                recommendation['reason'] = 'PDF com pouco texto extraível - pode ser baseado em imagens'
+                recommendation['priority'] = 'high'
+                return recommendation
+        
+        # Arquivos com muitas linhas (>100)
+        if not df.empty and len(df) > 100:
+            recommendation['recommended'] = True
+            recommendation['reason'] = f'Arquivo grande com {len(df)} linhas - processamento completo recomendado'
+            recommendation['priority'] = 'medium'
+            return recommendation
+        
+        # Arquivos com texto não estruturado (DataFrame vazio mas tem texto)
+        if df.empty and pdf_full_data and pdf_full_data.get('full_text'):
+            recommendation['recommended'] = True
+            recommendation['reason'] = 'Arquivo com texto não estruturado - requer análise com IA'
+            recommendation['priority'] = 'high'
+            return recommendation
+        
+        # Arquivos com formato complexo ou inconsistente
+        if not df.empty:
+            # Verifica se há muitas colunas (pode ser complexo)
+            if len(df.columns) > 15:
+                recommendation['recommended'] = True
+                recommendation['reason'] = f'Arquivo com {len(df.columns)} colunas - formato complexo'
+                recommendation['priority'] = 'medium'
+                return recommendation
+            
+            # Verifica se há muitos valores nulos (pode indicar inconsistência)
+            null_percentage = df.isnull().sum().sum() / (len(df) * len(df.columns)) if len(df) > 0 else 0
+            if null_percentage > 0.3:  # Mais de 30% de valores nulos
+                recommendation['recommended'] = True
+                recommendation['reason'] = 'Arquivo com muitos valores ausentes - requer análise cuidadosa'
+                recommendation['priority'] = 'medium'
+                return recommendation
+        
+        return recommendation
 
 
 

@@ -96,9 +96,9 @@ finally:
 st.subheader("1️⃣ Faça Upload do Arquivo")
 
 uploaded_file = st.file_uploader(
-    "Selecione um arquivo (CSV, Excel, PDF, OFX)",
-    type=['csv', 'txt', 'xlsx', 'xls', 'pdf', 'ofx'],
-    help="O sistema detectará automaticamente o tipo de arquivo"
+    "Selecione um arquivo (CSV, Excel, PDF, OFX, ou Imagens: JPG, PNG, TIFF, etc)",
+    type=['csv', 'txt', 'xlsx', 'xls', 'pdf', 'ofx', 'jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'],
+    help="O sistema detectará automaticamente o tipo de arquivo. Imagens serão processadas com OCR."
 )
 
 if uploaded_file:
@@ -115,6 +115,11 @@ if uploaded_file:
         method = detection_result.get('method', 'unknown')
         reason = detection_result.get('reason', '')
         
+        # Detecta se é arquivo de imagem
+        is_image_file = uploaded_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.webp'))
+        if is_image_file:
+            detected_type = 'Image'
+        
         # Exibe tipo detectado
         col1, col2 = st.columns([3, 1])
         with col1:
@@ -122,7 +127,8 @@ if uploaded_file:
                 'CSV': '📄',
                 'Excel': '📊',
                 'PDF': '📑',
-                'OFX': '🏦'
+                'OFX': '🏦',
+                'Image': '🖼️'
             }
             icon = type_icons.get(detected_type, '📄')
             confidence_percent = int(confidence * 100)
@@ -151,8 +157,8 @@ if uploaded_file:
             st.subheader("✏️ Seleção Manual do Tipo de Arquivo")
             file_type = st.selectbox(
                 "Tipo de arquivo:",
-                options=['CSV', 'Excel', 'PDF', 'OFX'],
-                index=['CSV', 'Excel', 'PDF', 'OFX'].index(detected_type) if detected_type in ['CSV', 'Excel', 'PDF', 'OFX'] else 0,
+                options=['CSV', 'Excel', 'PDF', 'OFX', 'Image'],
+                index=['CSV', 'Excel', 'PDF', 'OFX', 'Image'].index(detected_type) if detected_type in ['CSV', 'Excel', 'PDF', 'OFX', 'Image'] else 0,
                 key="manual_file_type"
             )
             if st.button("✅ Confirmar Tipo", use_container_width=True):
@@ -205,11 +211,15 @@ if uploaded_file:
         elif file_type == 'PDF':
             file_content = uploaded_file.read()
             
-            # Tenta extrair usando método completo primeiro
+            # Tenta extrair usando método completo primeiro (com OCR se necessário)
             pdf_data = None
             try:
-                pdf_data = ParserService.parse_pdf_complete(file_content)
+                pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
                 df = pdf_data.get('dataframe')
+                
+                # Se OCR foi usado, informa ao usuário
+                if pdf_data.get('metadata', {}).get('ocr_used', False):
+                    st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
             except Exception as e:
                 st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
                 # Fallback para método simples
@@ -236,6 +246,29 @@ if uploaded_file:
             df = ParserService.ofx_to_dataframe(file_content)
             # OFX é sempre extrato bancário
             auto_detected_type = 'bank_statements'
+        elif file_type == 'Image' or is_image_file:
+            file_content = uploaded_file.read()
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            
+            # Processa imagem com OCR
+            try:
+                with st.spinner("🖼️ Processando imagem com OCR (isso pode levar alguns segundos)..."):
+                    image_data = ParserService.parse_image(file_content, file_extension)
+                    df = image_data.get('dataframe')
+                    # Salva dados da imagem para uso pela IA
+                    st.session_state['pdf_full_data'] = image_data
+                    st.session_state['is_image_file'] = True
+                
+                if df is None or df.empty:
+                    st.info("ℹ️ Nenhuma tabela estruturada encontrada na imagem. A IA processará o texto extraído...")
+                    df = pd.DataFrame()
+                else:
+                    st.success(f"✅ Imagem processada! {len(df)} linha(s) extraída(s) com OCR.")
+            except Exception as e:
+                st.error(f"❌ Erro ao processar imagem: {str(e)}")
+                st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow")
+                st.stop()
+            auto_detected_type = None
         else:
             auto_detected_type = None
         
@@ -444,6 +477,29 @@ if uploaded_file:
                     st.error("❌ IA não configurada. Configure a IA na página de Administração antes de importar.")
                     st.stop()
                 
+                # Detecta se é recomendado usar IA
+                is_image = st.session_state.get('is_image_file', False)
+                pdf_full_data = st.session_state.get('pdf_full_data')
+                ai_recommendation = AIService.should_use_ai_for_file(df, file_type, pdf_full_data, is_image)
+                
+                # Exibe recomendação se houver
+                if ai_recommendation.get('recommended', False):
+                    priority = ai_recommendation.get('priority', 'low')
+                    reason = ai_recommendation.get('reason', '')
+                    
+                    if priority == 'high':
+                        st.warning(f"🤖 **Recomendação:** {reason}")
+                    else:
+                        st.info(f"💡 **Recomendação:** {reason}")
+                
+                # Opção para usar IA como avaliador completo
+                default_use_full_ai = ai_recommendation.get('recommended', False) and ai_recommendation.get('priority') == 'high'
+                use_ai_as_full_evaluator = st.checkbox(
+                    "🤖 Usar IA como avaliador completo do arquivo",
+                    value=default_use_full_ai,
+                    help="Quando habilitado, força processamento completo de TODAS as linhas e validação rigorosa. Recomendado para arquivos grandes ou complexos."
+                )
+                
                 # Busca grupos e subgrupos do cliente
                 db = SessionLocal()
                 try:
@@ -478,15 +534,28 @@ if uploaded_file:
                 
                 # Processa automaticamente
                 with st.spinner("🤖 Processando arquivo com IA (isso pode levar alguns segundos)..."):
-                    # Passa dados completos do PDF se disponível
+                    # Passa dados completos do PDF/imagem se disponível
                     pdf_full_data = st.session_state.get('pdf_full_data')
-                    result = ai_service.process_and_structure_data(
-                        df, 
-                        import_type,
-                        pdf_full_data=pdf_full_data,
-                        groups_subgroups=groups_subgroups if groups_subgroups else None,
-                        status_callback=update_status
-                    )
+                    is_image = st.session_state.get('is_image_file', False)
+                    
+                    # Se for imagem, trata como PDF para processamento
+                    if is_image and pdf_full_data:
+                        # Marca como PDF para processamento (a IA processará o texto extraído)
+                        result = ai_service.process_and_structure_data(
+                            df, 
+                            import_type,
+                            pdf_full_data=pdf_full_data,
+                            groups_subgroups=groups_subgroups if groups_subgroups else None,
+                            status_callback=update_status
+                        )
+                    else:
+                        result = ai_service.process_and_structure_data(
+                            df, 
+                            import_type,
+                            pdf_full_data=pdf_full_data,
+                            groups_subgroups=groups_subgroups if groups_subgroups else None,
+                            status_callback=update_status
+                        )
                     
                     # Limpa dados do PDF da session state após processar
                     if 'pdf_full_data' in st.session_state:
@@ -518,11 +587,24 @@ if uploaded_file:
                     st.stop()
                 
                 # Compara quantidade de linhas originais vs processadas
-                original_rows = len(df)
-                processed_rows = len(processed_data)
+                original_rows = summary.get('original_rows', len(df))
+                processed_rows = summary.get('processed_rows', len(processed_data))
                 rows_diff = original_rows - processed_rows
                 
-                st.success("✅ Processamento concluído!")
+                # Validação: verifica se todas as linhas foram processadas
+                validation_warning = result.get('validation_warning', False)
+                
+                if validation_warning or rows_diff > 0:
+                    st.warning(
+                        f"⚠️ **ATENÇÃO:** {rows_diff} linha(s) não foram processadas. "
+                        f"Esperado: {original_rows}, Processado: {processed_rows}. "
+                        f"Recomendamos reprocessar o arquivo com a opção 'Usar IA como avaliador completo' habilitada."
+                    )
+                    if st.button("🔄 Reprocessar com IA Completa", key="reprocess_full_ai"):
+                        st.session_state['reprocess_with_full_ai'] = True
+                        st.rerun()
+                else:
+                    st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
                 
                 # Extrai nome do banco se disponível (para extratos bancários)
                 extracted_bank_name = summary.get('bank_name', '') if summary else ''

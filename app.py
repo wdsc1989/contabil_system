@@ -304,30 +304,30 @@ def main_page():
     
     with col1:
         st.metric(
-            label="📊 Dashboards",
-            value="3",
-            help="DRE, DFC e Sazonalidade"
+            label="📊 Relatórios",
+            value="12+",
+            help="DRE, DFC, Sazonalidade, Eventos, Performance, e mais"
         )
     
     with col2:
         st.metric(
             label="📥 Importação",
-            value="4 formatos",
-            help="CSV, Excel, PDF, OFX"
+            value="7+ formatos",
+            help="CSV, Excel, PDF, OFX, JPG, PNG, TIFF e mais"
         )
     
     with col3:
         st.metric(
-            label="📝 Contratos",
-            value="Gestão completa",
-            help="Contratos e eventos"
+            label="🤖 IA + OCR",
+            value="Ativo",
+            help="Processamento inteligente e OCR para imagens"
         )
     
     with col4:
         st.metric(
-            label="💰 Contas",
-            value="Pagar/Receber",
-            help="Controle financeiro"
+            label="📝 Dados",
+            value="9 tipos",
+            help="Transações, Contratos, Contas, Estoque, e mais"
         )
     
     st.markdown("---")
@@ -346,30 +346,130 @@ def main_page():
     
     with st.expander("📥 Importação de Dados"):
         st.markdown("""
-        O sistema suporta importação de:
-        - **Extratos Bancários**: CSV, OFX
-        - **Faturas de Cartão**: Excel, CSV
-        - **Contratos**: Excel, CSV
-        - **Contas**: Excel, CSV
-        - **PDFs**: Extração automática de texto
+        O sistema suporta importação de múltiplos formatos com processamento inteligente:
         
-        Você pode mapear as colunas do arquivo para os campos do sistema.
+        **Formatos Suportados:**
+        - **CSV/TXT**: Extratos bancários, transações, contas
+        - **Excel (XLSX/XLS)**: Planilhas complexas, múltiplas abas
+        - **PDF**: Extração automática de texto e tabelas
+        - **OFX**: Extratos bancários no formato OFX
+        - **Imagens**: JPG, PNG, TIFF, BMP, WEBP (com OCR automático)
+        
+        **Tipos de Dados:**
+        - Extratos Bancários
+        - Transações Financeiras
+        - Contratos e Eventos
+        - Contas a Pagar/Receber
+        - Faturas de Cartão de Crédito
+        - Extratos de Máquina de Cartão
+        - Aplicações Financeiras
+        - Controle de Estoque
+        
+        **Recursos:**
+        - 🤖 **IA para classificação automática** por grupo/subgrupo
+        - 🖼️ **OCR para PDFs e imagens** (processamento de documentos escaneados)
+        - ✅ **Validação completa** garantindo que todas as linhas sejam processadas
+        - 📊 **Mapeamento inteligente** de colunas
         """)
     
-    with st.expander("📊 Dashboards Disponíveis"):
+    with st.expander("📊 Relatórios e Dashboards Disponíveis"):
         st.markdown("""
-        - **DRE (Demonstração do Resultado)**: Receitas vs Despesas, KPIs
-        - **DFC (Fluxo de Caixa)**: Fluxo realizado e projetado
-        - **Sazonalidade**: Análise de padrões sazonais
+        **Relatórios Principais:**
+        - **DRE (Demonstração do Resultado)**: Receitas vs Despesas, KPIs, análise por grupo/subgrupo
+        - **DFC (Fluxo de Caixa)**: Fluxo realizado e projetado, análise por fonte de dados
+        - **Sazonalidade**: Análise de padrões sazonais, tendências e comparações mensais
+        
+        **Relatórios Especializados:**
+        - **📅 Diário de Gastos**: Acompanhamento diário de despesas com heatmap e gráficos
+        - **🎯 Painel de Controle Unificado**: Visão executiva consolidada
+        - **💵 Fluxo de Caixa Gerencial**: Análise gerencial de fluxo de caixa
+        - **👤 Despesas CPF vs CNPJ**: Separação de despesas pessoais e empresariais
+        - **💰 Dashboard de Contas**: Aging, inadimplência e projeções de contas
+        - **📝 Relatório de Eventos**: Análise de contratos e eventos
+        - **📈 Performance de Vendedores**: Análise de vendas por vendedor
+        
+        **Visualização de Dados:**
+        - Transações Financeiras
+        - Extratos Bancários
+        - Contratos e Eventos
+        - Contas a Pagar/Receber
+        - Faturas de Cartão
+        - Máquina de Cartão
+        - Aplicações Financeiras
+        - Controle de Estoque
         """)
     
     with st.expander("👥 Permissões"):
         st.markdown(f"""
         **Seu perfil:** {user['role'].title()}
         
-        - **Admin**: Acesso total ao sistema
-        - **Manager**: Gerencia clientes específicos
-        - **Viewer**: Apenas visualização
+        - **Admin**: Acesso total ao sistema, configurações, gestão de usuários e clientes
+        - **Manager**: Gerencia clientes específicos, importa dados, visualiza relatórios
+        - **Viewer**: Apenas visualização de dados e relatórios
+        """)
+    
+    with st.expander("🤖 Agente Conversacional IA"):
+        st.markdown("""
+        **O que é o Agente IA?**
+        Seu assistente contábil inteligente que responde perguntas em linguagem natural e gera análises profissionais com visualizações interativas.
+        
+        **Como usar:**
+        1. Acesse a página **"🤖 Agente IA"** no menu lateral
+        2. Selecione o cliente que deseja analisar
+        3. Faça perguntas em português natural sobre seus dados financeiros
+        4. Receba respostas com análises, gráficos e recomendações
+        
+        **Exemplos de perguntas:**
+        - "Gerar relatório gerencial de Outubro 2025"
+        - "Quais são as receitas do último mês?"
+        - "Mostre as despesas por grupo"
+        - "Qual é o saldo atual?"
+        - "Analise a performance de vendedores"
+        - "Mostre o dashboard de contas a pagar e receber"
+        - "Qual é a margem operacional atual?"
+        - "Compare as receitas deste ano com o ano passado"
+        
+        **Recursos do Agente:**
+        - 📊 **Análise em tempo real** de dados do PostgreSQL
+        - 📈 **Relatórios gerenciais completos** com visualizações interativas
+        - 🖼️ **Suporte a OCR** para processamento de imagens e PDFs escaneados
+        - 🤖 **Processamento inteligente** garantindo análise completa de todos os dados
+        - 📑 **Exportação de relatórios** em Markdown e HTML
+        - 💡 **Sugestões proativas** baseadas nos dados do cliente
+        
+        **Relatórios Gerenciais:**
+        O agente pode gerar relatórios gerenciais completos incluindo:
+        - Disponíveis financeiros vs obrigações
+        - Análise de receitas e despesas por grupo/subgrupo
+        - Fluxo de caixa mensal
+        - Projeções futuras
+        - KPIs e indicadores principais
+        - Recomendações estratégicas
+        
+        **Visualizações:**
+        Os relatórios incluem gráficos interativos (Plotly) que podem ser explorados diretamente na tela.
+        """)
+    
+    with st.expander("🤖 Inteligência Artificial (Importação)"):
+        st.markdown("""
+        O sistema utiliza IA para:
+        - **Classificação automática** de transações por grupo/subgrupo
+        - **Processamento completo** garantindo que todas as linhas sejam analisadas
+        - **OCR inteligente** para extrair dados de PDFs e imagens
+        - **Detecção automática** de quando usar IA para melhor processamento
+        
+        **Recomendações automáticas** aparecem durante a importação quando:
+        - Arquivo de imagem é detectado
+        - PDF baseado em imagens é identificado
+        - Arquivo grande (>100 linhas) é importado
+        - Formato complexo ou não estruturado é detectado
+        """)
+    
+    with st.expander("📚 Documentação e Tutoriais"):
+        st.markdown("""
+        - **Tutorial Completo**: Consulte `docs/TUTORIAL_COMPLETO.md` para guia detalhado
+        - **Deploy em Produção**: Consulte `docs/TUTORIAL_DEPLOY_PRODUCAO.md` para instruções de deploy
+        - **README**: Consulte `README.md` para visão geral e funcionalidades
         """)
     
     st.markdown("---")
