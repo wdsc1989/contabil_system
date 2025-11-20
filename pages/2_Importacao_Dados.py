@@ -373,27 +373,30 @@ if uploaded_file:
                     st.subheader("✏️ Seleção Manual do Tipo de Dado")
                     st.info("💡 Selecione o tipo de dado que melhor descreve o conteúdo do arquivo.")
                     
+                    # Define mapeamento de tipos para nomes amigáveis
+                    type_names_map = {
+                        'transactions': '💳 Transações Financeiras',
+                        'bank_statements': '🏦 Extratos Bancários',
+                        'contracts': '📝 Contratos/Eventos',
+                        'accounts_payable': '💸 Contas a Pagar',
+                        'accounts_receivable': '💰 Contas a Receber',
+                        'financial_investments': '📈 Extratos de Aplicações Financeiras',
+                        'credit_card_invoices': '💳 Faturas de Cartão de Crédito',
+                        'card_machine_statements': '🏪 Extratos de Máquina de Cartão',
+                        'inventory': '📦 Controle de Estoque'
+                    }
+                    
                     # Se havia uma sugestão anterior, mostra como referência
                     if 'detected_import_type' in st.session_state:
                         previous_suggestion = st.session_state.detected_import_type
-                        previous_name = type_names.get(previous_suggestion, previous_suggestion)
+                        previous_name = type_names_map.get(previous_suggestion, previous_suggestion)
                         st.caption(f"💡 Sugestão anterior da IA: {previous_name}")
                     
                     import_type = st.selectbox(
                         "Tipo de dado:",
                         options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
                                 'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
-                        format_func=lambda x: {
-                            'transactions': '💳 Transações Financeiras',
-                            'bank_statements': '🏦 Extratos Bancários',
-                            'contracts': '📝 Contratos/Eventos',
-                            'accounts_payable': '💸 Contas a Pagar',
-                            'accounts_receivable': '💰 Contas a Receber',
-                            'financial_investments': '📈 Extratos de Aplicações Financeiras',
-                            'credit_card_invoices': '💳 Faturas de Cartão de Crédito',
-                            'card_machine_statements': '🏪 Extratos de Máquina de Cartão',
-                            'inventory': '📦 Controle de Estoque'
-                        }[x],
+                        format_func=lambda x: type_names_map[x],
                         key="manual_import_type"
                     )
                     if st.button("✅ Confirmar Tipo", use_container_width=True):
