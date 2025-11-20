@@ -106,8 +106,11 @@ def show_top_navigation():
             st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥", use_container_width=True)
             st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
             
-            st.page_link("pages/2_Visualizar_Dados.py", label="📊 Visualizar Dados Importados", icon="📊", use_container_width=True)
-            st.caption("Visualize todos os tipos de dados importados")
+            st.markdown("**📊 Visualizar Dados Importados:**")
+            st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳", use_container_width=True)
+            st.page_link("pages/13_Aplicacoes_Financeiras.py", label="📈 Aplicações Financeiras", icon="📈", use_container_width=True)
+            st.page_link("pages/14_Maquina_Cartao.py", label="🏪 Máquina de Cartão", icon="🏪", use_container_width=True)
+            st.page_link("pages/15_Estoque.py", label="📦 Controle de Estoque", icon="📦", use_container_width=True)
             
             st.page_link("pages/2_Transacoes.py", label="💳 Transações", icon="💳", use_container_width=True)
         
