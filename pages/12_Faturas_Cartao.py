@@ -16,7 +16,7 @@ from models.client import Client
 from models.credit_card import CreditCardInvoice
 from models.group import Group, Subgroup
 from utils.formatters import format_currency, format_date
-from utils.ui_components import show_client_selector, show_sidebar_navigation
+from utils.ui_components import show_client_selector
 from sqlalchemy.orm import joinedload
 
 st.set_page_config(page_title="Faturas de Cartão", page_icon="💳", layout="wide")
