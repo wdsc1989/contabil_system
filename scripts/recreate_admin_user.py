@@ -2,10 +2,31 @@
 """
 Script para recriar ou atualizar usuário admin
 Uso: python3 scripts/recreate_admin_user.py
+
+IMPORTANTE: Execute este script com o ambiente virtual ativado!
+Exemplo:
+    source venv/bin/activate
+    python3 scripts/recreate_admin_user.py
 """
 import sys
 import os
 from pathlib import Path
+
+# Verifica se está em ambiente virtual
+if not hasattr(sys, 'real_prefix') and not (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    venv_path = Path(__file__).parent.parent / 'venv'
+    if venv_path.exists():
+        print("⚠️  AVISO: Ambiente virtual não detectado!")
+        print(f"   Execute: source {venv_path}/bin/activate")
+        print("   E então execute este script novamente.")
+        print()
+        # Tenta usar o Python do venv automaticamente
+        venv_python = venv_path / 'bin' / 'python3'
+        if venv_python.exists():
+            print(f"🔄 Tentando usar Python do venv: {venv_python}")
+            os.execv(str(venv_python), [str(venv_python)] + sys.argv)
+        else:
+            sys.exit(1)
 
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))

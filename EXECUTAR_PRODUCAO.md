@@ -64,7 +64,16 @@ bash scripts/run_migrations.sh
 
 **IMPORTANTE:** Execute este passo para garantir que o usuário admin tenha role 'admin' e senha 'admin123':
 
+**⚠️ CERTIFIQUE-SE DE QUE O AMBIENTE VIRTUAL ESTÁ ATIVADO!**
+
 ```bash
+# Verificar se venv está ativado (deve mostrar o caminho do venv)
+which python3
+
+# Se não estiver ativado, ative novamente:
+source venv/bin/activate
+
+# Agora execute o script
 python3 scripts/recreate_admin_user.py
 ```
 
