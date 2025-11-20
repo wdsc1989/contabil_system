@@ -144,13 +144,28 @@ try:
             valor_min = min(valores)
             valor_max = max(valores)
             
-            valor_range = st.slider(
-                "Faixa de valor:",
-                min_value=float(valor_min),
-                max_value=float(valor_max),
-                value=(float(valor_min), float(valor_max)),
-                format="R$ %.2f"
-            )
+            # Verifica se há variação nos valores
+            if valor_min == valor_max:
+                # Se todos os valores são iguais, não mostra slider
+                st.info(f"💰 Todos os valores são iguais: R$ {valor_min:,.2f}")
+                valor_range = (float(valor_min), float(valor_max))
+            else:
+                # Ajusta o range para garantir diferença mínima
+                if valor_max - valor_min < 0.01:
+                    # Se a diferença for muito pequena, ajusta o range
+                    valor_min_adj = float(valor_min) - 0.01
+                    valor_max_adj = float(valor_max) + 0.01
+                else:
+                    valor_min_adj = float(valor_min)
+                    valor_max_adj = float(valor_max)
+                
+                valor_range = st.slider(
+                    "Faixa de valor:",
+                    min_value=valor_min_adj,
+                    max_value=valor_max_adj,
+                    value=(float(valor_min), float(valor_max)),
+                    format="R$ %.2f"
+                )
             
             transactions = [t for t in transactions if valor_range[0] <= t.value <= valor_range[1]]
         
