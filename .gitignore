@@ -57,6 +57,28 @@ config/auth_config.yaml
 backups/
 *.bak
 
+# SSH Keys
+*.pem
+*.key
+ssh_*
+*_rsa
+*_rsa.pub
+id_rsa
+id_rsa.pub
+
+# Build artifacts
+*.spec
+build/
+dist/
+*.exe
+
+# Temporary files
+*.tmp
+*.temp
+
+
+
+
 
 
 

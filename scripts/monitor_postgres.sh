@@ -114,3 +114,9 @@ fi
 echo ""
 echo "✅ Monitoramento concluído!"
 
+
+
+
+
+
+

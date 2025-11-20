@@ -1324,6 +1324,37 @@ Mapeie as colunas do arquivo para os campos do sistema considerando nomes, conte
         from services.import_service import ImportService
         return ImportService.get_target_columns(import_type)
     
+    @staticmethod
+    def _format_groups_listing(groups_subgroups: Optional[List[Dict[str, Any]]]) -> str:
+        if not groups_subgroups:
+            return ""
+        lines = ["\n**GRUPOS E SUBGRUPOS DISPONÍVEIS PARA CLASSIFICAÇÃO:**"]
+        for group in groups_subgroups:
+            group_name = group.get("name", "")
+            group_id = group.get("id", "")
+            lines.append(f"- Grupo ID {group_id}: {group_name}")
+            for subgroup in group.get("subgroups", []):
+                sub_name = subgroup.get("name", "")
+                sub_id = subgroup.get("id", "")
+                lines.append(f"  - Subgrupo ID {sub_id}: {sub_name}")
+        return "\n".join(lines)
+
+    def _build_generic_classification_block(
+        self, groups_subgroups: Optional[List[Dict[str, Any]]]
+    ) -> str:
+        listing = self._format_groups_listing(groups_subgroups)
+        instructions = """
+
+**Classificação automática obrigatória:**
+- Para cada linha, informe `group_id` e `subgroup_id` usando os IDs disponibilizados (ou null se não houver encaixe).
+- Utilize o contexto (descrição, valor, tipo) para escolher o melhor grupo.
+- Inclua `classification_confidence` (0.0 a 1.0) indicando o nível de certeza da classificação.
+- Quando `classification_confidence` for inferior a 0.70, descreva o motivo em `issues` mencionando a linha correspondente.
+"""
+        if listing:
+            return f"{listing}\n{instructions}"
+        return instructions
+
     def _create_prompt_process_transactions(
         self,
         file_data: str,
@@ -1346,24 +1377,7 @@ Mapeie as colunas do arquivo para os campos do sistema considerando nomes, conte
 - Datas podem estar em diferentes formatos no texto - identifique e converta corretamente
 """
         
-        groups_info = ""
-        if groups_subgroups:
-            groups_info = "\n**GRUPOS E SUBGRUPOS DISPONÍVEIS PARA CLASSIFICAÇÃO:**\n"
-            for group in groups_subgroups:
-                group_name = group.get('name', '')
-                group_id = group.get('id', '')
-                subgroups = group.get('subgroups', [])
-                groups_info += f"- Grupo ID {group_id}: {group_name}\n"
-                if subgroups:
-                    for sg in subgroups:
-                        sg_name = sg.get('name', '')
-                        sg_id = sg.get('id', '')
-                        groups_info += f"  - Subgrupo ID {sg_id}: {sg_name}\n"
-            groups_info += "\n**IMPORTANTE - Classificação Automática:**\n"
-            groups_info += "- Para CADA linha processada, analise a descrição, categoria e valor\n"
-            groups_info += "- Identifique o grupo e subgrupo mais apropriado baseado no contexto da transação\n"
-            groups_info += "- Use group_id e subgroup_id nos dados processados\n"
-            groups_info += "- Se não conseguir identificar com certeza, deixe null\n"
+        groups_info = self._format_groups_listing(groups_subgroups)
         
         prompt = f"""Você é um especialista em processamento de transações financeiras e contábeis.
 
@@ -1433,6 +1447,8 @@ Analise o arquivo de transações financeiras e estruture os dados para importa�
    - **SEMPRE retorne group_id e subgroup_id** - mesmo que seja null se não conseguir identificar
    - Retorne os IDs numéricos (group_id e subgroup_id) nos dados processados
    - Se a descrição não for clara, use o valor e tipo (entrada/saida) para ajudar na classificação
+   - Informe o campo `classification_confidence` (0.0 a 1.0) indicando o nível de confiança na classificação
+   - Quando `classification_confidence` < 0.70, acrescente uma observação em `issues` citando a linha e o motivo
    - **IMPORTANTE:** Grupo e subgrupo são a classificação PRINCIPAL para relatórios contábeis (DRE/DFC)
 
 6. CATEGORIA (CLASSIFICAÇÃO SECUNDÁRIA - OPCIONAL):
@@ -1477,7 +1493,7 @@ Processe TODAS as linhas do arquivo e retorne dados estruturados prontos para im
             "group_id": 1,
             "subgroup_id": 3,
             "original_row": 1,
-            "confidence": 0.95
+            "classification_confidence": 0.95
         }}
     ],
     "summary": {{
@@ -1518,24 +1534,7 @@ Processe TODAS as linhas do arquivo e retorne dados estruturados prontos para im
 - Datas podem estar em diferentes formatos no texto - identifique e converta corretamente
 """
         
-        groups_info = ""
-        if groups_subgroups:
-            groups_info = "\n**GRUPOS E SUBGRUPOS DISPONÍVEIS PARA CLASSIFICAÇÃO:**\n"
-            for group in groups_subgroups:
-                group_name = group.get('name', '')
-                group_id = group.get('id', '')
-                subgroups = group.get('subgroups', [])
-                groups_info += f"- Grupo ID {group_id}: {group_name}\n"
-                if subgroups:
-                    for sg in subgroups:
-                        sg_name = sg.get('name', '')
-                        sg_id = sg.get('id', '')
-                        groups_info += f"  - Subgrupo ID {sg_id}: {sg_name}\n"
-            groups_info += "\n**IMPORTANTE - Classificação Automática:**\n"
-            groups_info += "- Para CADA linha processada, analise a descrição/histórico e valor\n"
-            groups_info += "- Identifique o grupo e subgrupo mais apropriado baseado no contexto da transação\n"
-            groups_info += "- Use group_id e subgroup_id nos dados processados\n"
-            groups_info += "- Se não conseguir identificar com certeza, deixe null\n"
+        groups_info = self._format_groups_listing(groups_subgroups)
         
         prompt = f"""Você é um especialista em processamento de extratos bancários.
 
@@ -1598,6 +1597,8 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
    - **SEMPRE retorne group_id e subgroup_id** - mesmo que seja null se não conseguir identificar
    - Retorne os IDs numéricos (group_id e subgroup_id) nos dados processados
    - Se o histórico não for claro, use o valor e sinal (positivo/negativo) para ajudar na classificação
+   - Informe o campo `classification_confidence` (0.0 a 1.0) indicando o nível de confiança na classificação
+   - Quando `classification_confidence` < 0.70, registre uma explicação em `issues` citando a linha
    - **IMPORTANTE:** Grupo e subgrupo são a classificação PRINCIPAL para relatórios contábeis (DRE/DFC)
 
 6. CONTA: Identifique número da conta se houver
@@ -1627,7 +1628,8 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
             "balance": 15000.00,
             "group_id": 1,
             "subgroup_id": 3,
-            "original_row": 1
+            "original_row": 1,
+            "classification_confidence": 0.92
         }}
     ],
     "summary": {{
@@ -1644,11 +1646,14 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar contas a pagar
         """
+        groups_info = self._build_generic_classification_block(groups_subgroups)
+        
         prompt = f"""Você é um especialista em processamento de contas a pagar.
 
 **Estrutura da Tabela:**
@@ -1658,12 +1663,16 @@ Analise o arquivo de extrato bancário e estruture os dados para importação no
 - cpf_cnpj (String, opcional): CPF/CNPJ
 - month_ref (String, opcional): Mês de referência YYYY-MM
 - paid (Boolean, opcional): Se já foi pago
+- group_id (Integer, opcional): ID do grupo de classificação
+- subgroup_id (Integer, opcional): ID do subgrupo de classificação
+
+{groups_info}
 
 **Colunas do arquivo:** {', '.join(columns)}
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
-Processe e retorne em JSON com array "processed_data".
+Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
     
@@ -1672,11 +1681,14 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar contas a receber
         """
+        groups_info = self._build_generic_classification_block(groups_subgroups)
+        
         prompt = f"""Você é um especialista em processamento de contas a receber.
 
 **Estrutura da Tabela:**
@@ -1686,12 +1698,16 @@ Processe e retorne em JSON com array "processed_data".
 - cpf_cnpj (String, opcional): CPF/CNPJ
 - month_ref (String, opcional): Mês de referência YYYY-MM
 - received (Boolean, opcional): Se já foi recebido
+- group_id (Integer, opcional): ID do grupo de classificação
+- subgroup_id (Integer, opcional): ID do subgrupo de classificação
+
+{groups_info}
 
 **Colunas do arquivo:** {', '.join(columns)}
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
-Processe e retorne em JSON com array "processed_data".
+Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
     
@@ -1700,7 +1716,8 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar contratos
@@ -1712,6 +1729,8 @@ Processe e retorne em JSON com array "processed_data".
 - Os dados podem incluir texto completo do PDF, cabeçalhos, rodapés e metadados
 - Use TODAS as informações disponíveis para identificar campos
 """
+        
+        groups_info = self._build_generic_classification_block(groups_subgroups)
         
         prompt = f"""Você é um especialista em processamento de contratos e eventos.
 
@@ -1726,6 +1745,10 @@ Analise o arquivo e estruture os dados para importação.
 - service_sold (String): Serviço vendido
 - guests_count (Integer): Número de convidados
 - contractor_name (String): Nome do contratante
+- group_id (Integer, opcional): ID do grupo de classificação
+- subgroup_id (Integer, opcional): ID do subgrupo de classificação
+
+{groups_info}
 
 {pdf_note}
 
@@ -1733,7 +1756,7 @@ Analise o arquivo e estruture os dados para importação.
 **Amostra:** {data_sample}
 **Dados completos:** {file_data}
 
-Processe e retorne em JSON com array "processed_data".
+Processe e retorne em JSON com array "processed_data", incluindo classification_confidence para cada linha.
 """
         return prompt
     
@@ -1742,7 +1765,8 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar extratos de aplicações financeiras
@@ -1784,7 +1808,8 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar faturas de cartão de crédito
@@ -1826,7 +1851,8 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar extratos de máquina de cartão
@@ -1867,7 +1893,8 @@ Processe e retorne em JSON com array "processed_data".
         file_data: str,
         columns: List[str],
         data_sample: str,
-        is_pdf_source: bool = False
+        is_pdf_source: bool = False,
+        groups_subgroups: Optional[List[Dict[str, Any]]] = None
     ) -> str:
         """
         Cria prompt específico para processar controle de estoque
@@ -2039,19 +2066,19 @@ Processe e retorne em JSON com array "processed_data".
                     groups_subgroups=groups_subgroups
                 )
             elif import_type == 'contracts':
-                prompt = self._create_prompt_process_contracts(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_contracts(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'accounts_payable':
-                prompt = self._create_prompt_process_accounts_payable(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_accounts_payable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'accounts_receivable':
-                prompt = self._create_prompt_process_accounts_receivable(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_accounts_receivable(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'financial_investments':
-                prompt = self._create_prompt_process_financial_investments(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_financial_investments(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'credit_card_invoices':
-                prompt = self._create_prompt_process_credit_card_invoices(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_credit_card_invoices(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'card_machine_statements':
-                prompt = self._create_prompt_process_card_machine_statements(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_card_machine_statements(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             elif import_type == 'inventory':
-                prompt = self._create_prompt_process_inventory(file_data, columns, data_sample, is_pdf_source=is_pdf_source)
+                prompt = self._create_prompt_process_inventory(file_data, columns, data_sample, is_pdf_source=is_pdf_source, groups_subgroups=groups_subgroups)
             else:
                 return {
                     'success': False,
@@ -2060,6 +2087,9 @@ Processe e retorne em JSON com array "processed_data".
                     'summary': {},
                     'issues': []
                 }
+            
+            if import_type not in ['transactions', 'bank_statements']:
+                prompt += self._build_generic_classification_block(groups_subgroups)
             
             if status_callback:
                 status_callback("Classificando por grupo e subgrupo...")
@@ -2502,4 +2532,10 @@ Processe e retorne em JSON com array "processed_data".
             print(f"Erro na inferência: {e}")
         
         return {}
+
+
+
+
+
+
 

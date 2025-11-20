@@ -14,7 +14,8 @@ AVAILABLE_DATA_TYPES = [
     'accounts_receivable',
     'financial_investments',
     'credit_card_invoices',
-    'card_machine_statements'
+    'card_machine_statements',
+    'inventory'
 ]
 
 # Tipos de relatórios disponíveis
@@ -29,7 +30,8 @@ DATA_TYPES = {
     'accounts_receivable': 'Contas a Receber',
     'financial_investments': 'Aplicações Financeiras',
     'credit_card_invoices': 'Faturas de Cartão de Crédito',
-    'card_machine_statements': 'Extratos de Máquina de Cartão'
+    'card_machine_statements': 'Extratos de Máquina de Cartão',
+    'inventory': 'Controle de Estoque'
 }
 
 

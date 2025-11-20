@@ -6,6 +6,7 @@ from services.auth_service import AuthService
 from config.database import SessionLocal
 from models.client import Client
 from utils.hide_auto_menu import hide_streamlit_menu
+from utils.client_selection import sync_selected_client
 
 
 def show_sidebar():
@@ -42,17 +43,23 @@ def show_sidebar():
                 if default_client not in client_options:
                     default_client = list(client_options.keys())[0]
                 
-                # Selectbox com pesquisa (nativo do Streamlit)
+                # Mantém o estado do widget alinhado ao cliente selecionado globalmente
+                current_value = st.session_state.get("sidebar_client_selector")
+                if current_value != default_client:
+                    st.session_state["sidebar_client_selector"] = default_client
+
+                options_list = list(client_options.keys())
+                default_index = options_list.index(default_client) if default_client in options_list else 0
+
                 selected_client_id = st.selectbox(
                     "Selecione o cliente:",
-                    options=list(client_options.keys()),
+                    options=options_list,
                     format_func=lambda x: client_options[x],
-                    index=list(client_options.keys()).index(default_client) if default_client in client_options else 0,
-                    key="sidebar_client_selector",
+                    index=default_index,
                     label_visibility="collapsed"
                 )
                 
-                st.session_state.selected_client_id = selected_client_id
+                sync_selected_client(selected_client_id, source="sidebar")
                 
                 # Exibe informações do cliente selecionado
                 selected = next((c for c in clients if c.id == selected_client_id), None)
@@ -87,6 +94,9 @@ def show_sidebar():
         st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥")
         st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
         
+        st.page_link("pages/16_Diario_Gastos.py", label="📓 Diário de Gastos", icon="📓")
+        st.caption("Controle visual diário de despesas")
+        
         # Seção Visualizar Dados Importados
         st.markdown("**📊 Visualizar Dados Importados:**")
         st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳")
@@ -110,17 +120,24 @@ def show_sidebar():
         
         # Seção Dashboards e Relatórios
         st.markdown("#### 📊 Dashboards e Relatórios")
-        st.page_link("pages/6_DRE.py", label="📈 DRE - Demonstração do Resultado", icon="📊")
-        st.caption("Receitas vs Despesas e resultado")
         
-        st.page_link("pages/7_DFC.py", label="💵 DFC - Fluxo de Caixa", icon="💵")
-        st.caption("Análise de fluxo de caixa")
+        st.page_link("pages/22_Painel_Controle.py", label="🎯 Painel de Controle", icon="🎯")
+        st.caption("Visão executiva unificada")
         
-        st.page_link("pages/8_Sazonalidade.py", label="📉 Análise de Sazonalidade", icon="📈")
-        st.caption("Padrões sazonais e tendências")
+        st.markdown("**📊 Relatórios Financeiros:**")
+        st.page_link("pages/6_DRE.py", label="📈 DRE", icon="📊")
+        st.page_link("pages/7_DFC.py", label="💵 DFC", icon="💵")
+        st.page_link("pages/18_Fluxo_Caixa_Gerencial.py", label="💼 Fluxo Gerencial", icon="💼")
         
-        st.page_link("pages/9_Relatorios.py", label="📑 Relatórios e Exportação", icon="📑")
-        st.caption("Gere e exporte relatórios completos")
+        st.markdown("**🎯 Relatórios Operacionais:**")
+        st.page_link("pages/17_Relatorio_Eventos.py", label="🎉 Eventos/Contratos", icon="🎉")
+        st.page_link("pages/20_Contas_Dashboard.py", label="💰 Contas Dashboard", icon="💰")
+        st.page_link("pages/19_Despesas_PF_PJ.py", label="💼 Despesas PF/PJ", icon="💼")
+        st.page_link("pages/21_Performance_Vendedores.py", label="🏆 Vendedores", icon="🏆")
+        
+        st.markdown("**📈 Análises:**")
+        st.page_link("pages/8_Sazonalidade.py", label="📉 Sazonalidade", icon="📈")
+        st.page_link("pages/9_Relatorios.py", label="📑 Exportação", icon="📑")
         
         st.markdown("---")
         
@@ -143,4 +160,11 @@ def show_sidebar():
         if st.button("🚪 Sair", use_container_width=True):
             AuthService.logout()
             st.rerun()
+
+
+
+
+
+
+
 

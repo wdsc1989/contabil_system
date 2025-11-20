@@ -301,3 +301,9 @@ def translate_dataframe(df: pd.DataFrame, translate_columns: bool = True, transl
     
     return df
 
+
+
+
+
+
+

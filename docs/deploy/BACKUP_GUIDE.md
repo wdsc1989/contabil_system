@@ -438,3 +438,9 @@ sudo chown -R contabil:contabil /var/backups/contabil
 
 **✅ Sistema de backup configurado e funcionando!**
 
+
+
+
+
+
+

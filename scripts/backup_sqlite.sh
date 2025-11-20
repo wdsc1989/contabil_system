@@ -74,3 +74,9 @@ ls -t "$BACKUP_DIR"/*.db.gz 2>/dev/null | tail -n +11 | xargs -r rm -f
 
 echo -e "${GREEN}✅ Processo de backup concluído!${NC}"
 
+
+
+
+
+
+

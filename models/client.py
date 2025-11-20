@@ -20,22 +20,22 @@ class Client(Base):
     active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Relacionamentos
-    permissions = relationship('UserClientPermission', back_populates='client', cascade='all, delete-orphan')
-    groups = relationship('Group', back_populates='client', cascade='all, delete-orphan')
-    transactions = relationship('Transaction', back_populates='client', cascade='all, delete-orphan')
-    contracts = relationship('Contract', back_populates='client', cascade='all, delete-orphan')
-    accounts_payable = relationship('AccountPayable', back_populates='client', cascade='all, delete-orphan')
-    accounts_receivable = relationship('AccountReceivable', back_populates='client', cascade='all, delete-orphan')
-    bank_statements = relationship('BankStatement', back_populates='client', cascade='all, delete-orphan')
-    financial_investments = relationship('FinancialInvestment', back_populates='client', cascade='all, delete-orphan')
-    credit_card_invoices = relationship('CreditCardInvoice', back_populates='client', cascade='all, delete-orphan')
-    card_machine_statements = relationship('CardMachineStatement', back_populates='client', cascade='all, delete-orphan')
-    inventory = relationship('Inventory', back_populates='client', cascade='all, delete-orphan')
-    import_mappings = relationship('ImportMapping', back_populates='client', cascade='all, delete-orphan')
-    report_configs = relationship('ClientReportConfig', back_populates='client', cascade='all, delete-orphan')
-    report_configs = relationship('ClientReportConfig', back_populates='client', cascade='all, delete-orphan')
+    # Relacionamentos - usando lazy='dynamic' para evitar problemas de importação circular
+    permissions = relationship('UserClientPermission', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    groups = relationship('Group', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    transactions = relationship('Transaction', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    contracts = relationship('Contract', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    accounts_payable = relationship('AccountPayable', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    accounts_receivable = relationship('AccountReceivable', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    bank_statements = relationship('BankStatement', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    financial_investments = relationship('FinancialInvestment', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    credit_card_invoices = relationship('CreditCardInvoice', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    card_machine_statements = relationship('CardMachineStatement', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    inventory = relationship('Inventory', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    import_mappings = relationship('ImportMapping', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
+    report_configs = relationship('ClientReportConfig', back_populates='client', cascade='all, delete-orphan', lazy='dynamic')
 
     def __repr__(self):
         return f"<Client(name='{self.name}', cpf_cnpj='{self.cpf_cnpj}')>"
+
 

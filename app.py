@@ -99,14 +99,6 @@ def login_page():
                             st.error("❌ Usuário ou senha inválidos.")
                     finally:
                         db.close()
-        
-        st.markdown("---")
-        st.info("""
-        **Credenciais de Teste:**
-        - Admin: `admin` / `admin123`
-        - Gerente: `gerente1` / `gerente123`
-        - Visualizador: `viewer1` / `viewer123`
-        """)
 
 
 def sidebar_navigation():
@@ -402,4 +394,5 @@ if __name__ == "__main__":
     # Inicializa banco de dados e cria admin se necessário
     initialize_database()
     main()
+
 

@@ -208,7 +208,11 @@ class AuthService:
         Decorator/função para exigir autenticação
         """
         if not AuthService.is_authenticated():
-            st.warning("⚠️ Você precisa fazer login para acessar esta página.")
+            # Redireciona diretamente para a página principal (login)
+            try:
+                st.switch_page("app.py")
+            except Exception:
+                st.warning("⚠️ Você precisa fazer login para acessar esta página.")
             st.stop()
 
     @staticmethod
@@ -221,6 +225,7 @@ class AuthService:
         if user['role'] not in allowed_roles:
             st.error("❌ Você não tem permissão para acessar esta página.")
             st.stop()
+
 
 
 

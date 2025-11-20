@@ -30,6 +30,32 @@ from models.card_machine import CardMachineStatement
 from models.inventory import Inventory
 from models.client_report_config import ClientReportConfig
 from services.report_config_service import ReportConfigService
+from services.group_template_service import GroupTemplateService
+from services.report_service import ReportService
+
+
+TEST_CLIENT_NAME = "Cliente Ficticio QA"
+
+
+def reset_client_data(db, client_id: int):
+    """
+    Remove todos os dados financeiros associados ao cliente fictício
+    para garantir cenário determinístico de testes.
+    """
+    models_to_clear = [
+        Transaction,
+        BankStatement,
+        Contract,
+        AccountPayable,
+        AccountReceivable,
+        FinancialInvestment,
+        CreditCardInvoice,
+        CardMachineStatement,
+        Inventory,
+    ]
+    for model in models_to_clear:
+        db.query(model).filter(model.client_id == client_id).delete()
+    db.commit()
 
 
 def create_test_data():
@@ -45,7 +71,7 @@ def create_test_data():
         
         # 1. Criar ou obter cliente de teste
         print("\n1. Criando cliente de teste...")
-        client = db.query(Client).filter(Client.name == "Cliente Teste").first()
+        client = db.query(Client).filter(Client.name == TEST_CLIENT_NAME).first()
         if not client:
             # Tenta criar com CPF/CNPJ único
             cpf_cnpj = f"{random.randint(10000000, 99999999)}/0001-{random.randint(10, 99)}"
@@ -54,7 +80,7 @@ def create_test_data():
                 cpf_cnpj = f"{random.randint(10000000, 99999999)}/0001-{random.randint(10, 99)}"
             
             client = Client(
-                name="Cliente Teste",
+                name=TEST_CLIENT_NAME,
                 cpf_cnpj=cpf_cnpj,
                 tipo_empresa="MEI",
                 active=True
@@ -65,6 +91,9 @@ def create_test_data():
             print(f"   ✅ Cliente criado: {client.name} (ID: {client.id}, CPF/CNPJ: {client.cpf_cnpj})")
         else:
             print(f"   ✅ Cliente já existe: {client.name} (ID: {client.id}, CPF/CNPJ: {client.cpf_cnpj})")
+
+        reset_client_data(db, client.id)
+        GroupTemplateService.ensure_default_groups(db, client.id)
         
         # 2. Criar grupos e subgrupos
         print("\n2. Criando grupos e subgrupos...")
@@ -554,7 +583,7 @@ def show_statistics():
         print("ESTATÍSTICAS DOS DADOS")
         print("=" * 60)
         
-        client = db.query(Client).filter(Client.name == "Cliente Teste").first()
+        client = db.query(Client).filter(Client.name == TEST_CLIENT_NAME).first()
         if not client:
             print("\n⚠️ Cliente de teste não encontrado!")
             return
@@ -600,6 +629,30 @@ def show_statistics():
     finally:
         db.close()
 
+def validate_reports(client_id: int):
+    """
+    Executa validações automáticas nos relatórios DRE, DFC e Sazonalidade
+    para garantir que todos reflitam os dados importados.
+    """
+    db = SessionLocal()
+    try:
+        today = date.today()
+        start_date = today - timedelta(days=120)
+
+        dre = ReportService.get_dre_data(db, client_id, start_date, today)
+        assert dre['receitas_por_subgrupo'], "DRE sem receitas por subgrupo classificadas"
+        assert dre['despesas_por_subgrupo'], "DRE sem despesas por subgrupo classificadas"
+
+        dfc = ReportService.get_dfc_data(db, client_id, start_date, today)
+        assert dfc['fluxo_mensal'], "DFC sem fluxo mensal calculado"
+
+        sazonalidade = ReportService.get_seasonality_data(db, client_id)
+        assert sazonalidade['por_ano'], "Sazonalidade sem dados consolidados"
+
+        print("\n✅ Relatórios DRE/DFC/Sazonalidade validados com sucesso.")
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
@@ -619,6 +672,7 @@ if __name__ == "__main__":
     
     # Mostra estatísticas
     show_statistics()
+    validate_reports(client_id)
     
     print("\n" + "=" * 60)
     if is_consistent:
@@ -626,4 +680,5 @@ if __name__ == "__main__":
     else:
         print("⚠️ TESTE CONCLUÍDO COM AVISOS/ERROS")
     print("=" * 60)
+
 

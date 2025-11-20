@@ -39,3 +39,9 @@ class FinancialInvestment(Base):
 
 
 
+
+
+
+
+
+

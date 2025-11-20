@@ -19,6 +19,25 @@ from utils.translations import translate_dataframe
 from models.client import Client
 from models.group import Group, Subgroup
 
+# Constantes
+CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.70  # 70% de confiança mínima para classificação
+
+# Helpers
+def _ensure_classification_confidence(record: dict) -> dict:
+    """
+    Normaliza o campo classification_confidence nos registros retornados pela IA.
+    """
+    if (
+        "classification_confidence" not in record
+        and "confidence" in record
+        and record["confidence"] is not None
+    ):
+        record["classification_confidence"] = record.pop("confidence")
+    else:
+        record.pop("confidence", None)
+    return record
+
+
 st.set_page_config(page_title="Importação de Dados", page_icon="📥", layout="wide")
 
 # Esconde o menu automático do Streamlit
@@ -486,6 +505,13 @@ if uploaded_file:
                 # Exibe estatísticas
                 summary = result.get('summary', {})
                 processed_data = result.get('processed_data', [])
+                processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+                low_conf_indexes = [
+                    idx for idx, record in enumerate(processed_data)
+                    if record.get('classification_confidence', 1) is not None
+                    and record.get('classification_confidence', 1) < CLASSIFICATION_CONFIDENCE_THRESHOLD
+                ]
+                low_conf_line_numbers = [idx + 1 for idx in low_conf_indexes]
                 
                 if not processed_data:
                     st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
@@ -526,6 +552,17 @@ if uploaded_file:
                 elif rows_diff == 0:
                     st.success(f"✅ Todas as {original_rows} linha(s) do arquivo foram processadas com sucesso!")
                 
+                if low_conf_line_numbers:
+                    preview_lines = ", ".join(str(num) for num in low_conf_line_numbers[:10])
+                    extra = ""
+                    if len(low_conf_line_numbers) > 10:
+                        extra = f" (total de {len(low_conf_line_numbers)} linhas)"
+                    st.warning(
+                        f"⚠️ {len(low_conf_line_numbers)} linha(s) com confiança abaixo de "
+                        f"{int(CLASSIFICATION_CONFIDENCE_THRESHOLD * 100)}%: {preview_lines}{extra}. "
+                        "Revise a classificação antes de importar."
+                    )
+                
                 # Mostra problemas se houver
                 issues = result.get('issues', [])
                 if issues:
@@ -542,7 +579,7 @@ if uploaded_file:
                 # Remove colunas internas se existirem (apenas para exibição)
                 for record in preview_data:
                     record.pop('original_row', None)
-                    record.pop('confidence', None)
+                    _ensure_classification_confidence(record)
                 
                 # Converte para DataFrame para preview
                 preview_df = pd.DataFrame(preview_data)
@@ -597,7 +634,7 @@ if uploaded_file:
                 # Remove colunas internas se existirem
                 for record in working_data:
                     record.pop('original_row', None)
-                    record.pop('confidence', None)
+                    _ensure_classification_confidence(record)
                 
                 # Aplica nome do banco extraído/editado aos dados se aplicável
                 if import_type == 'bank_statements':
@@ -661,6 +698,11 @@ if uploaded_file:
                 
                 # Tabela editável
                 st.markdown("**Revise e edite os dados processados:**")
+                if low_conf_line_numbers:
+                    st.info(
+                        "As linhas com confiança baixa permanecem selecionadas; utilize a coluna "
+                        "'Confiança Classificação' para identificar e ajustar grupos/subgrupos."
+                    )
                 
                 # Prepara dados para edição
                 edit_data = []
@@ -693,11 +735,23 @@ if uploaded_file:
                         except:
                             pass
                 
+                if 'classification_confidence' in edit_df.columns:
+                    try:
+                        edit_df['classification_confidence'] = pd.to_numeric(
+                            edit_df['classification_confidence'], errors='coerce'
+                        )
+                    except:
+                        pass
+                
                 # Configura colunas editáveis
                 column_config = {
                     "_row_num": st.column_config.NumberColumn("Linha", width="small", disabled=True),
                     "_select": st.column_config.CheckboxColumn("Importar", width="small"),
                 }
+                if 'classification_confidence' in edit_df.columns:
+                    column_config["classification_confidence"] = st.column_config.NumberColumn(
+                        "Confiança Classificação", format="%.2f", disabled=True, width="small"
+                    )
                 
                 # Adiciona configuração para campos editáveis baseado no tipo
                 if import_type == 'transactions':

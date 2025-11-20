@@ -19,7 +19,7 @@ from services.report_service import ReportService
 from services.report_config_service import ReportConfigService, DATA_TYPES
 from models.client import Client
 from models.transaction import Transaction
-from utils.formatters import format_currency, format_date
+from utils.formatters import format_currency, format_date, format_data_source
 from sqlalchemy.orm import joinedload
 
 st.set_page_config(page_title="DFC", page_icon="💵", layout="wide")
@@ -134,6 +134,20 @@ try:
             )
         
         st.markdown("---")
+        
+        source_breakdown = dfc_data.get('source_totals', [])
+        if source_breakdown:
+            st.subheader("📌 Fontes dos Dados no Período")
+            df_sources = pd.DataFrame([
+                {
+                    'Fonte': item['fonte'],
+                    'Tipo': 'Entrada' if item.get('tipo') == 'entrada' else 'Saída',
+                    'Valor': format_currency(item['valor'])
+                }
+                for item in source_breakdown
+            ])
+            st.dataframe(df_sources, use_container_width=True, hide_index=True)
+            st.markdown("---")
         
         # Gráfico de fluxo de caixa
         st.subheader("📊 Fluxo de Caixa Mensal")
@@ -318,17 +332,20 @@ try:
                     primeiro_dia = date(int(ano), int(mes_num), 1)
                     ultimo_dia = date(int(ano), int(mes_num), calendar.monthrange(int(ano), int(mes_num))[1])
                     
-                    # Entradas do mês
-                    st.markdown("#### 💰 Entradas do Mês")
-                    trans_entradas = db.query(Transaction).options(
-                        joinedload(Transaction.group),
-                        joinedload(Transaction.subgroup)
-                    ).filter(
-                        Transaction.client_id == client_id,
-                        Transaction.type == 'entrada',
-                        Transaction.date >= primeiro_dia,
-                        Transaction.date <= ultimo_dia
-                    ).order_by(Transaction.date).all()
+                    # Entradas do mês (APENAS se tipo habilitado)
+                    if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+                        st.markdown("#### 💰 Entradas do Mês")
+                        trans_entradas = db.query(Transaction).options(
+                            joinedload(Transaction.group),
+                            joinedload(Transaction.subgroup)
+                        ).filter(
+                            Transaction.client_id == client_id,
+                            Transaction.type == 'entrada',
+                            Transaction.date >= primeiro_dia,
+                            Transaction.date <= ultimo_dia
+                        ).order_by(Transaction.date).all()
+                    else:
+                        trans_entradas = []
                     
                     if trans_entradas:
                         # Agrupa por grupo/subgrupo
@@ -350,7 +367,8 @@ try:
                                     trans_data.append({
                                         'Data': format_date(t.date),
                                         'Descrição': t.description[:35] + '...' if len(t.description) > 35 else t.description,
-                                        'Valor': format_currency(t.value)
+                                    'Valor': format_currency(t.value),
+                                    'Origem': format_data_source(t.document_type, t.imported_from)
                                     })
                                 
                                 df_trans = pd.DataFrame(trans_data)
@@ -358,22 +376,25 @@ try:
                                 
                                 if len(trans_list) > 5:
                                     st.caption(f"Mostrando 5 de {len(trans_list)} transações")
-                    else:
+                    elif 'transactions' in enabled_types or 'bank_statements' in enabled_types:
                         st.info("Nenhuma entrada neste mês")
                     
                     st.markdown("---")
                     
-                    # Saídas do mês
-                    st.markdown("#### 💸 Saídas do Mês")
-                    trans_saidas = db.query(Transaction).options(
-                        joinedload(Transaction.group),
-                        joinedload(Transaction.subgroup)
-                    ).filter(
-                        Transaction.client_id == client_id,
-                        Transaction.type == 'saida',
-                        Transaction.date >= primeiro_dia,
-                        Transaction.date <= ultimo_dia
-                    ).order_by(Transaction.date).all()
+                    # Saídas do mês (APENAS se tipo habilitado)
+                    if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+                        st.markdown("#### 💸 Saídas do Mês")
+                        trans_saidas = db.query(Transaction).options(
+                            joinedload(Transaction.group),
+                            joinedload(Transaction.subgroup)
+                        ).filter(
+                            Transaction.client_id == client_id,
+                            Transaction.type == 'saida',
+                            Transaction.date >= primeiro_dia,
+                            Transaction.date <= ultimo_dia
+                        ).order_by(Transaction.date).all()
+                    else:
+                        trans_saidas = []
                     
                     if trans_saidas:
                         # Agrupa por grupo/subgrupo
@@ -394,7 +415,8 @@ try:
                                     trans_data.append({
                                         'Data': format_date(t.date),
                                         'Descrição': t.description[:35] + '...' if len(t.description) > 35 else t.description,
-                                        'Valor': format_currency(t.value)
+                                    'Valor': format_currency(t.value),
+                                    'Origem': format_data_source(t.document_type, t.imported_from)
                                     })
                                 
                                 df_trans = pd.DataFrame(trans_data)
@@ -402,7 +424,7 @@ try:
                                 
                                 if len(trans_list) > 5:
                                     st.caption(f"Mostrando 5 de {len(trans_list)} transações")
-                    else:
+                    elif 'transactions' in enabled_types or 'bank_statements' in enabled_types:
                         st.info("Nenhuma saída neste mês")
             
             st.markdown("---")

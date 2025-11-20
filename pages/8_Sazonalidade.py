@@ -6,7 +6,9 @@ import sys
 import os
 import plotly.graph_objects as go
 import plotly.express as px
+import pandas as pd
 import calendar
+from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -252,6 +254,173 @@ try:
                     )
         
         st.markdown("---")
+        
+        # Análise por Grupo/Subgrupo
+        if seasonality_data.get('por_grupo_mes'):
+            st.subheader("📊 Sazonalidade por Grupo/Subgrupo")
+            
+            # Agrupa dados por grupo
+            grupos_data = defaultdict(lambda: defaultdict(float))
+            for item in seasonality_data['por_grupo_mes']:
+                grupo_label = item['grupo_subgrupo']
+                mes = item['mes']
+                valor = item['valor']
+                grupos_data[grupo_label][(item['ano'], mes)] = valor
+            
+            # Cria gráfico comparativo
+            fig = go.Figure()
+            
+            for grupo_label, data_points in list(grupos_data.items())[:5]:  # Top 5 grupos
+                meses_labels = []
+                valores = []
+                for (year, month) in sorted(data_points.keys()):
+                    meses_labels.append(f"{year}-{month:02d}")
+                    valores.append(data_points[(year, month)])
+                
+                fig.add_trace(go.Scatter(
+                    x=meses_labels,
+                    y=valores,
+                    mode='lines+markers',
+                    name=grupo_label,
+                    line=dict(width=2),
+                    marker=dict(size=6)
+                ))
+            
+            fig.update_layout(
+                height=500,
+                xaxis_title="Período",
+                yaxis_title="Receita (R$)",
+                hovermode='x unified',
+                legend=dict(
+                    orientation="v",
+                    yanchor="top",
+                    y=1,
+                    xanchor="left",
+                    x=1.02
+                )
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            st.markdown("---")
+        
+        # Análise de Eventos (Sazonalidade específica) - APENAS se habilitado
+        if 'contracts' in enabled_types:
+            st.subheader("🎉 Sazonalidade de Eventos")
+            
+            from models.contract import Contract
+            
+            # Busca eventos de todos os anos
+            eventos = db.query(Contract).filter(
+                Contract.client_id == client_id
+            ).all()
+        else:
+            eventos = []
+        
+        if eventos:
+            # Agrupa por mês
+            eventos_por_mes = defaultdict(lambda: {'count': 0, 'revenue': 0})
+            eventos_por_tipo_mes = defaultdict(lambda: defaultdict(int))
+            
+            for ev in eventos:
+                mes = ev.event_date.month
+                eventos_por_mes[mes]['count'] += 1
+                eventos_por_mes[mes]['revenue'] += ev.service_value + (ev.displacement_value or 0)
+                
+                tipo = ev.event_type or 'Sem tipo'
+                eventos_por_tipo_mes[mes][tipo] += 1
+            
+            # Gráfico de eventos por mês
+            meses_nums = list(range(1, 13))
+            meses_nomes = [calendar.month_name[m] for m in meses_nums]
+            eventos_count = [eventos_por_mes[m]['count'] for m in meses_nums]
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Bar(
+                x=meses_nomes,
+                y=eventos_count,
+                marker_color='#9b59b6',
+                text=eventos_count,
+                textposition='auto'
+            ))
+            
+            fig.update_layout(
+                height=350,
+                title="Número de Eventos por Mês (Histórico Completo)",
+                xaxis_title="Mês",
+                yaxis_title="Quantidade de Eventos",
+                showlegend=False
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Insights de sazonalidade de eventos
+            max_eventos_mes = max(eventos_count)
+            mes_pico = eventos_count.index(max_eventos_mes) + 1
+            mes_pico_nome = calendar.month_name[mes_pico]
+            
+            col_ev1, col_ev2 = st.columns(2)
+            
+            with col_ev1:
+                st.success(f"📈 **Mês com mais eventos:** {mes_pico_nome}")
+                st.caption(f"{max_eventos_mes} eventos em média")
+            
+            with col_ev2:
+                # Eventos confirmados próximos 6 meses
+                proximos_6m = db.query(Contract).filter(
+                    Contract.client_id == client_id,
+                    Contract.event_date >= today,
+                    Contract.event_date <= today + relativedelta(months=6),
+                    Contract.status.in_(['em_andamento', 'concluido'])
+                ).count()
+                
+                st.info(f"📅 **Próximos 6 meses:** {proximos_6m} evento(s) confirmado(s)")
+            
+            st.markdown("---")
+        
+        # Análise por Fonte de Dados
+        if seasonality_data.get('por_fonte'):
+            st.subheader("📌 Receitas por Fonte de Dados")
+            
+            # Agrupa por fonte
+            fontes_data = defaultdict(float)
+            for item in seasonality_data['por_fonte']:
+                fonte = item['fonte']
+                valor = item['valor']
+                fontes_data[fonte] += valor
+            
+            if fontes_data:
+                # Gráfico de pizza
+                labels = list(fontes_data.keys())
+                values = list(fontes_data.values())
+                
+                fig = go.Figure(data=[go.Pie(
+                    labels=labels,
+                    values=values,
+                    hole=0.4,
+                    textinfo='label+percent+value',
+                    hovertemplate='<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Percentual: %{percent}<extra></extra>'
+                )])
+                
+                fig.update_layout(
+                    height=400,
+                    showlegend=True
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabela de fontes
+                fonte_table = []
+                for fonte, valor in sorted(fontes_data.items(), key=lambda x: x[1], reverse=True):
+                    percentual = (valor / sum(values) * 100) if sum(values) > 0 else 0
+                    fonte_table.append({
+                        'Fonte': fonte,
+                        'Valor Total': format_currency(valor),
+                        'Percentual': f"{percentual:.1f}%"
+                    })
+                
+                st.table(pd.DataFrame(fonte_table))
+            st.markdown("---")
         
         # Tabela detalhada
         with st.expander("📋 Dados Detalhados"):

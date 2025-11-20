@@ -142,6 +142,295 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
 - **Aplicável a:** Transações e importações
 - **Gestão:** Criar e excluir via interface
 
+### Relatórios Especializados 📈
+
+#### **Diário de Gastos**
+- Visualização diária de despesas
+- Heatmap de gastos por dia
+- KPIs de gastos diários
+- Filtros por período e categoria
+- Tabela detalhada de transações
+
+#### **Fluxo de Caixa Gerencial**
+- Análise gerencial de fluxo de caixa
+- Projeções e tendências
+- Alertas de saldo negativo
+- Comparações mensais
+
+#### **Despesas CPF vs CNPJ**
+- Separação de despesas pessoais e empresariais
+- Análise comparativa
+- Gráficos de distribuição
+- Relatórios detalhados
+
+#### **Dashboard de Contas**
+- Visão consolidada de contas a pagar e receber
+- Status de pagamentos
+- Alertas de vencimento
+- Análise de inadimplência
+
+#### **Performance de Vendedores**
+- Análise de vendas por vendedor
+- Métricas de performance
+- Comparações entre vendedores
+- Relatórios de comissões
+
+#### **Relatório de Eventos**
+- Calendário de eventos
+- Análise de contratos
+- Performance de eventos
+- Receitas por evento
+
+#### **Painel de Controle Unificado**
+- Visão geral consolidada
+- KPIs principais
+- Alertas e notificações
+- Acesso rápido a todas as funcionalidades
+
+### Configuração de Relatórios ⚙️
+- **Seleção de Tipos de Dados:** Configure quais tipos de dados aparecem em cada relatório
+- **Tipos Disponíveis:**
+  - Transações Financeiras
+  - Extratos Bancários
+  - Contratos/Eventos
+  - Contas a Pagar
+  - Contas a Receber
+  - Aplicações Financeiras
+  - Faturas de Cartão
+  - Extratos de Máquina de Cartão
+  - Controle de Estoque
+- **Mapa Visual de Dados:** Visualize o fluxo de dados e como cada tipo se conecta aos relatórios
+- **Configuração por Cliente:** Cada cliente pode ter sua própria configuração de relatórios
+
+---
+
+## 🤖 Prompts de IA Utilizados
+
+O sistema utiliza Inteligência Artificial para processamento e classificação automática de dados. Todos os prompts são otimizados para garantir precisão e consistência.
+
+### Prompts de Processamento de Dados
+
+#### 1. **Processamento de Transações Financeiras**
+
+**Objetivo:** Processar e classificar transações financeiras de arquivos CSV, Excel ou PDF.
+
+**Características:**
+- Extração de data, descrição, valor e tipo (entrada/saída)
+- Classificação automática por grupo e subgrupo
+- Normalização de valores monetários
+- Identificação de categoria
+- Cálculo de `classification_confidence` (0.0 a 1.0)
+
+**Regras Críticas:**
+- Datas devem ser convertidas para YYYY-MM-DD
+- Valores normalizados (remover símbolos, pontos de milhar)
+- Tipo identificado automaticamente (entrada/saída)
+- Classificação por grupo/subgrupo é OBRIGATÓRIA
+- Alertas quando confiança < 70%
+
+**Estrutura de Resposta:**
+```json
+{
+  "processed_data": [
+    {
+      "date": "2024-01-15",
+      "description": "Pagamento fornecedor",
+      "value": 1500.00,
+      "type": "saida",
+      "category": "fornecedor",
+      "group_id": 1,
+      "subgroup_id": 3,
+      "classification_confidence": 0.95
+    }
+  ],
+  "summary": {
+    "total_rows": 100,
+    "processed": 98,
+    "entradas": 45,
+    "saidas": 53
+  },
+  "issues": []
+}
+```
+
+#### 2. **Processamento de Extratos Bancários**
+
+**Objetivo:** Processar extratos bancários e extrair informações completas.
+
+**Características:**
+- Extração automática do nome do banco (cabeçalhos, rodapés, descrições)
+- Processamento de saldos
+- Identificação de número de conta
+- Classificação automática por grupo/subgrupo
+- Suporte a PDFs com texto não estruturado
+
+**Regras Críticas:**
+- Nome do banco extraído automaticamente
+- Valores mantêm sinal original (negativo = débito, positivo = crédito)
+- Datas preservadas exatamente como no arquivo
+- Classificação obrigatória por grupo/subgrupo
+
+#### 3. **Processamento de Contas a Pagar**
+
+**Objetivo:** Processar planilhas de contas a pagar.
+
+**Estrutura Esperada:**
+- `account_name`: Nome do credor/fornecedor
+- `due_date`: Data de vencimento
+- `value`: Valor a pagar
+- `cpf_cnpj`: CPF/CNPJ (opcional)
+- `month_ref`: Mês de referência (opcional)
+- `paid`: Status de pagamento (opcional)
+- `group_id` e `subgroup_id`: Classificação contábil
+
+**Características:**
+- Classificação automática por grupo/subgrupo
+- Identificação de CPF vs CNPJ
+- Cálculo de `classification_confidence`
+
+#### 4. **Processamento de Contas a Receber**
+
+**Objetivo:** Processar planilhas de contas a receber.
+
+**Estrutura Esperada:**
+- `account_name`: Nome do devedor/cliente
+- `due_date`: Data de vencimento
+- `value`: Valor a receber
+- `cpf_cnpj`: CPF/CNPJ (opcional)
+- `month_ref`: Mês de referência (opcional)
+- `received`: Status de recebimento (opcional)
+- `group_id` e `subgroup_id`: Classificação contábil
+
+**Características:**
+- Classificação automática por grupo/subgrupo
+- Identificação de CPF vs CNPJ
+- Vinculação com contratos (quando aplicável)
+
+#### 5. **Processamento de Contratos/Eventos**
+
+**Objetivo:** Processar contratos e eventos de arquivos estruturados ou PDFs.
+
+**Estrutura Esperada:**
+- `contract_start`: Data de início do contrato
+- `event_date`: Data do evento
+- `service_value`: Valor do serviço
+- `displacement_value`: Valor do deslocamento
+- `event_type`: Tipo de evento
+- `service_sold`: Serviço vendido
+- `guests_count`: Número de convidados
+- `contractor_name`: Nome do contratante
+- `seller_name`: Nome do vendedor (expandido)
+- `event_location`: Local do evento (expandido)
+- `service_hours`: Horas de serviço (expandido)
+- `invoice_number`: Número da nota fiscal (expandido)
+- `group_id` e `subgroup_id`: Classificação contábil
+
+**Características:**
+- Suporte a PDFs com texto não estruturado
+- Extração de campos expandidos
+- Classificação automática
+
+#### 6. **Processamento de Aplicações Financeiras**
+
+**Objetivo:** Processar extratos de aplicações financeiras.
+
+**Estrutura Esperada:**
+- `date`: Data da operação
+- `investment_type`: Tipo (CDB, LCI, LCA, Tesouro, etc)
+- `institution`: Instituição financeira
+- `operation_type`: aplicado ou resgatado
+- `applied_value`: Valor aplicado
+- `redeemed_value`: Valor resgatado
+- `yield_value`: Rendimento
+- `balance`: Saldo atual
+
+#### 7. **Processamento de Faturas de Cartão**
+
+**Objetivo:** Processar faturas de cartão de crédito.
+
+**Estrutura Esperada:**
+- `transaction_date`: Data da transação
+- `description`: Descrição
+- `value`: Valor
+- `category`: Categoria
+- `establishment`: Estabelecimento
+- `installment_number`: Número da parcela
+- `total_installments`: Total de parcelas
+- `card_brand`: Bandeira do cartão
+
+#### 8. **Processamento de Extratos de Máquina de Cartão**
+
+**Objetivo:** Processar extratos de máquinas de cartão.
+
+**Estrutura Esperada:**
+- `date`: Data da transação
+- `gross_value`: Valor bruto
+- `fee`: Taxa cobrada
+- `net_value`: Valor líquido
+- `card_brand`: Bandeira (Visa, Mastercard, Elo, etc)
+- `transaction_type`: débito ou crédito
+- `description`: Descrição
+
+#### 9. **Processamento de Controle de Estoque**
+
+**Objetivo:** Processar movimentações de estoque.
+
+**Estrutura Esperada:**
+- `product_name`: Nome do produto
+- `quantity`: Quantidade (pode ser decimal)
+- `unit_value`: Valor unitário
+- `movement_date`: Data do movimento
+- `movement_type`: entrada ou saida
+- `description`: Descrição
+
+### Bloco de Classificação Genérico
+
+Todos os prompts incluem um bloco de classificação que lista os grupos e subgrupos disponíveis para o cliente:
+
+```
+**Classificação Contábil - Grupos e Subgrupos Disponíveis:**
+
+[Grupo 1: Receitas]
+  - Subgrupo 1.1: Vendas
+  - Subgrupo 1.2: Serviços
+  ...
+
+[Grupo 2: Despesas]
+  - Subgrupo 2.1: Fornecedores
+  - Subgrupo 2.2: Pessoal
+  ...
+
+**Instruções de Classificação:**
+- Analise CADA linha e classifique por grupo e subgrupo
+- Use palavras-chave na descrição para identificar a categoria
+- Retorne group_id e subgroup_id (IDs numéricos)
+- Informe classification_confidence (0.0 a 1.0)
+- Se confiança < 0.70, registre em issues
+```
+
+### Detecção Automática de Tipo de Dado
+
+O sistema também utiliza IA para detectar automaticamente o tipo de dado do arquivo:
+
+**Prompt de Detecção:**
+- Analisa estrutura do arquivo
+- Identifica padrões de colunas
+- Compara com estruturas conhecidas
+- Retorna tipo mais provável: `transactions`, `bank_statements`, `contracts`, `accounts_payable`, `accounts_receivable`, `financial_investments`, `credit_card_invoices`, `card_machine_statements`, `inventory`
+
+### Provedores de IA Suportados
+
+- **OpenAI** (GPT-3.5, GPT-4)
+- **Google Gemini**
+- **Groq** (Llama models)
+- **Ollama** (modelos locais)
+
+### Configuração de Confiança
+
+- **Threshold Padrão:** 0.70 (70%)
+- **Alertas:** Linhas com confiança < 70% são destacadas
+- **Revisão Manual:** Usuário pode revisar e corrigir classificações de baixa confiança
+
 ---
 
 ## 🚀 Instalação
@@ -988,10 +1277,12 @@ show_top_navigation()
 
 ## 📄 Páginas
 
+O sistema possui **24 páginas** organizadas por funcionalidade:
+
 ### app.py (Página Principal)
 
 **Funcionalidades:**
-- Login/logout
+- Login/logout (sem credenciais de teste exibidas - produção ready)
 - Menu de navegação superior (top navigation) com tabs organizadas
 - Agente IA em destaque no menu principal
 - Seleção de cliente visível no header
@@ -1016,6 +1307,8 @@ st.session_state.selected_client_id: int
 - Excluir cliente (admin apenas)
 - Ativar/desativar cliente
 - Gerenciar permissões de usuários por cliente
+- **Configuração de Relatórios:** Selecionar quais tipos de dados aparecem em cada relatório
+- **Mapa Visual de Dados:** Visualização do fluxo de dados e conexões com relatórios
 
 **Permissões:** Admin, Manager
 
@@ -1034,6 +1327,7 @@ st.session_state.selected_client_id: int
   - Classificação automática por grupo/subgrupo
   - Extração de informações (nome do banco, datas precisas)
   - Feedback em tempo real do status de processamento
+  - Alertas de baixa confiança (< 70%)
 - Preview de dados:
   - Opção para visualização completa ou limitada
   - Remoção automática de linhas em branco
@@ -1082,15 +1376,26 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 
 ---
 
+### 3_Extratos_Bancarios.py
+
+**Funcionalidades:**
+- Visualização de extratos bancários importados
+- Filtros por banco, período, conta
+- Estatísticas por banco
+- Conversão automática para transações
+
+---
+
 ### 4_Contratos.py
 
 **Funcionalidades:**
 - Lista com filtros (status, período)
 - Estatísticas (total, valor, pendentes, concluídos)
-- Criar contrato
+- Criar contrato (com campos expandidos: vendedor, local, horas, NF, etc.)
 - Editar contrato completo
 - Excluir contrato
 - Alterar status
+- Vinculação com contas a receber
 
 **Status:**
 - pendente
@@ -1103,6 +1408,8 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 **Campos:**
 - Contratante, Datas, Valores
 - Tipo de evento, Serviço, Convidados
+- Vendedor, Local do evento, Horas de serviço
+- Número da nota fiscal, Colaboradores, Observações
 - Forma de pagamento, Status
 
 ---
@@ -1114,7 +1421,7 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 #### Contas a Pagar:
 - Lista com filtros
 - Alertas de vencimento (vencidas, vence em 7 dias)
-- Criar conta
+- Criar conta (com campos expandidos: expense_type, expense_category)
 - Editar conta
 - Excluir conta
 - Marcar como paga
@@ -1123,7 +1430,7 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 #### Contas a Receber:
 - Lista com filtros
 - Alertas de atraso
-- Criar conta
+- Criar conta (com vinculação a contratos)
 - Editar conta
 - Excluir conta
 - Marcar como recebida
@@ -1147,6 +1454,8 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
   - Transações por categoria (até 10)
   - Comparativo com período anterior
   - Insights e recomendações
+- **Origem dos Dados:** Exibe de onde vieram os dados (extrato bancário, fatura, etc.)
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados na configuração
 
 **Análises:**
 - Margem líquida
@@ -1174,6 +1483,8 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
   - Resumo consolidado
   - Estatísticas
   - Projeção próximo mês
+- **Origem dos Dados:** Exibe de onde vieram os dados
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados
 
 **Análises:**
 - Tendência (últimos 3 meses)
@@ -1194,6 +1505,10 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 - Crescimento ano a ano (métricas)
 - Recomendações comerciais
 - Dados detalhados (tabela)
+- **Análise por Grupo/Subgrupo:** Sazonalidade por classificação contábil
+- **Distribuição por Fonte:** Breakdown por tipo de dado
+- **Sazonalidade de Eventos:** Análise específica de eventos
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados
 
 **Análises:**
 - Padrões sazonais
@@ -1211,7 +1526,9 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 - Geração de relatórios:
   - DRE
   - DFC
+  - DFC Projeção
   - Transações
+  - Extratos Bancários
   - Contratos
   - Contas a Pagar
   - Contas a Receber
@@ -1298,6 +1615,149 @@ Upload → Parse Completo → IA Analisa → IA Mapeia → Preview Editável →
 - "Compare as receitas deste ano com o ano passado"
 - "Qual é o saldo atual e quantas contas estão pendentes?"
 - "Mostre o fluxo de caixa dos últimos 6 meses"
+
+---
+
+### 12_Faturas_Cartao.py
+
+**Funcionalidades:**
+- Visualização de faturas de cartão importadas
+- Filtros por período, bandeira, estabelecimento
+- Estatísticas de gastos por categoria
+- Análise de parcelas
+
+---
+
+### 13_Aplicacoes_Financeiras.py
+
+**Funcionalidades:**
+- Visualização de aplicações financeiras
+- Filtros por tipo, instituição, período
+- Análise de rendimentos
+- Saldo atual por aplicação
+
+---
+
+### 14_Maquina_Cartao.py
+
+**Funcionalidades:**
+- Visualização de extratos de máquina de cartão
+- Filtros por período, bandeira, tipo
+- Análise de taxas e valores líquidos
+- Comparação de bandeiras
+
+---
+
+### 15_Estoque.py
+
+**Funcionalidades:**
+- Visualização de movimentações de estoque
+- Filtros por produto, tipo de movimento, período
+- Análise de entradas e saídas
+- Saldo atual por produto
+
+---
+
+### 16_Diario_Gastos.py
+
+**Funcionalidades:**
+- **KPIs:** Total de gastos, média diária, maior gasto, dias com gastos
+- **Heatmap:** Visualização de gastos por dia do mês
+- **Gráficos:**
+  - Gastos diários (linha)
+  - Distribuição por dia da semana
+  - Top categorias
+  - Comparação mensal
+- **Filtros:** Período, categoria, grupo/subgrupo, tipo
+- **Tabela Detalhada:** Todas as transações com informações completas
+- **Origem dos Dados:** Exibe de onde vieram os dados
+
+---
+
+### 17_Relatorio_Eventos.py
+
+**Funcionalidades:**
+- **Calendário de Eventos:** Visualização mensal
+- **Estatísticas:** Total de eventos, valor total, eventos por status
+- **Análise de Performance:**
+  - Receitas por evento
+  - Eventos por tipo
+  - Performance por vendedor
+  - Eventos por local
+- **Filtros:** Período, tipo, status, vendedor
+- **Tabela Detalhada:** Todos os eventos com informações completas
+
+---
+
+### 18_Fluxo_Caixa_Gerencial.py
+
+**Funcionalidades:**
+- **Análise Gerencial:** Visão executiva do fluxo de caixa
+- **Projeções:** Análise de tendências futuras
+- **Alertas:** Identificação de possíveis problemas
+- **Comparações:** Análise comparativa entre períodos
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados
+
+---
+
+### 19_Despesas_PF_PJ.py
+
+**Funcionalidades:**
+- **Separação CPF/CNPJ:** Análise de despesas pessoais vs empresariais
+- **Gráficos:**
+  - Distribuição PF vs PJ
+  - Evolução temporal
+  - Top despesas por tipo
+- **Filtros:** Período, tipo (PF/PJ), categoria
+- **Tabela Detalhada:** Todas as despesas classificadas
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados
+
+---
+
+### 20_Contas_Dashboard.py
+
+**Funcionalidades:**
+- **Visão Consolidada:** Contas a pagar e receber em um único dashboard
+- **KPIs:** Total a pagar, total a receber, saldo, vencidas, a vencer
+- **Alertas:** Contas vencidas, vencendo em breve
+- **Gráficos:**
+  - Distribuição por status
+  - Vencimentos por mês
+  - Comparação pagar vs receber
+- **Filtros:** Período, status, tipo
+- **Tabelas Detalhadas:** Lista completa de contas
+
+---
+
+### 21_Performance_Vendedores.py
+
+**Funcionalidades:**
+- **Análise por Vendedor:** Performance individual
+- **Métricas:**
+  - Total de vendas
+  - Número de contratos
+  - Ticket médio
+  - Taxa de conversão
+- **Gráficos:**
+  - Ranking de vendedores
+  - Evolução temporal
+  - Distribuição por tipo de evento
+- **Filtros:** Período, vendedor
+- **Tabela Detalhada:** Todos os contratos por vendedor
+
+---
+
+### 22_Painel_Controle.py
+
+**Funcionalidades:**
+- **Visão Unificada:** Dashboard consolidado com todos os KPIs principais
+- **Seções:**
+  - Resumo Financeiro
+  - Contas (Pagar/Receber)
+  - Contratos e Eventos
+  - Alertas e Notificações
+- **Acesso Rápido:** Links para todas as funcionalidades
+- **Respeita Configuração:** Apenas exibe dados dos tipos habilitados
 
 ---
 
@@ -1673,25 +2133,21 @@ copy data\contabil.db backups\contabil_%data%.db
 
 ---
 
-## 📚 Documentação Adicional
+## 📚 Documentação
 
-### Para Usuários:
-- `LEIA-ME.txt` - Instruções básicas
-- `INSTALACAO_FACIL.md` - Guia de instalação
-- `GUIA_INSTALACAO_VISUAL.md` - Guia ilustrado
-- `QUICKSTART.md` - Início rápido
+### Tutoriais Principais
 
-### Para Desenvolvedores:
-- `CRUD_FEATURES.md` - Funcionalidades CRUD
-- `DETAILED_REPORTS.md` - Detalhamento de relatórios
-- `UI_IMPROVEMENTS.md` - Melhorias de interface
-- `DISTRIBUICAO.md` - Como distribuir
-- `tests/TESTING_GUIDE.md` - Guia de testes
+- **[📚 Tutorial Completo](docs/TUTORIAL_COMPLETO.md)** - Guia completo de todas as funcionalidades e como utilizar o sistema
+- **[🚀 Tutorial de Deploy e Produção](docs/TUTORIAL_DEPLOY_PRODUCAO.md)** - Guia completo de deploy, manutenção e atualização em produção
 
-### Técnica:
-- `IMPLEMENTATION_SUMMARY.md` - Resumo da implementação
-- `PROJECT_STATUS.md` - Status do projeto
-- `INSTALACAO_COMPLETA.md` - Instalação técnica
+### Documentação de Deploy
+
+- **[🔐 Conexão SSH](docs/deploy/SSH_CONNECTION.md)** - Como conectar ao servidor via SSH
+- **[📖 Deploy Hostinger VPS](docs/deploy/HOSTINGER_DEPLOY.md)** - Guia completo de deploy na Hostinger
+- **[💾 Backup e Restauração](docs/deploy/BACKUP_GUIDE.md)** - Guia de backup e restauração
+- **[🔄 Deploy Contínuo](docs/deploy/CONTINUOUS_DEPLOY.md)** - Configuração de deploy automatizado
+- **[📊 Monitoramento PostgreSQL](docs/deploy/POSTGRESQL_MONITORING.md)** - Monitoramento do banco de dados
+- **[⚡ Quick Start](docs/deploy/QUICK_START.md)** - Início rápido para deploy
 
 ---
 
@@ -2004,3 +2460,4 @@ Para dúvidas, sugestões ou suporte:
 ---
 
 **Sistema Contábil v1.0** | Desenvolvido com ❤️ usando Streamlit
+

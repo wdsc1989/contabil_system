@@ -576,3 +576,9 @@ sudo systemctl restart postgresql
 
 **✅ Sistema de monitoramento configurado!**
 
+
+
+
+
+
+

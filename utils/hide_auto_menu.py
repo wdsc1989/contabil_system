@@ -12,7 +12,10 @@ def hide_streamlit_menu():
     <style>
     /* Esconde o menu de navegação automático do Streamlit */
     [data-testid="stSidebarNav"] {
-        display: none !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
     }
     
     /* Esconde o seletor de páginas automático */
@@ -41,6 +44,23 @@ def hide_streamlit_menu():
     section[data-testid="stSidebar"] ul[data-testid="stSidebarNav"] {
         display: none !important;
     }
+
+    /* Remove o botão padrão de recolher/expandir */
+    div[data-testid="collapsedControl"],
+    button[title="Close sidebar"],
+    button[title="Open sidebar"],
+    button[data-testid="baseButton-toggleNav"] {
+        display: none !important;
+    }
+
+    /* Garante que a sidebar personalizada ocupe todo o espaço */
+    section[data-testid="stSidebar"] > div {
+        padding-top: 0 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
+
+
+
+
 

@@ -91,3 +91,9 @@ echo "Relatório salvo em: $REPORT_FILE"
 echo ""
 cat "$REPORT_FILE"
 
+
+
+
+
+
+

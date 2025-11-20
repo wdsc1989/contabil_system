@@ -19,7 +19,7 @@ from services.report_config_service import DATA_TYPES
 from models.client import Client
 from models.transaction import Transaction
 from models.group import Group, Subgroup
-from utils.formatters import format_currency, format_date
+from utils.formatters import format_currency, format_date, format_data_source
 
 st.set_page_config(page_title="DRE", page_icon="📊", layout="wide")
 
@@ -279,24 +279,24 @@ try:
                 percentual = (valor / dre_data['receitas'] * 100) if dre_data['receitas'] > 0 else 0
                 
                 with st.expander(f"💰 {label} - {format_currency(valor)} ({percentual:.1f}%)"):
-                    # Busca transações deste grupo/subgrupo
-                    # Primeiro busca o grupo e subgrupo pelos nomes
-                    grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
-                    subgrupo_obj = None
-                    if grupo_obj:
-                        subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
-                    
-                    if grupo_obj and subgrupo_obj:
-                        trans_receitas = db.query(Transaction).filter(
-                            Transaction.client_id == client_id,
-                            Transaction.type == 'entrada',
-                            Transaction.group_id == grupo_obj.id,
-                            Transaction.subgroup_id == subgrupo_obj.id,
-                            Transaction.date >= start_date,
-                            Transaction.date <= end_date
-                        ).order_by(Transaction.date.desc()).all()
-                    else:
-                        trans_receitas = []
+                    # Busca transações deste grupo/subgrupo (APENAS se tipo habilitado)
+                    trans_receitas = []
+                    if 'transactions' in dre_data.get('enabled_data_types', []) or 'bank_statements' in dre_data.get('enabled_data_types', []):
+                        # Primeiro busca o grupo e subgrupo pelos nomes
+                        grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
+                        subgrupo_obj = None
+                        if grupo_obj:
+                            subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
+                        
+                        if grupo_obj and subgrupo_obj:
+                            trans_receitas = db.query(Transaction).filter(
+                                Transaction.client_id == client_id,
+                                Transaction.type == 'entrada',
+                                Transaction.group_id == grupo_obj.id,
+                                Transaction.subgroup_id == subgrupo_obj.id,
+                                Transaction.date >= start_date,
+                                Transaction.date <= end_date
+                            ).order_by(Transaction.date.desc()).all()
                     
                     if trans_receitas:
                         st.markdown(f"**Total de transações:** {len(trans_receitas)}")
@@ -308,9 +308,10 @@ try:
                             trans_data.append({
                                 'Data': format_date(t.date),
                                 'Descrição': t.description[:40] + '...' if len(t.description) > 40 else t.description,
-                                'Valor': format_currency(t.value),
-                                'Grupo': t.group.name if t.group else '-',
-                                'Conta': t.account or '-'
+                                    'Valor': format_currency(t.value),
+                                    'Grupo': t.group.name if t.group else '-',
+                                    'Conta': t.account or '-',
+                                    'Origem': format_data_source(t.document_type, t.imported_from)
                             })
                         
                         df_trans = pd.DataFrame(trans_data)
@@ -320,6 +321,20 @@ try:
                             st.caption(f"Mostrando 10 de {len(trans_receitas)} transações")
         
         st.markdown("---")
+        outras_receitas = []
+        # Só exibe se o tipo estiver HABILITADO e o valor > 0
+        if 'contracts' in dre_data.get('enabled_data_types', []) and dre_data.get('receitas_contratos', 0) > 0:
+            outras_receitas.append({'Fonte': 'Contratos concluídos', 'Valor': format_currency(dre_data['receitas_contratos'])})
+        if 'accounts_receivable' in dre_data.get('enabled_data_types', []) and dre_data.get('receitas_contas_receber', 0) > 0:
+            outras_receitas.append({'Fonte': 'Contas a receber recebidas', 'Valor': format_currency(dre_data['receitas_contas_receber'])})
+        if 'card_machine_statements' in dre_data.get('enabled_data_types', []) and dre_data.get('receitas_maquina_cartao', 0) > 0:
+            outras_receitas.append({'Fonte': 'Extratos máquina de cartão', 'Valor': format_currency(dre_data['receitas_maquina_cartao'])})
+        if 'financial_investments' in dre_data.get('enabled_data_types', []) and dre_data.get('receitas_aplicacoes', 0) > 0:
+            outras_receitas.append({'Fonte': 'Aplicações financeiras (rendimentos)', 'Valor': format_currency(dre_data['receitas_aplicacoes'])})
+        if outras_receitas:
+            st.markdown("#### 📌 Outras fontes de receita")
+            st.table(pd.DataFrame(outras_receitas))
+            st.markdown("---")
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("### **TOTAL DE RECEITAS**")
@@ -341,24 +356,24 @@ try:
                 percentual = (valor / dre_data['despesas'] * 100) if dre_data['despesas'] > 0 else 0
                 
                 with st.expander(f"💸 {label} - {format_currency(valor)} ({percentual:.1f}%)"):
-                    # Busca transações deste grupo/subgrupo
-                    # Primeiro busca o grupo e subgrupo pelos nomes
-                    grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
-                    subgrupo_obj = None
-                    if grupo_obj:
-                        subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
-                    
-                    if grupo_obj and subgrupo_obj:
-                        trans_despesas = db.query(Transaction).filter(
-                            Transaction.client_id == client_id,
-                            Transaction.type == 'saida',
-                            Transaction.group_id == grupo_obj.id,
-                            Transaction.subgroup_id == subgrupo_obj.id,
-                            Transaction.date >= start_date,
-                            Transaction.date <= end_date
-                        ).order_by(Transaction.date.desc()).all()
-                    else:
-                        trans_despesas = []
+                    # Busca transações deste grupo/subgrupo (APENAS se tipo habilitado)
+                    trans_despesas = []
+                    if 'transactions' in dre_data.get('enabled_data_types', []) or 'bank_statements' in dre_data.get('enabled_data_types', []):
+                        # Primeiro busca o grupo e subgrupo pelos nomes
+                        grupo_obj = db.query(Group).filter(Group.name == grupo, Group.client_id == client_id).first()
+                        subgrupo_obj = None
+                        if grupo_obj:
+                            subgrupo_obj = db.query(Subgroup).filter(Subgroup.name == subgrupo, Subgroup.group_id == grupo_obj.id).first()
+                        
+                        if grupo_obj and subgrupo_obj:
+                            trans_despesas = db.query(Transaction).filter(
+                                Transaction.client_id == client_id,
+                                Transaction.type == 'saida',
+                                Transaction.group_id == grupo_obj.id,
+                                Transaction.subgroup_id == subgrupo_obj.id,
+                                Transaction.date >= start_date,
+                                Transaction.date <= end_date
+                            ).order_by(Transaction.date.desc()).all()
                     
                     if trans_despesas:
                         st.markdown(f"**Total de transações:** {len(trans_despesas)}")
@@ -370,9 +385,10 @@ try:
                             trans_data.append({
                                 'Data': format_date(t.date),
                                 'Descrição': t.description[:40] + '...' if len(t.description) > 40 else t.description,
-                                'Valor': format_currency(t.value),
-                                'Grupo': t.group.name if t.group else '-',
-                                'Conta': t.account or '-'
+                                    'Valor': format_currency(t.value),
+                                    'Grupo': t.group.name if t.group else '-',
+                                    'Conta': t.account or '-',
+                                    'Origem': format_data_source(t.document_type, t.imported_from)
                             })
                         
                         df_trans = pd.DataFrame(trans_data)
@@ -382,6 +398,18 @@ try:
                             st.caption(f"Mostrando 10 de {len(trans_despesas)} transações")
         
         st.markdown("---")
+        outras_despesas = []
+        # Só exibe se o tipo estiver HABILITADO e o valor > 0
+        if 'accounts_payable' in dre_data.get('enabled_data_types', []) and dre_data.get('despesas_contas_pagar', 0) > 0:
+            outras_despesas.append({'Fonte': 'Contas a pagar (pagas)', 'Valor': format_currency(dre_data['despesas_contas_pagar'])})
+        if 'credit_card_invoices' in dre_data.get('enabled_data_types', []) and dre_data.get('despesas_cartao', 0) > 0:
+            outras_despesas.append({'Fonte': 'Faturas de cartão', 'Valor': format_currency(dre_data['despesas_cartao'])})
+        if 'inventory' in dre_data.get('enabled_data_types', []) and dre_data.get('custos_estoque', 0) > 0:
+            outras_despesas.append({'Fonte': 'Custos de estoque (saídas)', 'Valor': format_currency(dre_data['custos_estoque'])})
+        if outras_despesas:
+            st.markdown("#### 📌 Outras fontes de despesa")
+            st.table(pd.DataFrame(outras_despesas))
+            st.markdown("---")
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("### **TOTAL DE DESPESAS**")

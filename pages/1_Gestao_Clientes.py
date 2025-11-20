@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.database import SessionLocal
 from services.auth_service import AuthService
 from services.report_config_service import ReportConfigService, DATA_TYPES, REPORT_TYPES
+from services.group_template_service import GroupTemplateService
 from models.client import Client
 from models.user import User, UserClientPermission
 import pandas as pd
@@ -162,6 +163,7 @@ try:
                             
                             # Cria configuração padrão de relatórios
                             ReportConfigService.ensure_default_config(db, new_client.id)
+                            GroupTemplateService.ensure_default_groups(db, new_client.id)
                             
                             st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
                             st.rerun()
@@ -455,6 +457,32 @@ try:
                 if not available_data_types:
                     available_data_types = list(DATA_TYPES.keys())
                 
+                # Tabela de Configuração Atual
+                st.markdown("### ⚙️ Configuração Atual de Relatórios")
+                
+                config_table = []
+                for data_type in available_data_types:
+                    label = DATA_TYPES.get(data_type, data_type)
+                    count = data_type_counts.get(data_type, 0)
+                    
+                    # Verifica em cada relatório
+                    dre_enabled = all_configs.get('dre', {}).get(data_type, True)
+                    dfc_enabled = all_configs.get('dfc', {}).get(data_type, True)
+                    saz_enabled = all_configs.get('sazonalidade', {}).get(data_type, True)
+                    
+                    config_table.append({
+                        'Tipo de Dado': label,
+                        'Registros': count,
+                        'DRE': '✅' if dre_enabled else '❌',
+                        'DFC': '✅' if dfc_enabled else '❌',
+                        'Sazonalidade': '✅' if saz_enabled else '❌'
+                    })
+                
+                st.dataframe(pd.DataFrame(config_table), use_container_width=True, hide_index=True)
+                st.caption("✅ = Habilitado | ❌ = Desabilitado")
+                
+                st.markdown("---")
+                
                 # Cria o mapa visual usando Plotly
                 st.markdown("### 📊 Mapa de Conexões: Tipos de Dados → Relatórios")
                 
@@ -462,14 +490,11 @@ try:
                 if any(data_type_counts.values()):
                     st.info(f"📊 **Dados encontrados:** {sum(1 for count in data_type_counts.values() if count > 0)} tipo(s) com dados importados")
                 
-                # Define mapeamento de tipos de dados para tipos intermediários
-                # Alguns tipos de dados geram transações automaticamente
+                # Define mapeamento de tipos de dados que vão DIRETO aos relatórios (sem intermediário)
+                # Apenas bank_statements gera transações automaticamente
+                # Todos os outros tipos vão DIRETO aos relatórios
                 data_to_intermediate = {
-                    'bank_statements': 'transactions',  # Extratos bancários geram transações
-                    'credit_card_invoices': 'transactions',  # Faturas de cartão podem gerar transações
-                    'card_machine_statements': 'transactions',  # Máquina de cartão pode gerar transações
-                    'accounts_payable': 'transactions',  # Contas a pagar podem gerar transações
-                    'accounts_receivable': 'transactions',  # Contas a receber podem gerar transações
+                    'bank_statements': 'transactions',  # APENAS extratos geram transações automaticamente
                 }
                 
                 # Tipos de dados (lado esquerdo) - apenas os disponíveis
@@ -531,7 +556,7 @@ try:
                     intermediate_type = data_to_intermediate.get(data_type)
                     
                     if intermediate_type and intermediate_type in intermediate_types:
-                        # Caminho: Dado → Intermediário → Relatório
+                        # Caminho: Dado → Intermediário → Relatório (APENAS para bank_statements)
                         intermediate_idx = intermediate_start_idx + list(intermediate_types.keys()).index(intermediate_type)
                         
                         # Conexão: Dado → Intermediário
@@ -542,13 +567,11 @@ try:
                         })
                         connection_labels.append(f"{data_type_labels[data_idx]} → {intermediate_types[intermediate_type]}")
                         
-                        # Conexão: Intermediário → Relatórios
+                        # Conexão: Intermediário → Relatórios (verifica se BANK_STATEMENTS está habilitado)
                         for report_type, report_label in report_labels.items():
-                            # Verifica se o tipo intermediário está habilitado para o relatório
-                            # Para transações, verifica se 'transactions' está habilitado
-                            # O padrão é True quando não há configuração explícita
                             report_config = all_configs.get(report_type, {})
-                            if report_config.get(intermediate_type, True):
+                            # Para extratos bancários, verificamos se 'bank_statements' está habilitado
+                            if report_config.get(data_type, True):  # Usa data_type original (bank_statements)
                                 report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
                                 connections.append({
                                     'from': intermediate_idx,
@@ -557,11 +580,13 @@ try:
                                 })
                                 connection_labels.append(f"{intermediate_types[intermediate_type]} → {report_label}")
                     else:
-                        # Caminho direto: Dado → Relatório
+                        # Caminho direto: Dado → Relatório (TODOS os outros tipos)
                         for report_type, report_label in report_labels.items():
-                            # O padrão é True quando não há configuração explícita
                             report_config = all_configs.get(report_type, {})
-                            if report_config.get(data_type, True):
+                            # Verifica se o tipo ORIGINAL está habilitado para o relatório
+                            is_enabled = report_config.get(data_type, True)
+                            
+                            if is_enabled:
                                 report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
                                 connections.append({
                                     'from': data_idx,

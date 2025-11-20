@@ -26,6 +26,10 @@ class AccountPayable(Base):
     monthly_installments = Column(Integer)  # Número de parcelas mensais
     total_monthly_outflow = Column(Float)  # Total de saída por mês
     installment_number = Column(Integer)  # Número da parcela atual (1, 2, 3...)
+    # Novos campos para classificação detalhada
+    expense_type = Column(String(20))  # 'cpf' ou 'cnpj' - Despesas Pessoais vs Empresariais
+    expense_category = Column(String(50))  # 'fixa', 'variavel', 'financeira', 'investimento'
+    description = Column(Text)  # Descrição detalhada da despesa
     group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
     subgroup_id = Column(Integer, ForeignKey('subgroups.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -61,6 +65,8 @@ class AccountReceivable(Base):
     monthly_installments = Column(Integer)  # Número de parcelas mensais
     total_expected_inflow = Column(Float)  # Total de entrada prevista
     installment_number = Column(Integer)  # Número da parcela atual (1, 2, 3...)
+    # Vínculo com contrato
+    contract_id = Column(Integer, ForeignKey('contracts.id'), nullable=True)  # Vincula com contrato de origem
     group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
     subgroup_id = Column(Integer, ForeignKey('subgroups.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -92,6 +98,7 @@ class ImportMapping(Base):
 
     def __repr__(self):
         return f"<ImportMapping(type='{self.import_type}', {self.source_column}->{self.target_column})>"
+
 
 
 

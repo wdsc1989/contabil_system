@@ -3,7 +3,7 @@ Formatadores de dados
 """
 import re
 from datetime import datetime
-from typing import Union
+from typing import Union, Optional
 
 
 def format_cpf(cpf: str) -> str:
@@ -71,6 +71,37 @@ def format_month_year(date: datetime) -> str:
     if isinstance(date, datetime):
         return date.strftime('%m/%Y')
     return str(date)
+
+
+SOURCE_LABELS = {
+    'extrato_bancario': 'Extrato Bancário',
+    'bank_statement': 'Extrato Bancário',
+    'fatura_cartao': 'Fatura de Cartão',
+    'credit_card_invoice': 'Fatura de Cartão',
+    'card_machine_statement': 'Extrato Máquina de Cartão',
+    'card_machine': 'Extrato Máquina de Cartão',
+    'imported': 'Arquivo Importado',
+    'transactions': 'Transações',
+    'manual': 'Lançamento Manual'
+}
+
+
+def format_data_source(document_type: Optional[str], imported_from: Optional[str] = None) -> str:
+    """
+    Retorna rótulo amigável para a origem dos dados (extrato, fatura, etc).
+    """
+    label = SOURCE_LABELS.get(document_type or '', None)
+    if not label:
+        if document_type:
+            label = document_type.replace('_', ' ').title()
+        else:
+            label = 'Lançamento Manual'
+    if imported_from:
+        return f"{label} ({imported_from})"
+    return label
+
+
+
 
 
 

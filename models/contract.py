@@ -25,6 +25,13 @@ class Contract(Base):
     contractor_name = Column(String(200), nullable=False)
     payment_terms = Column(Text)
     status = Column(String(50), default='pendente')  # pendente, em_andamento, concluido, cancelado
+    # Novos campos para contratos de eventos
+    seller_name = Column(String(200))  # Vendedor responsável (Bruna, etc.)
+    event_location = Column(Text)  # Local completo do evento
+    service_hours = Column(Float)  # Horas de serviço prestado
+    collaborators = Column(Text)  # Equipe/colaboradores envolvidos
+    invoice_number = Column(String(50))  # Número da Nota Fiscal
+    notes = Column(Text)  # Observações gerais adicionais
     group_id = Column(Integer, ForeignKey('groups.id'), nullable=True)
     subgroup_id = Column(Integer, ForeignKey('subgroups.id'), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -36,7 +43,3 @@ class Contract(Base):
 
     def __repr__(self):
         return f"<Contract(contractor='{self.contractor_name}', event_date='{self.event_date}', status='{self.status}')>"
-
-
-
-

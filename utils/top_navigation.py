@@ -5,6 +5,7 @@ import streamlit as st
 from services.auth_service import AuthService
 from config.database import SessionLocal
 from models.client import Client
+from utils.client_selection import sync_selected_client
 
 
 def show_top_navigation():
@@ -61,15 +62,17 @@ def show_top_navigation():
                     default_client = list(client_options.keys())[0]
                     st.session_state.selected_client_id = default_client
                 
+                options_list = list(client_options.keys())
+                default_index = options_list.index(default_client) if default_client in options_list else 0
+
                 selected_client_id = st.selectbox(
                     "🏢 Cliente:",
-                    options=list(client_options.keys()),
+                    options=options_list,
                     format_func=lambda x: client_options[x],
-                    index=list(client_options.keys()).index(default_client) if default_client in client_options else 0,
-                    key="top_nav_client_selector"
+                    index=default_index
                 )
                 
-                st.session_state.selected_client_id = selected_client_id
+                sync_selected_client(selected_client_id, source="top_nav")
         finally:
             db.close()
     
@@ -106,6 +109,9 @@ def show_top_navigation():
             st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥", use_container_width=True)
             st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
             
+            st.page_link("pages/16_Diario_Gastos.py", label="📓 Diário de Gastos", icon="📓", use_container_width=True)
+            st.caption("Controle visual diário de despesas")
+            
             st.markdown("**📊 Visualizar Dados Importados:**")
             st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳", use_container_width=True)
             st.page_link("pages/13_Aplicacoes_Financeiras.py", label="📈 Aplicações Financeiras", icon="📈", use_container_width=True)
@@ -120,15 +126,27 @@ def show_top_navigation():
     
     with tab3:
         st.markdown("**Dashboards e Relatórios**")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
+            st.markdown("**Visão Geral:**")
+            st.page_link("pages/22_Painel_Controle.py", label="🎯 Painel Controle", icon="🎯", use_container_width=True)
+            st.markdown("**Financeiros:**")
             st.page_link("pages/6_DRE.py", label="📈 DRE", icon="📊", use_container_width=True)
             st.page_link("pages/7_DFC.py", label="💵 DFC", icon="💵", use_container_width=True)
+            st.page_link("pages/18_Fluxo_Caixa_Gerencial.py", label="💼 Fluxo Gerencial", icon="💼", use_container_width=True)
         
         with col2:
+            st.markdown("**Operacionais:**")
+            st.page_link("pages/17_Relatorio_Eventos.py", label="🎉 Eventos", icon="🎉", use_container_width=True)
+            st.page_link("pages/20_Contas_Dashboard.py", label="💰 Contas", icon="💰", use_container_width=True)
+            st.page_link("pages/19_Despesas_PF_PJ.py", label="💼 PF/PJ", icon="💼", use_container_width=True)
+            st.page_link("pages/21_Performance_Vendedores.py", label="🏆 Vendedores", icon="🏆", use_container_width=True)
+        
+        with col3:
+            st.markdown("**Análises:**")
             st.page_link("pages/8_Sazonalidade.py", label="📉 Sazonalidade", icon="📈", use_container_width=True)
-            st.page_link("pages/9_Relatorios.py", label="📑 Relatórios", icon="📑", use_container_width=True)
+            st.page_link("pages/9_Relatorios.py", label="📑 Exportação", icon="📑", use_container_width=True)
     
     with tab4:
         if user['role'] in ['admin', 'manager']:
@@ -138,4 +156,8 @@ def show_top_navigation():
             st.page_link("pages/10_Admin.py", label="🔧 Configurações", icon="⚙️", use_container_width=True)
     
     st.markdown("---")
+
+
+
+
 

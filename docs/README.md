@@ -1,76 +1,113 @@
 # 📚 Documentação do Sistema Contábil
 
-Esta pasta contém toda a documentação adicional do projeto Sistema Contábil.
+Índice da documentação do sistema.
 
-## 📖 Índice da Documentação
+---
 
-### 📘 Tutoriais
-Pasta: [`tutoriais/`](tutoriais/)
-- **TUTORIAL_COMPLETO.md** - Tutorial completo do sistema
-- **TUTORIAL_COM_IMAGENS.md** - Tutorial com imagens ilustrativas
-- **TUTORIAL_COM_IMAGENS.pdf** - Versão PDF do tutorial
-- **TUTORIAL_PDF_GERADO.md** - Documentação sobre geração de PDF
-- **TUTORIAL_PROCESSADO.md** - Tutorial processado
-- **TUTORIAL_TEMP.html** - Arquivo HTML temporário
+## 📖 Tutoriais Principais
 
-### 📗 Guias
-Pasta: [`guias/`](guias/)
-- **QUICKSTART.md** - Guia de início rápido
-- **INSTALL.md** - Guia de instalação
-- **INSTALACAO_FACIL.md** - Instalação simplificada
-- **INSTALACAO_COMPLETA.md** - Instalação completa detalhada
-- **GUIA_INSTALACAO_VISUAL.md** - Guia visual de instalação
-- **GUIA_CAPTURA_SCREENSHOTS.md** - Guia para capturar screenshots
+### Para Usuários
 
-### 🔧 Desenvolvimento
-Pasta: [`desenvolvimento/`](desenvolvimento/)
-- **INDICE_DOCUMENTACAO.md** - Índice geral da documentação
-- **PROJECT_STATUS.md** - Status atual do projeto
-- **IMPLEMENTATION_SUMMARY.md** - Resumo das implementações
-- **CRUD_FEATURES.md** - Funcionalidades CRUD
-- **DETAILED_REPORTS.md** - Relatórios detalhados
-- **UI_IMPROVEMENTS.md** - Melhorias de interface
-- **LATEST_UPDATES.md** - Últimas atualizações
-- **MANUTENCAO_TECNICA.md** - Guia de manutenção técnica
+- **[📚 Tutorial Completo](TUTORIAL_COMPLETO.md)**
+  - Guia completo de todas as funcionalidades
+  - Como utilizar cada módulo
+  - Dicas e boas práticas
+  - Exemplos práticos
 
-### 📦 Distribuição
-Pasta: [`distribuicao/`](distribuicao/)
-- **DISTRIBUICAO.md** - Guia de distribuição do sistema
-- **README_EXECUTAVEL.txt** - README para versão executável
-- **LEIA-ME.txt** - Arquivo de leitura para distribuição
+### Para Administradores e DevOps
 
-### 📸 Screenshots
-Pasta: [`screenshots/`](screenshots/)
-- Imagens das telas do sistema
-- **SCREENSHOTS_CAPTURADOS.md** - Documentação dos screenshots
+- **[🚀 Tutorial de Deploy e Produção](TUTORIAL_DEPLOY_PRODUCAO.md)**
+  - Deploy inicial
+  - Workflow de atualização
+  - Backup e restauração
+  - Monitoramento
+  - Troubleshooting
+  - Manutenção regular
 
-## 📁 Estrutura
+---
+
+## 🔧 Documentação de Deploy
+
+### Guias de Deploy
+
+- **[🔐 Conexão SSH](deploy/SSH_CONNECTION.md)**
+  - Como conectar ao servidor via SSH
+  - Configuração de chaves SSH
+  - Primeiros passos
+
+- **[📖 Deploy Hostinger VPS](deploy/HOSTINGER_DEPLOY.md)**
+  - Setup completo do servidor
+  - Configuração de PostgreSQL
+  - Configuração de Nginx
+  - SSL/HTTPS
+
+- **[⚡ Quick Start](deploy/QUICK_START.md)**
+  - Deploy rápido
+  - Comandos essenciais
+  - Checklist inicial
+
+### Operações
+
+- **[💾 Backup e Restauração](deploy/BACKUP_GUIDE.md)**
+  - Estratégias de backup
+  - Scripts automatizados
+  - Restauração de dados
+
+- **[🔄 Deploy Contínuo](deploy/CONTINUOUS_DEPLOY.md)**
+  - Configuração de CI/CD
+  - GitHub Actions
+  - Deploy automatizado
+
+- **[📊 Monitoramento PostgreSQL](deploy/POSTGRESQL_MONITORING.md)**
+  - Monitoramento de performance
+  - Queries lentas
+  - Otimização
+
+---
+
+## 📋 Estrutura da Documentação
 
 ```
 docs/
-├── README.md                    # Este arquivo (índice)
-├── tutoriais/                   # Tutoriais do sistema
-├── guias/                       # Guias de instalação e uso
-├── desenvolvimento/             # Documentação técnica
-├── distribuicao/                # Documentação de distribuição
-└── screenshots/                 # Screenshots do sistema
+├── README.md (este arquivo)
+├── TUTORIAL_COMPLETO.md
+├── TUTORIAL_DEPLOY_PRODUCAO.md
+└── deploy/
+    ├── SSH_CONNECTION.md
+    ├── HOSTINGER_DEPLOY.md
+    ├── QUICK_START.md
+    ├── BACKUP_GUIDE.md
+    ├── CONTINUOUS_DEPLOY.md
+    └── POSTGRESQL_MONITORING.md
 ```
 
-## 🔗 Links Úteis
+---
 
-- [README Principal](../README.md) - Documentação principal do projeto na raiz
-- [Requirements](../requirements.txt) - Dependências do projeto
-- [Scripts Auxiliares](../scripts/auxiliares/) - Scripts de desenvolvimento
+## 🚀 Início Rápido
 
-## 📝 Notas
+### Para Usuários
 
-- A documentação principal do projeto está no arquivo `README.md` na raiz
-- Para começar rapidamente, consulte [`guias/QUICKSTART.md`](guias/QUICKSTART.md)
-- Para instalação, veja [`guias/INSTALACAO_FACIL.md`](guias/INSTALACAO_FACIL.md) ou [`guias/INSTALACAO_COMPLETA.md`](guias/INSTALACAO_COMPLETA.md)
-- Para desenvolvimento, consulte a pasta [`desenvolvimento/`](desenvolvimento/)
+1. Leia o **[Tutorial Completo](TUTORIAL_COMPLETO.md)**
+2. Comece pela seção [Primeiro Acesso](TUTORIAL_COMPLETO.md#1️⃣-primeiro-acesso)
+3. Explore as funcionalidades conforme sua necessidade
 
+### Para Administradores
 
+1. Leia o **[Tutorial de Deploy e Produção](TUTORIAL_DEPLOY_PRODUCAO.md)**
+2. Siga o guia de [Deploy Inicial](TUTORIAL_DEPLOY_PRODUCAO.md#3️⃣-deploy-inicial)
+3. Configure [Backup e Monitoramento](TUTORIAL_DEPLOY_PRODUCAO.md#5️⃣-backup-e-restauração)
 
+---
 
+## 📞 Suporte
 
+Para dúvidas ou problemas:
+
+1. Consulte os tutoriais acima
+2. Verifique a seção de Troubleshooting
+3. Entre em contato com a equipe de desenvolvimento
+
+---
+
+**Sistema Contábil v1.0** | Documentação | Última atualização: Novembro 2025
 
