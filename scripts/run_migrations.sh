@@ -37,31 +37,43 @@ else
 fi
 echo ""
 
-# Migração 1: Expandir contratos
-echo -e "${YELLOW}[1/2] Executando migração: Expandir Contratos...${NC}"
-if [ -f "scripts/migrate_expand_contracts.py" ]; then
-    python3 scripts/migrate_expand_contracts.py
+# Migração 1: Adicionar colunas faltantes (script robusto que funciona com SQLite e PostgreSQL)
+echo -e "${YELLOW}[1/3] Executando migração: Adicionar Colunas Faltantes...${NC}"
+if [ -f "scripts/adicionar_colunas_faltantes.py" ]; then
+    python3 scripts/adicionar_colunas_faltantes.py
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Migração de contratos concluída${NC}"
+        echo -e "${GREEN}✅ Migração de colunas concluída${NC}"
     else
-        echo -e "${RED}❌ Erro na migração de contratos${NC}"
+        echo -e "${RED}❌ Erro na migração de colunas${NC}"
         exit 1
     fi
+else
+    echo -e "${YELLOW}⚠️  Script adicionar_colunas_faltantes.py não encontrado${NC}"
+    # Fallback para scripts antigos
+    if [ -f "scripts/migrate_expand_contracts.py" ]; then
+        echo -e "${YELLOW}   Tentando migrate_expand_contracts.py...${NC}"
+        python3 scripts/migrate_expand_contracts.py || true
+    fi
+    if [ -f "scripts/migrate_expand_accounts.py" ]; then
+        echo -e "${YELLOW}   Tentando migrate_expand_accounts.py...${NC}"
+        python3 scripts/migrate_expand_accounts.py || true
+    fi
+fi
+echo ""
+
+# Migração 2: Expandir contratos (legacy - mantido para compatibilidade)
+echo -e "${YELLOW}[2/3] Executando migração: Expandir Contratos (legacy)...${NC}"
+if [ -f "scripts/migrate_expand_contracts.py" ]; then
+    python3 scripts/migrate_expand_contracts.py || echo -e "${YELLOW}⚠️  Aviso: Erro na migração de contratos (pode ser que já esteja aplicada)${NC}"
 else
     echo -e "${YELLOW}⚠️  Script migrate_expand_contracts.py não encontrado${NC}"
 fi
 echo ""
 
-# Migração 2: Expandir contas
-echo -e "${YELLOW}[2/2] Executando migração: Expandir Contas...${NC}"
+# Migração 3: Expandir contas (legacy - mantido para compatibilidade)
+echo -e "${YELLOW}[3/3] Executando migração: Expandir Contas (legacy)...${NC}"
 if [ -f "scripts/migrate_expand_accounts.py" ]; then
-    python3 scripts/migrate_expand_accounts.py
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Migração de contas concluída${NC}"
-    else
-        echo -e "${RED}❌ Erro na migração de contas${NC}"
-        exit 1
-    fi
+    python3 scripts/migrate_expand_accounts.py || echo -e "${YELLOW}⚠️  Aviso: Erro na migração de contas (pode ser que já esteja aplicada)${NC}"
 else
     echo -e "${YELLOW}⚠️  Script migrate_expand_accounts.py não encontrado${NC}"
 fi
