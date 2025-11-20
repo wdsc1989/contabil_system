@@ -18,6 +18,12 @@ BRANCH="${1:-main}"
 APP_USER="${APP_USER:-contabil}"
 VENV_DIR="${APP_DIR}/venv"
 
+# Corrige problema de propriedade do repositório Git (dubious ownership)
+# Isso é necessário quando o repositório foi clonado com um usuário diferente
+if [ -d "${APP_DIR}/.git" ]; then
+    git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+fi
+
 echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║   DEPLOY - Sistema Contábil                             ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
@@ -45,6 +51,12 @@ source "${APP_DIR}/.env"
 set +a
 
 echo -e "${YELLOW}📦 Atualizando código do repositório...${NC}"
+
+# Corrige problema de propriedade do repositório Git (dubious ownership)
+if [ -d "${APP_DIR}/.git" ]; then
+    git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+fi
+
 git fetch origin
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
