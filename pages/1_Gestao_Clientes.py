@@ -427,10 +427,20 @@ try:
                 for data_type in DATA_TYPES.keys():
                     # Inclui se tem dados OU se está habilitado em pelo menos um relatório
                     has_data = data_type_counts.get(data_type, 0) > 0
-                    is_configured = any(
-                        all_configs.get(report_type, {}).get(data_type, False)
-                        for report_type in REPORT_TYPES
-                    )
+                    # Verifica se está habilitado em pelo menos um relatório
+                    # O padrão é True quando não há configuração explícita (conforme get_all_configs)
+                    is_configured = False
+                    for report_type in REPORT_TYPES:
+                        report_config = all_configs.get(report_type, {})
+                        # Se o report_type não existe, cria com padrão True
+                        if not report_config:
+                            is_configured = True  # Sem configuração = todos habilitados por padrão
+                            break
+                        # Verifica se o tipo está habilitado (padrão True se não existir)
+                        if report_config.get(data_type, True):
+                            is_configured = True
+                            break
+                    
                     if has_data or is_configured:
                         available_data_types.append(data_type)
                 
@@ -529,7 +539,9 @@ try:
                         for report_type, report_label in report_labels.items():
                             # Verifica se o tipo intermediário está habilitado para o relatório
                             # Para transações, verifica se 'transactions' está habilitado
-                            if all_configs.get(report_type, {}).get(intermediate_type, True):
+                            # O padrão é True quando não há configuração explícita
+                            report_config = all_configs.get(report_type, {})
+                            if report_config.get(intermediate_type, True):
                                 report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
                                 connections.append({
                                     'from': intermediate_idx,
@@ -540,7 +552,9 @@ try:
                     else:
                         # Caminho direto: Dado → Relatório
                         for report_type, report_label in report_labels.items():
-                            if all_configs.get(report_type, {}).get(data_type, True):
+                            # O padrão é True quando não há configuração explícita
+                            report_config = all_configs.get(report_type, {})
+                            if report_config.get(data_type, True):
                                 report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
                                 connections.append({
                                     'from': data_idx,
