@@ -303,21 +303,55 @@ if uploaded_file:
             
             # Processa imagem com OCR
             try:
-                with st.spinner("🖼️ Processando imagem com OCR (isso pode levar alguns segundos)..."):
-                    image_data = ParserService.parse_image(file_content, file_extension)
-                    df = image_data.get('dataframe')
-                    # Salva dados da imagem para uso pela IA
-                    st.session_state['pdf_full_data'] = image_data
-                    st.session_state['is_image_file'] = True
+                # Mostra progresso mais detalhado
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                status_text.info("🖼️ Iniciando processamento de imagem com OCR...")
+                progress_bar.progress(10)
+                
+                # Processa imagem com timeout implícito (o pytesseract tem timeout de 120s)
+                status_text.info("🖼️ Extraindo texto da imagem (isso pode levar até 2 minutos para imagens grandes)...")
+                progress_bar.progress(30)
+                
+                image_data = ParserService.parse_image(file_content, file_extension)
+                progress_bar.progress(80)
+                
+                df = image_data.get('dataframe')
+                full_text = image_data.get('full_text', '')
+                
+                # Salva dados da imagem para uso pela IA
+                st.session_state['pdf_full_data'] = image_data
+                st.session_state['is_image_file'] = True
+                
+                progress_bar.progress(100)
+                status_text.empty()
+                progress_bar.empty()
                 
                 if df is None or df.empty:
-                    st.info("ℹ️ Nenhuma tabela estruturada encontrada na imagem. A IA processará o texto extraído...")
+                    if full_text and len(full_text.strip()) > 10:
+                        st.success(f"✅ Imagem processada! {len(full_text)} caracteres extraídos. A IA processará o texto extraído...")
+                    else:
+                        st.warning("⚠️ Pouco texto extraído da imagem. A IA tentará processar mesmo assim...")
                     df = pd.DataFrame()
                 else:
                     st.success(f"✅ Imagem processada! {len(df)} linha(s) extraída(s) com OCR.")
             except Exception as e:
-                st.error(f"❌ Erro ao processar imagem: {str(e)}")
-                st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow")
+                error_msg = str(e)
+                st.error(f"❌ Erro ao processar imagem: {error_msg}")
+                
+                # Mensagens de ajuda específicas
+                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                    st.warning("⏱️ O processamento demorou muito. Tente:")
+                    st.markdown("- Redimensionar a imagem para um tamanho menor")
+                    st.markdown("- Converter para PDF e tentar novamente")
+                    st.markdown("- Usar uma imagem com melhor qualidade/resolução")
+                elif "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower():
+                    st.info("💡 Certifique-se de que o Tesseract OCR está instalado:")
+                    st.code("sudo apt-get install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng")
+                else:
+                    st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
+                
                 st.stop()
             auto_detected_type = None
         else:

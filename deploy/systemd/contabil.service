@@ -17,7 +17,9 @@ ExecStart=/opt/contabil/venv/bin/streamlit run app.py \
     --server.headless=true \
     --server.enableCORS=false \
     --server.enableXsrfProtection=true \
-    --browser.gatherUsageStats=false
+    --browser.gatherUsageStats=false \
+    --server.fileWatcherType=none \
+    --server.runOnSave=false
 
 # Reinicia automaticamente em caso de falha
 Restart=always

@@ -852,10 +852,22 @@ class ParserService:
                 raise Exception(f"Erro ao abrir imagem: {str(e)}")
             
             # Extrai texto usando OCR
+            text = None
+            ocr_error = None
+            
+            # Tenta pytesseract primeiro (mais rápido)
             try:
-                text = pytesseract.image_to_string(image, lang='por+eng')
+                # Garante que a imagem está em RGB
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                text = pytesseract.image_to_string(image, lang='por+eng', timeout=120)
+                if not text or len(text.strip()) < 10:
+                    # Se o texto extraído for muito curto, pode ser que o OCR não funcionou bem
+                    # Mas ainda assim usa o que foi extraído
+                    pass
             except Exception as e:
-                # Fallback: tenta easyocr se disponível
+                ocr_error = str(e)
+                # Fallback: tenta easyocr se disponível (mais lento mas mais preciso)
                 try:
                     import easyocr
                     import numpy as np
@@ -863,14 +875,26 @@ class ParserService:
                     if image.mode != 'RGB':
                         image = image.convert('RGB')
                     image_array = np.array(image)
-                    reader = easyocr.Reader(['pt', 'en'])
-                    result = reader.readtext(image_array)
-                    text = '\n'.join([item[1] for item in result])
+                    
+                    # IMPORTANTE: easyocr.Reader é muito lento para inicializar
+                    # Em produção, considere usar um singleton ou cache do reader
+                    # Por enquanto, inicializa apenas quando necessário
+                    try:
+                        reader = easyocr.Reader(['pt', 'en'], gpu=False, verbose=False)
+                        result = reader.readtext(image_array)
+                        text = '\n'.join([item[1] for item in result])
+                    except Exception as easyocr_init_error:
+                        # Se falhar ao inicializar easyocr, usa o erro do pytesseract
+                        raise Exception(f"Erro ao processar OCR com pytesseract: {ocr_error}. EasyOCR também falhou ao inicializar: {str(easyocr_init_error)}")
                 except ImportError:
-                    raise Exception(f"Erro ao processar OCR: {str(e)}. Certifique-se de que pytesseract ou easyocr está instalado.")
+                    raise Exception(f"Erro ao processar OCR: {ocr_error}. Certifique-se de que pytesseract está instalado. EasyOCR não está disponível.")
                 except Exception as easyocr_error:
                     # Se easyocr também falhar, retorna o erro original do pytesseract
-                    raise Exception(f"Erro ao processar OCR: {str(e)}. Fallback easyocr também falhou: {str(easyocr_error)}")
+                    raise Exception(f"Erro ao processar OCR: {ocr_error}. Fallback easyocr também falhou: {str(easyocr_error)}")
+            
+            # Se ainda não tem texto, retorna erro
+            if not text:
+                raise Exception(f"Não foi possível extrair texto da imagem. Erro: {ocr_error or 'OCR não retornou texto'}")
             
             # Tenta criar DataFrame do texto extraído
             dataframe = ParserService._text_to_dataframe_from_ocr(text)
