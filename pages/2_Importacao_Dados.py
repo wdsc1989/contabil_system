@@ -743,10 +743,13 @@ if uploaded_file:
                 for col in edit_df.columns:
                     if col not in column_config and col not in ['_row_num', '_select']:
                         # Tenta inferir o tipo
-                        if pd.api.types.is_numeric_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.NumberColumn(col, width="small")
+                        if pd.api.types.is_bool_dtype(edit_df[col]):
+                            # Colunas booleanas devem usar CheckboxColumn
+                            column_config[col] = st.column_config.CheckboxColumn(col, width="small")
                         elif pd.api.types.is_datetime64_any_dtype(edit_df[col]):
                             column_config[col] = st.column_config.DateColumn(col, format="YYYY-MM-DD", width="small")
+                        elif pd.api.types.is_numeric_dtype(edit_df[col]):
+                            column_config[col] = st.column_config.NumberColumn(col, width="small")
                         else:
                             column_config[col] = st.column_config.TextColumn(col, width="medium")
                 
