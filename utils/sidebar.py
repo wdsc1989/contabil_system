@@ -11,6 +11,31 @@ def show_sidebar():
     """
     Sidebar de navegação centralizada - usada por todas as páginas
     """
+    # Esconde o menu automático do Streamlit usando CSS
+    st.markdown("""
+    <style>
+    /* Esconde o menu de navegação automático do Streamlit */
+    [data-testid="stSidebarNav"] {
+        display: none !important;
+    }
+    
+    /* Esconde o seletor de páginas automático */
+    [data-testid="stSidebar"] [data-testid="stSidebarNav"] {
+        display: none !important;
+    }
+    
+    /* Esconde qualquer elemento de navegação automática */
+    section[data-testid="stSidebar"] > div:first-child {
+        display: none !important;
+    }
+    
+    /* Esconde o menu de navegação se estiver em outro lugar */
+    .css-1d391kg {
+        display: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     with st.sidebar:
         st.title("📊 Sistema Contábil")
         
