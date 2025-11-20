@@ -38,11 +38,22 @@ def limpar_banco():
     print("=" * 70)
     print()
     
+    # Detectar tipo de banco
+    is_postgres = DATABASE_URL.startswith('postgresql')
+    is_sqlite = DATABASE_URL.startswith('sqlite')
+    
+    print(f"   Tipo de banco: {'PostgreSQL' if is_postgres else 'SQLite' if is_sqlite else 'Desconhecido'}")
+    print()
+    
     try:
         with engine.begin() as conn:
-            # Desabilitar foreign keys temporariamente (PostgreSQL)
+            # Desabilitar foreign keys temporariamente
             print("1️⃣ Desabilitando constraints...")
-            conn.execute(text("SET session_replication_role = 'replica'"))
+            if is_postgres:
+                conn.execute(text("SET session_replication_role = 'replica'"))
+            elif is_sqlite:
+                conn.execute(text("PRAGMA foreign_keys = OFF"))
+            print("   ✅ Constraints desabilitadas")
             
             # Listar todas as tabelas
             print("2️⃣ Listando tabelas...")
@@ -80,7 +91,11 @@ def limpar_banco():
             
             # Reabilitar foreign keys
             print("4️⃣ Reabilitando constraints...")
-            conn.execute(text("SET session_replication_role = 'origin'"))
+            if is_postgres:
+                conn.execute(text("SET session_replication_role = 'origin'"))
+            elif is_sqlite:
+                conn.execute(text("PRAGMA foreign_keys = ON"))
+            print("   ✅ Constraints reabilitadas")
             
     except Exception as e:
         print(f"\n❌ ERRO ao limpar dados: {e}")
