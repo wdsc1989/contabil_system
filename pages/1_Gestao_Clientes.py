@@ -708,8 +708,10 @@ try:
                 st.markdown("### 📋 Resumo da Configuração")
                 
                 summary_data = []
-                for data_type, label in DATA_TYPES.items():
-                    row = {'Tipo de Dado': label}
+                for data_type in available_data_types:
+                    label = DATA_TYPES[data_type]
+                    count = data_type_counts.get(data_type, 0)
+                    row = {'Tipo de Dado': f"{label} ({count} registros)" if count > 0 else label}
                     for report_type, report_label in report_labels.items():
                         enabled = all_configs.get(report_type, {}).get(data_type, True)
                         row[report_label] = '✅ Sim' if enabled else '❌ Não'
