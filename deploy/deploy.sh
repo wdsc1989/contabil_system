@@ -85,6 +85,12 @@ echo -e "${GREEN}✅ Dependências instaladas${NC}"
 echo -e "${YELLOW}🗄️  Verificando migrações do banco...${NC}"
 python3 "${APP_DIR}/init_db.py" || echo -e "${YELLOW}⚠️  Aviso: Erro ao executar init_db.py (pode ser normal se já estiver atualizado)${NC}"
 
+# Executa migrações de schema (expandir tabelas)
+if [ -f "${APP_DIR}/scripts/run_migrations.sh" ]; then
+    echo -e "${YELLOW}🔄 Executando migrações de schema...${NC}"
+    bash "${APP_DIR}/scripts/run_migrations.sh" || echo -e "${YELLOW}⚠️  Aviso: Erro ao executar migrações (verifique manualmente)${NC}"
+fi
+
 # Cria backup antes de atualizar (se aplicável)
 if [ -f "${APP_DIR}/scripts/backup_postgres.sh" ]; then
     echo -e "${YELLOW}📦 Criando backup antes do deploy...${NC}"
@@ -140,4 +146,5 @@ echo "   Ver logs: journalctl -u contabil.service -f"
 echo "   Status: systemctl status contabil.service"
 echo "   Reiniciar: systemctl restart contabil.service"
 echo ""
+
 
