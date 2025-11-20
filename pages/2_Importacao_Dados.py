@@ -371,6 +371,14 @@ if uploaded_file:
                 if 'show_manual_selection' in st.session_state and st.session_state.show_manual_selection:
                     st.markdown("---")
                     st.subheader("✏️ Seleção Manual do Tipo de Dado")
+                    st.info("💡 Selecione o tipo de dado que melhor descreve o conteúdo do arquivo.")
+                    
+                    # Se havia uma sugestão anterior, mostra como referência
+                    if 'detected_import_type' in st.session_state:
+                        previous_suggestion = st.session_state.detected_import_type
+                        previous_name = type_names.get(previous_suggestion, previous_suggestion)
+                        st.caption(f"💡 Sugestão anterior da IA: {previous_name}")
+                    
                     import_type = st.selectbox(
                         "Tipo de dado:",
                         options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
