@@ -108,13 +108,13 @@ try:
                 
                 if st.button("💾 Salvar Alterações", type="primary"):
                     try:
-                        client.name = new_name
-                        client.cpf_cnpj = new_cpf_cnpj
-                        client.tipo_empresa = new_tipo if new_tipo else None
-                        client.active = new_active
-                        db.commit()
-                        st.success("✅ Cliente atualizado com sucesso!")
-                        st.rerun()
+                            client.name = new_name
+                            client.cpf_cnpj = new_cpf_cnpj
+                            client.tipo_empresa = new_tipo if new_tipo else None
+                            client.active = new_active
+                            db.commit()
+                            st.success("✅ Cliente atualizado com sucesso!")
+                            st.rerun()
                     except Exception as e:
                         db.rollback()
                         st.error(f"❌ Erro ao atualizar cliente: {str(e)}")
@@ -143,25 +143,25 @@ try:
                     st.error("❌ Nome e CPF/CNPJ são obrigatórios!")
                 else:
                     try:
-                        # Verifica se já existe
-                        existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
-                        if existing:
+                    # Verifica se já existe
+                    existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
+                    if existing:
                             st.error(f"❌ Já existe um cliente com o CPF/CNPJ: {cpf_cnpj}")
-                        else:
-                            new_client = Client(
-                                name=name,
-                                cpf_cnpj=cpf_cnpj,
-                                tipo_empresa=tipo_empresa if tipo_empresa else None,
+                    else:
+                        new_client = Client(
+                            name=name,
+                            cpf_cnpj=cpf_cnpj,
+                            tipo_empresa=tipo_empresa if tipo_empresa else None,
                                 active=active
-                            )
-                            db.add(new_client)
-                            db.commit()
+                        )
+                        db.add(new_client)
+                        db.commit()
                             
                             # Cria configuração padrão de relatórios
-                            ReportConfigService.ensure_default_config(db, new_client.id)
+                        ReportConfigService.ensure_default_config(db, new_client.id)
                             
-                            st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
-                            st.rerun()
+                        st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
+                        st.rerun()
                     except Exception as e:
                         db.rollback()
                         st.error(f"❌ Erro ao cadastrar cliente: {str(e)}")
@@ -232,9 +232,9 @@ try:
                             st.error(f"❌ Erro ao remover permissão: {str(e)}")
                 else:
                     st.info("ℹ️ Nenhum usuário com acesso a este cliente.")
-                
-                st.markdown("---")
-                
+                                    
+                                    st.markdown("---")
+                                
                 # Adicionar permissão
                 st.markdown("### Adicionar Permissão")
                 
@@ -259,15 +259,15 @@ try:
                                     client_id=selected_permission_client_id
                                 )
                                 db.add(new_perm)
-                                db.commit()
+                                    db.commit()
                                 st.success("✅ Permissão adicionada com sucesso!")
-                                st.rerun()
+                                    st.rerun()
                             except Exception as e:
                                 db.rollback()
                                 st.error(f"❌ Erro ao adicionar permissão: {str(e)}")
                     else:
                         st.info("ℹ️ Todos os usuários já têm acesso a este cliente.")
-                else:
+                        else:
                     st.info("ℹ️ Nenhum usuário cadastrado.")
     
     # TAB 4: Configuração de Relatórios
@@ -401,10 +401,24 @@ try:
                 # Cria o mapa visual usando Plotly
                 st.markdown("### 📊 Mapa de Conexões: Tipos de Dados → Relatórios")
                 
-                # Preparar dados para o gráfico
+                # Define mapeamento de tipos de dados para tipos intermediários
+                # Alguns tipos de dados geram transações automaticamente
+                data_to_intermediate = {
+                    'bank_statements': 'transactions',  # Extratos bancários geram transações
+                    'credit_card_invoices': 'transactions',  # Faturas de cartão podem gerar transações
+                    'card_machine_statements': 'transactions',  # Máquina de cartão pode gerar transações
+                    'accounts_payable': 'transactions',  # Contas a pagar podem gerar transações
+                    'accounts_receivable': 'transactions',  # Contas a receber podem gerar transações
+                }
+                
                 # Tipos de dados (lado esquerdo)
                 data_type_labels = list(DATA_TYPES.values())
                 data_type_keys = list(DATA_TYPES.keys())
+                
+                # Tipos intermediários (centro) - apenas "Transações" por enquanto
+                intermediate_types = {
+                    'transactions': '💳 Transações'
+                }
                 
                 # Relatórios (lado direito)
                 report_labels = {
@@ -413,23 +427,13 @@ try:
                     'sazonalidade': '📉 Sazonalidade'
                 }
                 
-                # Criar conexões (edges)
-                connections = []
-                for data_idx, data_type in enumerate(data_type_keys):
-                    for report_type, report_label in report_labels.items():
-                        if all_configs.get(report_type, {}).get(data_type, True):
-                            connections.append({
-                                'from': data_idx,
-                                'to': len(data_type_labels) + list(report_labels.keys()).index(report_type),
-                                'enabled': True
-                            })
-                
                 # Criar posições dos nós
-                # Dados à esquerda, relatórios à direita
+                # Dados à esquerda (x=0), intermediários no centro (x=5), relatórios à direita (x=10)
                 node_x = []
                 node_y = []
                 node_text = []
                 node_colors = []
+                node_types = []  # 'data', 'intermediate', 'report'
                 
                 # Posições dos tipos de dados (lado esquerdo)
                 for i, label in enumerate(data_type_labels):
@@ -437,35 +441,132 @@ try:
                     node_y.append(i * 2)
                     node_text.append(label)
                     node_colors.append('#3498db')  # Azul para dados
+                    node_types.append('data')
+                
+                # Posições dos tipos intermediários (centro)
+                intermediate_start_idx = len(data_type_labels)
+                for i, (key, label) in enumerate(intermediate_types.items()):
+                    node_x.append(5)
+                    node_y.append(i * 6)
+                    node_text.append(label)
+                    node_colors.append('#f39c12')  # Laranja para intermediários
+                    node_types.append('intermediate')
                 
                 # Posições dos relatórios (lado direito)
+                report_start_idx = len(data_type_labels) + len(intermediate_types)
                 for i, (report_type, label) in enumerate(report_labels.items()):
                     node_x.append(10)
                     node_y.append(i * 4)
                     node_text.append(label)
                     node_colors.append('#2ecc71')  # Verde para relatórios
+                    node_types.append('report')
                 
-                # Criar arestas (conexões)
+                # Criar conexões (edges) com caminhos completos
+                connections = []
+                connection_labels = []  # Para tooltips
+                
+                for data_idx, data_type in enumerate(data_type_keys):
+                    # Verifica se este tipo gera um tipo intermediário
+                    intermediate_type = data_to_intermediate.get(data_type)
+                    
+                    if intermediate_type and intermediate_type in intermediate_types:
+                        # Caminho: Dado → Intermediário → Relatório
+                        intermediate_idx = intermediate_start_idx + list(intermediate_types.keys()).index(intermediate_type)
+                        
+                        # Conexão: Dado → Intermediário
+                        connections.append({
+                            'from': data_idx,
+                            'to': intermediate_idx,
+                            'type': 'data_to_intermediate'
+                        })
+                        connection_labels.append(f"{data_type_labels[data_idx]} → {intermediate_types[intermediate_type]}")
+                        
+                        # Conexão: Intermediário → Relatórios
+                        for report_type, report_label in report_labels.items():
+                            # Verifica se o tipo intermediário está habilitado para o relatório
+                            # Para transações, verifica se 'transactions' está habilitado
+                            if all_configs.get(report_type, {}).get(intermediate_type, True):
+                                report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
+                                connections.append({
+                                    'from': intermediate_idx,
+                                    'to': report_idx,
+                                    'type': 'intermediate_to_report'
+                                })
+                                connection_labels.append(f"{intermediate_types[intermediate_type]} → {report_label}")
+                        else:
+                        # Caminho direto: Dado → Relatório
+                        for report_type, report_label in report_labels.items():
+                            if all_configs.get(report_type, {}).get(data_type, True):
+                                report_idx = report_start_idx + list(report_labels.keys()).index(report_type)
+                                connections.append({
+                                    'from': data_idx,
+                                    'to': report_idx,
+                                    'type': 'direct'
+                                })
+                                connection_labels.append(f"{data_type_labels[data_idx]} → {report_label}")
+                
+                # Criar arestas (conexões) com cores diferentes por tipo
                 edge_x = []
                 edge_y = []
+                edge_colors = []
                 
                 for conn in connections:
                     x0, y0 = node_x[conn['from']], node_y[conn['from']]
                     x1, y1 = node_x[conn['to']], node_y[conn['to']]
                     edge_x.extend([x0, x1, None])
                     edge_y.extend([y0, y1, None])
+                    
+                    # Cores diferentes para diferentes tipos de conexão
+                    if conn['type'] == 'data_to_intermediate':
+                        edge_colors.extend(['#3498db', '#f39c12', None])  # Azul → Laranja
+                    elif conn['type'] == 'intermediate_to_report':
+                        edge_colors.extend(['#f39c12', '#2ecc71', None])  # Laranja → Verde
+                    else:  # direct
+                        edge_colors.extend(['#3498db', '#2ecc71', None])  # Azul → Verde
                 
                 # Criar gráfico
                 fig = go.Figure()
                 
-                # Adicionar arestas
-                fig.add_trace(go.Scatter(
-                    x=edge_x, y=edge_y,
-                    line=dict(width=2, color='#95a5a6'),
-                    hoverinfo='none',
-                    mode='lines',
-                    showlegend=False
-                ))
+                # Adicionar arestas agrupadas por tipo para melhor visualização
+                # Conexões diretas (dados → relatórios)
+                direct_edges_x = []
+                direct_edges_y = []
+                for i, conn in enumerate(connections):
+                    if conn['type'] == 'direct':
+                        x0, y0 = node_x[conn['from']], node_y[conn['from']]
+                        x1, y1 = node_x[conn['to']], node_y[conn['to']]
+                        direct_edges_x.extend([x0, x1, None])
+                        direct_edges_y.extend([y0, y1, None])
+                
+                if direct_edges_x:
+                    fig.add_trace(go.Scatter(
+                        x=direct_edges_x, y=direct_edges_y,
+                        line=dict(width=2, color='#3498db', dash='dash'),
+                        hoverinfo='none',
+                        mode='lines',
+                        showlegend=True,
+                        name='Conexão Direta'
+                    ))
+                
+                # Conexões via intermediário (dados → intermediário → relatórios)
+                intermediate_edges_x = []
+                intermediate_edges_y = []
+                for i, conn in enumerate(connections):
+                    if conn['type'] in ['data_to_intermediate', 'intermediate_to_report']:
+                        x0, y0 = node_x[conn['from']], node_y[conn['from']]
+                        x1, y1 = node_x[conn['to']], node_y[conn['to']]
+                        intermediate_edges_x.extend([x0, x1, None])
+                        intermediate_edges_y.extend([y0, y1, None])
+                
+                if intermediate_edges_x:
+                    fig.add_trace(go.Scatter(
+                        x=intermediate_edges_x, y=intermediate_edges_y,
+                        line=dict(width=2.5, color='#f39c12'),
+                        hoverinfo='none',
+                        mode='lines',
+                        showlegend=True,
+                        name='Via Transações'
+                    ))
                 
                 # Adicionar nós de dados
                 data_nodes_x = [node_x[i] for i in range(len(data_type_labels))]
@@ -474,7 +575,7 @@ try:
                     x=data_nodes_x,
                     y=data_nodes_y,
                     mode='markers+text',
-                    marker=dict(size=30, color='#3498db', line=dict(width=2, color='white')),
+                    marker=dict(size=35, color='#3498db', line=dict(width=2, color='white')),
                     text=[label.split(' ')[-1] if len(label.split(' ')) > 1 else label for label in data_type_labels],
                     textposition="middle center",
                     textfont=dict(size=9, color='white'),
@@ -483,16 +584,33 @@ try:
                     showlegend=True
                 ))
                 
+                # Adicionar nós intermediários (se houver)
+                if intermediate_start_idx < report_start_idx:
+                    intermediate_nodes_x = [node_x[i] for i in range(intermediate_start_idx, report_start_idx)]
+                    intermediate_nodes_y = [node_y[i] for i in range(intermediate_start_idx, report_start_idx)]
+                    intermediate_node_text = [node_text[i] for i in range(intermediate_start_idx, report_start_idx)]
+                    fig.add_trace(go.Scatter(
+                        x=intermediate_nodes_x,
+                        y=intermediate_nodes_y,
+                        mode='markers+text',
+                        marker=dict(size=40, color='#f39c12', line=dict(width=2, color='white')),
+                        text=intermediate_node_text,
+                        textposition="middle center",
+                        textfont=dict(size=11, color='white', weight='bold'),
+                        name='Tipos Intermediários',
+                        hovertemplate='<b>%{text}</b><extra></extra>',
+                        showlegend=True
+                    ))
+                
                 # Adicionar nós de relatórios
-                report_start_idx = len(data_type_labels)
                 report_nodes_x = [node_x[i] for i in range(report_start_idx, len(node_x))]
                 report_nodes_y = [node_y[i] for i in range(report_start_idx, len(node_y))]
-                report_node_text = [text for i, text in enumerate(node_text) if i >= report_start_idx]
+                report_node_text = [node_text[i] for i in range(report_start_idx, len(node_text))]
                 fig.add_trace(go.Scatter(
                     x=report_nodes_x,
                     y=report_nodes_y,
                     mode='markers+text',
-                    marker=dict(size=40, color='#2ecc71', line=dict(width=2, color='white')),
+                    marker=dict(size=45, color='#2ecc71', line=dict(width=2, color='white')),
                     text=report_node_text,
                     textposition="middle center",
                     textfont=dict(size=12, color='white', weight='bold'),
@@ -518,6 +636,13 @@ try:
                             x=0.05, y=1.05,
                             showarrow=False,
                             font=dict(size=14, color='#3498db')
+                        ),
+                        dict(
+                            text="Tipos Intermediários",
+                            xref="paper", yref="paper",
+                            x=0.5, y=1.05,
+                            showarrow=False,
+                            font=dict(size=14, color='#f39c12')
                         ),
                         dict(
                             text="Relatórios",
