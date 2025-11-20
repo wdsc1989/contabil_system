@@ -38,6 +38,57 @@ def _ensure_classification_confidence(record: dict) -> dict:
     return record
 
 
+def _get_group_subgroup_names_mapping(db, client_id: int) -> tuple:
+    """
+    Cria mapeamento de IDs para nomes de grupos e subgrupos.
+    Retorna: (group_mapping, subgroup_mapping)
+    """
+    from models.group import Group, Subgroup
+    
+    groups = db.query(Group).filter(Group.client_id == client_id).all()
+    group_mapping = {g.id: g.name for g in groups}
+    
+    subgroups = db.query(Subgroup).join(Group).filter(Group.client_id == client_id).all()
+    subgroup_mapping = {sg.id: sg.name for sg in subgroups}
+    
+    return group_mapping, subgroup_mapping
+
+
+def _add_group_subgroup_names_to_data(data: list, group_mapping: dict, subgroup_mapping: dict) -> list:
+    """
+    Adiciona colunas group_name e subgroup_name aos dados baseado nos IDs.
+    """
+    result = []
+    for record in data:
+        record_copy = dict(record)
+        
+        # Adiciona nomes de grupo e subgrupo
+        group_id = record_copy.get('group_id')
+        subgroup_id = record_copy.get('subgroup_id')
+        
+        if group_id is not None and not pd.isna(group_id):
+            try:
+                group_id_int = int(group_id)
+                record_copy['group_name'] = group_mapping.get(group_id_int, f'ID: {group_id_int}')
+            except (ValueError, TypeError):
+                record_copy['group_name'] = '-'
+        else:
+            record_copy['group_name'] = '-'
+        
+        if subgroup_id is not None and not pd.isna(subgroup_id):
+            try:
+                subgroup_id_int = int(subgroup_id)
+                record_copy['subgroup_name'] = subgroup_mapping.get(subgroup_id_int, f'ID: {subgroup_id_int}')
+            except (ValueError, TypeError):
+                record_copy['subgroup_name'] = '-'
+        else:
+            record_copy['subgroup_name'] = '-'
+        
+        result.append(record_copy)
+    
+    return result
+
+
 st.set_page_config(page_title="Importação de Dados", page_icon="📥", layout="wide")
 
 # Esconde o menu automático do Streamlit
@@ -786,7 +837,14 @@ if uploaded_file:
                         "'Confiança Classificação' para identificar e ajustar grupos/subgrupos."
                     )
                 
-                # Prepara dados para edição
+                # Busca mapeamento de grupos e subgrupos
+                db_edit = SessionLocal()
+                try:
+                    group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_edit, client_id)
+                finally:
+                    db_edit.close()
+                
+                # Prepara dados para edição e adiciona nomes de grupos/subgrupos
                 edit_data = []
                 for idx, row in enumerate(st.session_state.processed_data):
                     row_copy = row.copy()
@@ -794,11 +852,35 @@ if uploaded_file:
                     row_copy['_row_num'] = idx + 1
                     edit_data.append(row_copy)
                 
+                # Adiciona nomes de grupos e subgrupos
+                edit_data = _add_group_subgroup_names_to_data(edit_data, group_mapping, subgroup_mapping)
+                
                 edit_df = pd.DataFrame(edit_data)
                 
-                # Reordena colunas
-                cols = ['_row_num', '_select'] + [c for c in edit_df.columns if c not in ['_row_num', '_select']]
-                edit_df = edit_df[cols]
+                # Reordena colunas - coloca group_name e subgroup_name antes de group_id e subgroup_id
+                # e oculta group_id e subgroup_id na visualização
+                display_cols = ['_row_num', '_select']
+                other_cols = []
+                hidden_cols = []
+                
+                for col in edit_df.columns:
+                    if col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
+                        other_cols.append(col)
+                    elif col in ['group_id', 'subgroup_id']:
+                        hidden_cols.append(col)
+                
+                # Adiciona group_name e subgroup_name se existirem
+                if 'group_name' in edit_df.columns:
+                    display_cols.append('group_name')
+                if 'subgroup_name' in edit_df.columns:
+                    display_cols.append('subgroup_name')
+                
+                # Adiciona outras colunas
+                display_cols.extend(other_cols)
+                
+                # Adiciona colunas ocultas no final (para manter os dados, mas não exibir)
+                all_cols = display_cols + hidden_cols
+                edit_df = edit_df[[c for c in all_cols if c in edit_df.columns]]
                 
                 # Converte tipos de dados antes de editar
                 # Converte datas de string para datetime se existirem
@@ -884,12 +966,24 @@ if uploaded_file:
                         else:
                             column_config["balance"] = st.column_config.TextColumn("Saldo", width="small")
                 
+                # Adiciona configuração para group_name e subgroup_name
+                if 'group_name' in edit_df.columns:
+                    column_config['group_name'] = st.column_config.TextColumn("Grupo", width="medium", disabled=True)
+                if 'subgroup_name' in edit_df.columns:
+                    column_config['subgroup_name'] = st.column_config.TextColumn("Subgrupo", width="medium", disabled=True)
+                
+                # Oculta group_id e subgroup_id na visualização
+                if 'group_id' in edit_df.columns:
+                    column_config['group_id'] = st.column_config.NumberColumn("group_id", width=0, disabled=True)
+                if 'subgroup_id' in edit_df.columns:
+                    column_config['subgroup_id'] = st.column_config.NumberColumn("subgroup_id", width=0, disabled=True)
+                
                 # Adiciona configuração para outros campos que possam existir (genérico)
                 # Importa função de tradução
                 from utils.translations import translate_column_name
                 
                 for col in edit_df.columns:
-                    if col not in column_config and col not in ['_row_num', '_select']:
+                    if col not in column_config and col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
                         # Traduz nome da coluna para português
                         translated_col_name = translate_column_name(col)
                         
@@ -923,10 +1017,12 @@ if uploaded_file:
                     if row.get('_select', False):
                         new_selection.add(row_num)
                     
-                    # Atualiza dados (remove colunas internas)
+                    # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
                     row_dict = row.to_dict()
                     row_dict.pop('_row_num', None)
                     row_dict.pop('_select', None)
+                    row_dict.pop('group_name', None)  # Remove nome, mantém apenas ID
+                    row_dict.pop('subgroup_name', None)  # Remove nome, mantém apenas ID
                     
                     # Converte datas de datetime para string YYYY-MM-DD
                     if 'date' in row_dict and pd.notna(row_dict.get('date')):
@@ -960,7 +1056,35 @@ if uploaded_file:
                 if st.session_state.selected_rows:
                     selected_indices = sorted(list(st.session_state.selected_rows))
                     selected_data = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
+                    
+                    # Adiciona nomes de grupos e subgrupos ao preview
+                    db_preview = SessionLocal()
+                    try:
+                        group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_preview, client_id)
+                        selected_data = _add_group_subgroup_names_to_data(selected_data, group_mapping, subgroup_mapping)
+                    finally:
+                        db_preview.close()
+                    
                     selected_df = pd.DataFrame(selected_data)
+                    
+                    # Reordena colunas para mostrar nomes antes de IDs e ocultar IDs
+                    preview_cols = []
+                    for col in selected_df.columns:
+                        if col not in ['group_id', 'subgroup_id']:
+                            preview_cols.append(col)
+                    
+                    # Coloca group_name e subgroup_name antes de outras colunas (se existirem)
+                    if 'group_name' in preview_cols:
+                        preview_cols.remove('group_name')
+                        preview_cols.insert(0, 'group_name')
+                    if 'subgroup_name' in preview_cols:
+                        preview_cols.remove('subgroup_name')
+                        if 'group_name' in preview_cols:
+                            preview_cols.insert(preview_cols.index('group_name') + 1, 'subgroup_name')
+                        else:
+                            preview_cols.insert(0, 'subgroup_name')
+                    
+                    selected_df = selected_df[preview_cols]
                     
                     st.dataframe(selected_df, use_container_width=True, height=300)
                     st.success(f"✅ {len(selected_indices)} linha(s) selecionada(s) para importação")

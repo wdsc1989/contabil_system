@@ -91,6 +91,12 @@ if [ -f "${APP_DIR}/scripts/run_migrations.sh" ]; then
     bash "${APP_DIR}/scripts/run_migrations.sh" || echo -e "${YELLOW}⚠️  Aviso: Erro ao executar migrações (verifique manualmente)${NC}"
 fi
 
+# Garante que todos os clientes tenham grupos e subgrupos padrão
+if [ -f "${APP_DIR}/scripts/ensure_all_clients_have_groups.py" ]; then
+    echo -e "${YELLOW}📋 Garantindo grupos e subgrupos para todos os clientes...${NC}"
+    python3 "${APP_DIR}/scripts/ensure_all_clients_have_groups.py" || echo -e "${YELLOW}⚠️  Aviso: Erro ao garantir grupos/subgrupos (verifique manualmente)${NC}"
+fi
+
 # Cria backup antes de atualizar (se aplicável)
 if [ -f "${APP_DIR}/scripts/backup_postgres.sh" ]; then
     echo -e "${YELLOW}📦 Criando backup antes do deploy...${NC}"
