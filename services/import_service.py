@@ -4,7 +4,7 @@ Serviço de importação de dados com mapeamento de colunas
 import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Tuple
 from datetime import datetime
 from models.transaction import Transaction, BankStatement
 from models.contract import Contract
@@ -56,6 +56,64 @@ def _ensure_columns_exist(db: Session, table_name: str):
     except Exception as e:
         # Se houver erro, continua - pode ser que as colunas já existam
         pass
+
+
+def _validate_group_subgroup(db: Session, client_id: int, group_id: Optional[int], subgroup_id: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Valida se group_id e subgroup_id existem no banco de dados para o cliente.
+    Retorna (group_id_validado, subgroup_id_validado) ou (None, None) se não existirem.
+    """
+    validated_group_id = None
+    validated_subgroup_id = None
+    
+    # Valida group_id
+    if group_id is not None:
+        group = db.query(Group).filter(
+            Group.id == group_id,
+            Group.client_id == client_id
+        ).first()
+        if group:
+            validated_group_id = group_id
+            
+            # Valida subgroup_id apenas se group_id for válido
+            if subgroup_id is not None:
+                subgroup = db.query(Subgroup).filter(
+                    Subgroup.id == subgroup_id,
+                    Subgroup.group_id == group_id
+                ).first()
+                if subgroup:
+                    validated_subgroup_id = subgroup_id
+    
+    return validated_group_id, validated_subgroup_id
+
+
+def _validate_group_subgroup(db: Session, client_id: int, group_id: Optional[int], subgroup_id: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Valida se group_id e subgroup_id existem no banco de dados para o cliente.
+    Retorna (group_id_validado, subgroup_id_validado) ou (None, None) se não existirem.
+    """
+    validated_group_id = None
+    validated_subgroup_id = None
+    
+    # Valida group_id
+    if group_id is not None:
+        group = db.query(Group).filter(
+            Group.id == group_id,
+            Group.client_id == client_id
+        ).first()
+        if group:
+            validated_group_id = group_id
+            
+            # Valida subgroup_id apenas se group_id for válido
+            if subgroup_id is not None:
+                subgroup = db.query(Subgroup).filter(
+                    Subgroup.id == subgroup_id,
+                    Subgroup.group_id == group_id
+                ).first()
+                if subgroup:
+                    validated_subgroup_id = subgroup_id
+    
+    return validated_group_id, validated_subgroup_id
 
 
 def _get_row_group_subgroup(row, group_id, subgroup_id):
@@ -240,6 +298,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'date': date_obj,
@@ -247,8 +310,8 @@ class ImportService:
                         'value': value,
                         'type': trans_type,
                         'category': str(row.get('category', '')) if pd.notna(row.get('category', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id,
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id,
                         'account': str(row.get('account', '')) if pd.notna(row.get('account', None)) else None,
                         'document_type': document_type,
                         'imported_from': filename
@@ -339,7 +402,7 @@ class ImportService:
                     account = str(row.get('account', '')) if pd.notna(row.get('account', None)) else None
                     balance = parsed_balance if pd.notna(parsed_balance) else None
                     
-                    # Group/subgroup
+                    # Group/subgroup - extrai valores
                     row_group_id = row.get('group_id')
                     if row_group_id is not None and pd.notna(row_group_id):
                         try:
@@ -358,6 +421,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     # 1. Prepara extrato bancário
                     statements_data.append({
                         'client_id': client_id,
@@ -368,8 +436,8 @@ class ImportService:
                         'value': value,
                         'balance': balance,
                         'imported_at': imported_at,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                     
                     # 2. Prepara transação (verifica duplicata usando set)
@@ -387,8 +455,8 @@ class ImportService:
                             'bank_name': bank_name,
                             'document_type': 'extrato_bancario',
                             'imported_from': filename,
-                            'group_id': row_group_id,
-                            'subgroup_id': row_subgroup_id
+                            'group_id': validated_group_id,
+                            'subgroup_id': validated_subgroup_id
                         })
                         # Adiciona ao set para evitar duplicatas no mesmo chunk
                         existing_transactions.add(trans_key)
@@ -486,6 +554,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'contract_start': contract_start,
@@ -497,8 +570,8 @@ class ImportService:
                         'service_sold': str(row.get('service_sold', '')) if pd.notna(row.get('service_sold', None)) else None,
                         'num_guests': int(row.get('num_guests', 0)) if pd.notna(row.get('num_guests', None)) else None,
                         'status': str(row.get('status', 'pendente')) if pd.notna(row.get('status', None)) else 'pendente',
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -582,6 +655,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'account_name': str(row.get('account_name', '')),
@@ -593,8 +671,8 @@ class ImportService:
                         'monthly_installments': int(row.get('monthly_installments', 1)) if pd.notna(row.get('monthly_installments', None)) else None,
                         'total_monthly_outflow': parsed_total_monthly_outflow if pd.notna(parsed_total_monthly_outflow) else None,
                         'installment_number': int(row.get('installment_number', 1)) if pd.notna(row.get('installment_number', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -691,6 +769,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'account_name': str(row.get('account_name', '')),
@@ -705,8 +788,8 @@ class ImportService:
                         'monthly_installments': int(row.get('monthly_installments', 1)) if pd.notna(row.get('monthly_installments', None)) else None,
                         'total_expected_inflow': parsed_total_expected_inflow if pd.notna(parsed_total_expected_inflow) else None,
                         'installment_number': int(row.get('installment_number', 1)) if pd.notna(row.get('installment_number', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -787,6 +870,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'date': date_obj,
@@ -798,8 +886,8 @@ class ImportService:
                         'yield_value': row.get('_parsed_yield_value') if pd.notna(row.get('_parsed_yield_value', None)) else None,
                         'balance': row.get('_parsed_balance') if pd.notna(row.get('_parsed_balance', None)) else None,
                         'description': str(row.get('description', '')) if pd.notna(row.get('description', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -878,6 +966,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'transaction_date': transaction_date,
@@ -888,8 +981,8 @@ class ImportService:
                         'installment_number': int(row.get('installment_number', 1)) if pd.notna(row.get('installment_number', None)) else None,
                         'total_installments': int(row.get('total_installments', 1)) if pd.notna(row.get('total_installments', None)) else None,
                         'card_brand': str(row.get('card_brand', '')) if pd.notna(row.get('card_brand', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -981,6 +1074,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'date': date_obj,
@@ -990,8 +1088,8 @@ class ImportService:
                         'card_brand': str(row.get('card_brand', '')) if pd.notna(row.get('card_brand', None)) else None,
                         'transaction_type': str(row.get('transaction_type', '')) if pd.notna(row.get('transaction_type', None)) else None,
                         'description': str(row.get('description', '')) if pd.notna(row.get('description', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
@@ -1090,6 +1188,11 @@ class ImportService:
                     else:
                         row_subgroup_id = subgroup_id
                     
+                    # Valida se group_id e subgroup_id existem no banco
+                    validated_group_id, validated_subgroup_id = _validate_group_subgroup(
+                        db, client_id, row_group_id, row_subgroup_id
+                    )
+                    
                     bulk_data.append({
                         'client_id': client_id,
                         'product_name': str(row.get('product_name', '')),
@@ -1099,8 +1202,8 @@ class ImportService:
                         'movement_date': movement_date,
                         'movement_type': movement_type,
                         'description': str(row.get('description', '')) if pd.notna(row.get('description', None)) else None,
-                        'group_id': row_group_id,
-                        'subgroup_id': row_subgroup_id
+                        'group_id': validated_group_id,
+                        'subgroup_id': validated_subgroup_id
                     })
                 except Exception as e:
                     print(f"Erro ao preparar linha: {e}")
