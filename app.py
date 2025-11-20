@@ -344,6 +344,517 @@ def main_page():
         5. **Gere relatórios** personalizados
         """)
     
+    with st.expander("📚 Tutorial Completo - Sistema de Ponta a Ponta"):
+        st.markdown("""
+        ## 1️⃣ Administração do Sistema
+        
+        ### 1.1 Login e Primeiro Acesso
+        
+        1. **Acesse o sistema** através do navegador
+        2. **Faça login** com suas credenciais:
+           - **Admin**: Usuário com acesso total ao sistema
+           - **Manager**: Gerencia clientes específicos
+           - **Viewer**: Apenas visualização de dados
+        3. Após o login, você será direcionado para a **página inicial**
+        
+        ### 1.2 Gestão de Usuários (Apenas Admin)
+        
+        Para administradores:
+        - Acesse **"👥 Gestão de Clientes"** → Aba **"🔐 Permissões"**
+        - **Criar usuário**: Adicione novos usuários ao sistema
+        - **Editar permissões**: Defina quais clientes cada usuário pode acessar
+        - **Alterar roles**: Modifique o nível de acesso (admin, manager, viewer)
+        
+        ### 1.3 Permissões e Roles
+        
+        O sistema possui três níveis de acesso:
+        
+        - **👑 Admin**: 
+          - Acesso total ao sistema
+          - Cria e gerencia usuários
+          - Cria e gerencia clientes
+          - Configura relatórios
+          - Acessa todos os dados e relatórios
+        
+        - **👔 Manager**: 
+          - Gerencia clientes específicos (atribuídos pelo admin)
+          - Importa e edita dados
+          - Visualiza relatórios dos clientes atribuídos
+          - Não pode criar usuários ou alterar configurações globais
+        
+        - **👁️ Viewer**: 
+          - Apenas visualização de dados e relatórios
+          - Não pode importar ou editar dados
+          - Acesso somente aos clientes atribuídos
+        
+        ---
+        
+        ## 2️⃣ Gestão de Clientes
+        
+        ### 2.1 Criar Novo Cliente
+        
+        1. Acesse **"👥 Gestão de Clientes"** no menu
+        2. Vá para a aba **"➕ Novo Cliente"**
+        3. Preencha os campos obrigatórios:
+           - **Nome**: Nome completo da empresa/cliente
+           - **CPF/CNPJ**: Documento (será validado automaticamente)
+           - **Tipo de Empresa**: Selecione o tipo (Eventos, Consultoria, etc.)
+        4. Clique em **"Criar Cliente"**
+        5. O sistema criará automaticamente:
+           - Grupos e subgrupos padrão (DRE, DFC, Sazonalidade)
+           - Configuração padrão de relatórios (todos os tipos habilitados)
+        
+        ### 2.2 Editar Informações do Cliente
+        
+        1. Na aba **"📋 Lista de Clientes"**
+        2. Selecione o cliente que deseja editar
+        3. Modifique os campos necessários
+        4. Clique em **"Salvar Alterações"**
+        
+        ### 2.3 Configuração de Relatórios (⚠️ FUNDAMENTAL)
+        
+        **O que são Configurações de Relatórios?**
+        
+        As configurações de relatórios permitem que você **personalize quais tipos de dados** aparecem em cada relatório para cada cliente. Isso é essencial porque diferentes clientes podem ter necessidades diferentes.
+        
+        **Como funciona:**
+        
+        1. Acesse **"👥 Gestão de Clientes"** → Aba **"⚙️ Configuração de Relatórios"**
+        2. Selecione o cliente que deseja configurar
+        3. Para cada relatório (DRE, DFC, Sazonalidade), você pode habilitar/desabilitar tipos de dados:
+           - ✅ **Transações Financeiras**
+           - ✅ **Extratos Bancários**
+           - ✅ **Contratos/Eventos**
+           - ✅ **Contas a Pagar**
+           - ✅ **Contas a Receber**
+           - ✅ **Aplicações Financeiras**
+           - ✅ **Faturas de Cartão**
+           - ✅ **Extratos de Máquina de Cartão**
+           - ✅ **Controle de Estoque**
+        
+        4. Clique em **"Salvar Configuração"**
+        
+        **Impacto nas Visualizações:**
+        
+        - ✅ **Tipos habilitados**: Aparecem nos relatórios correspondentes
+        - ❌ **Tipos desabilitados**: São **completamente ignorados** nos relatórios
+        - O sistema **respeita rigorosamente** essas configurações
+        - O **Mapa Visual de Dados** reflete essas configurações em tempo real
+        
+        **Exemplo prático:**
+        
+        Se você desabilitar "Contratos/Eventos" no DRE:
+        - Os contratos **não aparecerão** no relatório DRE
+        - Mas ainda podem aparecer no DFC se estiverem habilitados lá
+        - O mapa visual mostrará que contratos não estão conectados ao DRE
+        
+        ### 2.4 Mapa Visual de Dados (🗺️ Entendendo o Fluxo)
+        
+        **O que é o Mapa Visual?**
+        
+        O mapa visual é uma representação gráfica que mostra **como os tipos de dados importados se conectam aos relatórios** baseado nas configurações do cliente.
+        
+        **Como acessar:**
+        
+        1. Acesse **"👥 Gestão de Clientes"** → Aba **"🗺️ Mapa Visual de Dados"**
+        2. Selecione o cliente que deseja visualizar
+        
+        **Como interpretar o mapa:**
+        
+        O mapa possui três seções principais:
+        
+        - **🔵 Tipos de Dados Importados** (lado esquerdo):
+          - Mostra todos os tipos de dados que podem ser importados
+          - Tipos com dados existentes aparecem destacados
+          - Tipos sem dados aparecem mais transparentes
+        
+        - **🟡 Tipos Intermediários** (centro):
+          - **Transações**: Geradas automaticamente a partir de extratos bancários
+          - Outros tipos vão direto aos relatórios
+        
+        - **🟢 Relatórios** (lado direito):
+          - **DRE**: Demonstração do Resultado
+          - **DFC**: Fluxo de Caixa
+          - **Sazonalidade**: Análise de padrões sazonais
+        
+        **Conexões visuais:**
+        
+        - **Linhas conectando tipos → relatórios**: Mostram quais dados alimentam quais relatórios
+        - **Linhas verdes**: Tipos habilitados na configuração
+        - **Sem linhas**: Tipos desabilitados (não aparecem no relatório)
+        - **Tabela de configuração**: Mostra exatamente o que está habilitado/desabilitado
+        
+        **Como o mapa reflete as configurações:**
+        
+        - O mapa é **gerado dinamicamente** baseado nas configurações de relatórios
+        - Se você desabilitar um tipo em um relatório, a conexão desaparece do mapa
+        - Se você habilitar um tipo, a conexão aparece automaticamente
+        - O mapa ajuda a **visualizar o impacto** das configurações antes de gerar relatórios
+        
+        **Exemplo prático:**
+        
+        Se você configurar:
+        - DRE: Apenas "Transações" e "Contratos" habilitados
+        - DFC: Todos os tipos habilitados
+        
+        O mapa mostrará:
+        - Transações e Contratos conectados ao DRE
+        - Todos os tipos conectados ao DFC
+        - Outros tipos (Contas a Pagar, etc.) conectados apenas ao DFC
+        
+        ---
+        
+        ## 3️⃣ Cadastro de Dados
+        
+        ### 3.1 Importação Automática
+        
+        **Passo 1: Upload do Arquivo**
+        
+        1. Acesse **"📥 Importar Dados"** no menu
+        2. Certifique-se de que um cliente está selecionado
+        3. Clique em **"Escolher arquivo"**
+        4. Selecione o arquivo que deseja importar
+        
+        **Formatos suportados:**
+        - **CSV/TXT**: Extratos bancários, transações, contas
+        - **Excel (XLSX/XLS)**: Planilhas complexas, múltiplas abas
+        - **PDF**: Extração automática de texto e tabelas
+        - **OFX**: Extratos bancários no formato OFX
+        - **Imagens**: JPG, PNG, TIFF, BMP, WEBP (com OCR automático)
+        
+        **Passo 2: Detecção e Recomendações**
+        
+        O sistema automaticamente:
+        - **Detecta o tipo de arquivo** (CSV, Excel, PDF, etc.)
+        - **Recomenda uso de IA** quando apropriado:
+          - Arquivos de imagem (requer OCR)
+          - PDFs baseados em imagens
+          - Arquivos grandes (>100 linhas)
+          - Formatos não estruturados
+        
+        **Passo 3: Processamento com IA**
+        
+        O sistema processa o arquivo:
+        
+        1. **Extração de dados**:
+           - PDFs: Extrai texto completo e tabelas
+           - Imagens: Usa OCR para extrair texto
+           - Excel/CSV: Lê todas as planilhas/linhas
+        
+        2. **Classificação automática**:
+           - Detecta o tipo de dado (extrato, transação, contrato, etc.)
+           - Mapeia colunas automaticamente
+           - Classifica por grupo/subgrupo usando IA
+           - Calcula confiança da classificação
+        
+        3. **Validação completa**:
+           - Compara número de linhas processadas vs. original
+           - Alerta se houver diferença
+           - Permite usar IA como "avaliador completo" para garantir processamento total
+        
+        **Opção: Usar IA como Avaliador Completo**
+        
+        - Marque a opção **"Usar IA como avaliador completo do arquivo"**
+        - Garante que **todas as linhas** sejam processadas
+        - Recomendado para:
+          - PDFs com mais de 200 linhas
+          - Arquivos não estruturados
+          - Quando o processamento automático não capturou tudo
+        
+        **Passo 4: Revisão e Edição**
+        
+        1. Visualize os dados processados na tabela
+        2. **Edite diretamente** se necessário:
+           - Clique em uma célula para editar
+           - Pressione Enter para salvar
+        3. **Revise classificações**:
+           - Verifique grupo/subgrupo atribuídos
+           - Alerte para confiança < 70%
+           - Corrija manualmente se necessário
+        
+        4. **Selecione linhas** para importar:
+           - Use checkboxes à esquerda
+           - Ou selecione todas com o checkbox do cabeçalho
+        
+        **Passo 5: Importação Final**
+        
+        1. Revise os dados uma última vez
+        2. Clique em **"Importar Dados Selecionados"**
+        3. Aguarde a confirmação
+        4. Os dados serão salvos no banco de dados
+        5. Aparecerão automaticamente nos relatórios (se habilitados na configuração)
+        
+        ### 3.2 Cadastro Manual
+        
+        Você pode cadastrar dados manualmente quando não tiver arquivos para importar:
+        
+        **Transações Financeiras:**
+        
+        1. Acesse **"💳 Transações Financeiras"**
+        2. Aba **"➕ Nova Transação"**
+        3. Preencha: Data, Descrição, Valor, Tipo (entrada/saída)
+        4. Selecione Grupo e Subgrupo
+        5. Clique em **"Cadastrar Transação"**
+        
+        **Extratos Bancários:**
+        
+        1. Acesse **"🏦 Extratos Bancários"**
+        2. Aba **"➕ Novo Extrato"**
+        3. Preencha: Data, Banco, Conta, Valor, Descrição
+        4. Selecione Grupo e Subgrupo
+        5. Clique em **"Criar Extrato"**
+        
+        **Contratos/Eventos:**
+        
+        1. Acesse **"📝 Contratos"**
+        2. Aba **"➕ Novo Contrato"**
+        3. Preencha campos:
+           - Datas (início, evento)
+           - Valores (serviço, deslocamento)
+           - Tipo de evento, Serviço vendido
+           - Vendedor, Local, Horas, NF
+           - Cliente/Contratante
+        4. Clique em **"Criar Contrato"**
+        
+        **Contas a Pagar:**
+        
+        1. Acesse **"💰 Contas"** → Aba **"Contas a Pagar"**
+        2. Clique em **"➕ Nova Conta a Pagar"**
+        3. Preencha: Credor, CPF/CNPJ, Data de vencimento, Valor
+        4. Selecione Grupo e Subgrupo
+        5. Clique em **"Cadastrar"**
+        
+        **Contas a Receber:**
+        
+        1. Acesse **"💰 Contas"** → Aba **"Contas a Receber"**
+        2. Clique em **"➕ Nova Conta a Receber"**
+        3. Preencha: Devedor, CPF/CNPJ, Data de vencimento, Valor
+        4. Opcional: Vincule a um contrato existente
+        5. Selecione Grupo e Subgrupo
+        6. Clique em **"Cadastrar"**
+        
+        ---
+        
+        ## 4️⃣ Relacionamento entre Dados e Relatórios
+        
+        ### 4.1 Como os Dados Alimentam os Relatórios
+        
+        **Fluxo de dados:**
+        
+        ```
+        Importação/Cadastro → Banco de Dados → Filtragem por Configuração → Agrupamento → Relatórios
+        ```
+        
+        1. **Dados são importados ou cadastrados manualmente**
+           - Salvos no banco de dados PostgreSQL
+           - Classificados por grupo/subgrupo
+           - Vinculados ao cliente
+        
+        2. **Sistema verifica configurações de relatórios**
+           - Para cada relatório (DRE, DFC, Sazonalidade)
+           - Verifica quais tipos de dados estão habilitados
+           - **Ignora completamente** tipos desabilitados
+        
+        3. **Agrupamento por grupo/subgrupo**
+           - Dados são agrupados conforme o plano de contas
+           - Permite análise hierárquica (grupo → subgrupo → transações)
+        
+        4. **Consolidação de múltiplas fontes**
+           - DRE: Consolida receitas e despesas de todas as fontes habilitadas
+           - DFC: Consolida fluxo de caixa de todas as fontes habilitadas
+           - Sazonalidade: Analisa padrões de todas as fontes habilitadas
+        
+        ### 4.2 Filtragem por Configuração de Relatórios
+        
+        **Exemplo prático:**
+        
+        Cliente tem:
+        - 100 transações financeiras
+        - 50 contratos
+        - 30 contas a pagar
+        
+        Configuração do DRE:
+        - ✅ Transações: Habilitado
+        - ✅ Contratos: Habilitado
+        - ❌ Contas a Pagar: Desabilitado
+        
+        Resultado no DRE:
+        - ✅ Transações aparecem (100 registros)
+        - ✅ Contratos aparecem (50 registros)
+        - ❌ Contas a Pagar **não aparecem** (0 registros, mesmo tendo 30 no banco)
+        
+        ### 4.3 Agrupamento por Grupo/Subgrupo
+        
+        Todos os dados são classificados por:
+        
+        - **Grupo**: Categoria principal (ex: "Receitas Operacionais", "Despesas Administrativas")
+        - **Subgrupo**: Categoria específica (ex: "Vendas de Serviços", "Aluguel")
+        
+        Nos relatórios:
+        - DRE: Agrupa receitas e despesas por grupo/subgrupo
+        - DFC: Agrupa fluxo por grupo/subgrupo
+        - Sazonalidade: Analisa padrões por grupo/subgrupo
+        
+        ### 4.4 Consolidação de Múltiplas Fontes
+        
+        O sistema consolida dados de diferentes fontes:
+        
+        **DRE (Demonstração do Resultado):**
+        - Receitas: Transações (entrada) + Contratos + Contas a Receber
+        - Despesas: Transações (saída) + Contas a Pagar + Faturas de Cartão
+        
+        **DFC (Fluxo de Caixa):**
+        - Entradas: Extratos bancários (créditos) + Contas a Receber (recebidas)
+        - Saídas: Extratos bancários (débitos) + Contas a Pagar (pagas)
+        
+        **Sazonalidade:**
+        - Analisa padrões de todas as fontes habilitadas
+        - Identifica tendências mensais, trimestrais, anuais
+        
+        ---
+        
+        ## 5️⃣ Relatórios e Dashboards
+        
+        ### 5.1 DRE (Demonstração do Resultado)
+        
+        **O que é:**
+        Relatório que mostra receitas, despesas e resultado líquido em um período.
+        
+        **Como acessar:**
+        Menu → **"📊 DRE"**
+        
+        **O que você verá:**
+        - **KPIs principais**: Receitas totais, Despesas totais, Resultado, Margem
+        - **Gráfico de barras**: Receitas vs Despesas por mês
+        - **Tabela detalhada**: Receitas e despesas agrupadas por grupo/subgrupo
+        - **Origem dos dados**: Indica de onde vieram (extrato, contrato, etc.)
+        
+        **Como interpretar:**
+        - **Receitas > Despesas**: Resultado positivo (lucro)
+        - **Receitas < Despesas**: Resultado negativo (prejuízo)
+        - **Margem**: Percentual de lucro sobre receitas
+        - **Grupos/Subgrupos**: Mostram onde estão concentradas receitas/despesas
+        
+        **Filtros disponíveis:**
+        - Período (mês, 3 meses, 6 meses, ano, personalizado)
+        - Tipo (receitas, despesas, ambos)
+        
+        ### 5.2 DFC (Fluxo de Caixa)
+        
+        **O que é:**
+        Relatório que mostra entradas e saídas de dinheiro em um período.
+        
+        **Como acessar:**
+        Menu → **"💵 DFC"**
+        
+        **O que você verá:**
+        - **KPIs principais**: Saldo inicial, Entradas, Saídas, Saldo final
+        - **Gráfico de fluxo**: Entradas e saídas por mês
+        - **Tabela detalhada**: Transações agrupadas por grupo/subgrupo
+        - **Fontes dos dados**: Tabela mostrando origem (extrato, conta, etc.)
+        
+        **Como interpretar:**
+        - **Saldo positivo**: Mais dinheiro entrando do que saindo
+        - **Saldo negativo**: Mais dinheiro saindo do que entrando
+        - **Projeções**: Mostra fluxo futuro baseado em contas a pagar/receber
+        
+        **Filtros disponíveis:**
+        - Período (mês, 3 meses, 6 meses, ano, personalizado)
+        
+        ### 5.3 Sazonalidade
+        
+        **O que é:**
+        Análise de padrões sazonais e tendências ao longo do tempo.
+        
+        **Como acessar:**
+        Menu → **"📈 Sazonalidade"**
+        
+        **O que você verá:**
+        - **Gráfico de tendências**: Receitas e despesas ao longo dos meses
+        - **Comparação mensal**: Mês atual vs mesmo mês do ano anterior
+        - **Análise por grupo/subgrupo**: Padrões específicos por categoria
+        - **Análise de eventos**: Sazonalidade de contratos/eventos
+        
+        **Como interpretar:**
+        - **Picos**: Meses com maior movimento
+        - **Vales**: Meses com menor movimento
+        - **Tendências**: Crescimento ou declínio ao longo do tempo
+        - **Sazonalidade**: Padrões que se repetem (ex: dezembro sempre alto)
+        
+        ### 5.4 Relatórios Especializados
+        
+        **📅 Diário de Gastos:**
+        - Acompanhamento diário de despesas
+        - Heatmap de gastos por dia
+        - Gráficos de tendências diárias
+        
+        **🎯 Painel de Controle Unificado:**
+        - Visão executiva consolidada
+        - KPIs principais de todos os relatórios
+        - Gráficos interativos
+        
+        **💵 Fluxo de Caixa Gerencial:**
+        - Análise gerencial de fluxo de caixa
+        - Projeções futuras
+        - Análise de cenários
+        
+        **👤 Despesas CPF vs CNPJ:**
+        - Separação de despesas pessoais e empresariais
+        - Análise de distribuição
+        - Conformidade fiscal
+        
+        **💰 Dashboard de Contas:**
+        - Aging de contas a pagar e receber
+        - Inadimplência
+        - Projeções de 90 dias
+        
+        **📝 Relatório de Eventos:**
+        - Análise de contratos e eventos
+        - Calendário de eventos
+        - Performance de vendedores
+        
+        **📈 Performance de Vendedores:**
+        - Análise de vendas por vendedor
+        - Comissões
+        - Metas e resultados
+        
+        ---
+        
+        ## 🔄 Fluxo Completo do Sistema
+        
+        **Resumo do processo de ponta a ponta:**
+        
+        1. **👑 Admin cria usuários e clientes**
+           - Define permissões e roles
+           - Cria clientes no sistema
+        
+        2. **⚙️ Admin configura relatórios por cliente**
+           - Define quais tipos de dados aparecem em cada relatório
+           - Visualiza o mapa de conexões
+        
+        3. **📥 Usuário importa/cadastra dados**
+           - Importa arquivos (CSV, Excel, PDF, imagens)
+           - Ou cadastra manualmente
+           - Sistema classifica automaticamente
+        
+        4. **🤖 Sistema processa e organiza**
+           - Classifica por grupo/subgrupo
+           - Valida e armazena no banco
+        
+        5. **📊 Relatórios são gerados automaticamente**
+           - Respeitando configurações de relatórios
+           - Agrupando por grupo/subgrupo
+           - Consolidando múltiplas fontes
+        
+        6. **🗺️ Mapa visual mostra conexões**
+           - Tipos de dados → Relatórios
+           - Reflete configurações em tempo real
+        
+        **Dica importante:**
+        
+        Sempre configure os relatórios **antes** de importar muitos dados. Isso garante que os relatórios mostrem exatamente o que você precisa desde o início.
+        """)
+    
     with st.expander("📥 Importação de Dados"):
         st.markdown("""
         O sistema suporta importação de múltiplos formatos com processamento inteligente:
