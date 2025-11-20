@@ -9,10 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.database import SessionLocal
 from services.auth_service import AuthService
-from services.report_config_service import ReportConfigService
+from services.report_config_service import ReportConfigService, DATA_TYPES, REPORT_TYPES
 from models.client import Client
 from models.user import User, UserClientPermission
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
 
 st.set_page_config(page_title="Gestão de Clientes", page_icon="👥", layout="wide")
 
@@ -37,7 +39,7 @@ st.title("👥 Gestão de Clientes")
 st.markdown("---")
 
 # Tabs para diferentes funcionalidades
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista de Clientes", "➕ Novo Cliente", "🔐 Permissões", "⚙️ Configuração de Relatórios"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Lista de Clientes", "➕ Novo Cliente", "🔐 Permissões", "⚙️ Configuração de Relatórios", "🗺️ Mapa Visual de Dados"])
 
 db = SessionLocal()
 
@@ -98,192 +100,175 @@ try:
                 
                 with col1:
                     new_name = st.text_input("Nome", value=client.name, key="edit_name")
-                    new_cpf_cnpj = st.text_input("CPF/CNPJ", value=client.cpf_cnpj, key="edit_cpf")
+                    new_cpf_cnpj = st.text_input("CPF/CNPJ", value=client.cpf_cnpj, key="edit_cpf_cnpj")
+                    new_tipo = st.text_input("Tipo de Empresa", value=client.tipo_empresa or "", key="edit_tipo")
                 
                 with col2:
-                    new_tipo = st.selectbox(
-                        "Tipo de Empresa",
-                        options=['', 'Eventos', 'Consultoria', 'Comércio', 'Serviços', 'Indústria', 'Outro'],
-                        index=['', 'Eventos', 'Consultoria', 'Comércio', 'Serviços', 'Indústria', 'Outro'].index(client.tipo_empresa or ''),
-                        key="edit_tipo"
-                    )
                     new_active = st.checkbox("Ativo", value=client.active, key="edit_active")
                 
-                col1, col2, col3 = st.columns([1, 1, 2])
-                
-                with col1:
-                    if st.button("💾 Salvar Alterações", use_container_width=True):
-                        if new_name and new_cpf_cnpj:
-                            client.name = new_name
-                            client.cpf_cnpj = new_cpf_cnpj
-                            client.tipo_empresa = new_tipo if new_tipo else None
-                            client.active = new_active
-                            db.commit()
-                            st.success("✅ Cliente atualizado com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Preencha todos os campos obrigatórios.")
-                
-                with col2:
-                    if st.button("🗑️ Excluir Cliente", use_container_width=True):
-                        if AuthService.get_current_user()['role'] == 'admin':
-                            db.delete(client)
-                            db.commit()
-                            st.success("✅ Cliente excluído com sucesso!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Apenas administradores podem excluir clientes.")
+                if st.button("💾 Salvar Alterações", type="primary"):
+                    try:
+                        client.name = new_name
+                        client.cpf_cnpj = new_cpf_cnpj
+                        client.tipo_empresa = new_tipo if new_tipo else None
+                        client.active = new_active
+                        db.commit()
+                        st.success("✅ Cliente atualizado com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        db.rollback()
+                        st.error(f"❌ Erro ao atualizar cliente: {str(e)}")
         else:
             st.info("ℹ️ Nenhum cliente encontrado.")
     
     # TAB 2: Novo Cliente
     with tab2:
-        st.subheader("Cadastrar Novo Cliente")
+        st.subheader("➕ Cadastrar Novo Cliente")
         
         with st.form("new_client_form"):
             col1, col2 = st.columns(2)
             
             with col1:
-                name = st.text_input("Nome *", placeholder="Nome do cliente")
-                cpf_cnpj = st.text_input("CPF/CNPJ *", placeholder="000.000.000-00 ou 00.000.000/0000-00")
+                name = st.text_input("Nome *", placeholder="Nome da empresa ou pessoa")
+                cpf_cnpj = st.text_input("CPF/CNPJ *", placeholder="00.000.000/0000-00")
             
             with col2:
-                tipo_empresa = st.selectbox(
-                    "Tipo de Empresa",
-                    options=['', 'Eventos', 'Consultoria', 'Comércio', 'Serviços', 'Indústria', 'Outro']
-                )
+                tipo_empresa = st.text_input("Tipo de Empresa", placeholder="MEI, LTDA, EIRELI, etc.")
+                active = st.checkbox("Ativo", value=True)
             
-            submit = st.form_submit_button("➕ Cadastrar Cliente", use_container_width=True)
+            submitted = st.form_submit_button("💾 Cadastrar Cliente", type="primary")
             
-            if submit:
+            if submitted:
                 if not name or not cpf_cnpj:
-                    st.error("❌ Preencha todos os campos obrigatórios.")
+                    st.error("❌ Nome e CPF/CNPJ são obrigatórios!")
                 else:
-                    # Verifica se já existe
-                    existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
-                    if existing:
-                        st.error("❌ Já existe um cliente com este CPF/CNPJ.")
-                    else:
-                        new_client = Client(
-                            name=name,
-                            cpf_cnpj=cpf_cnpj,
-                            tipo_empresa=tipo_empresa if tipo_empresa else None,
-                            active=True
-                        )
-                        db.add(new_client)
-                        db.commit()
-                        # Cria configuração padrão de relatórios para o novo cliente
-                        ReportConfigService.ensure_default_config(db, new_client.id)
-                        st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
-                        st.rerun()
+                    try:
+                        # Verifica se já existe
+                        existing = db.query(Client).filter(Client.cpf_cnpj == cpf_cnpj).first()
+                        if existing:
+                            st.error(f"❌ Já existe um cliente com o CPF/CNPJ: {cpf_cnpj}")
+                        else:
+                            new_client = Client(
+                                name=name,
+                                cpf_cnpj=cpf_cnpj,
+                                tipo_empresa=tipo_empresa if tipo_empresa else None,
+                                active=active
+                            )
+                            db.add(new_client)
+                            db.commit()
+                            
+                            # Cria configuração padrão de relatórios
+                            ReportConfigService.ensure_default_config(db, new_client.id)
+                            
+                            st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
+                            st.rerun()
+                    except Exception as e:
+                        db.rollback()
+                        st.error(f"❌ Erro ao cadastrar cliente: {str(e)}")
     
     # TAB 3: Permissões
     with tab3:
-        st.subheader("Gerenciar Permissões de Acesso")
+        st.subheader("🔐 Permissões de Usuários por Cliente")
         
-        # Apenas admin pode gerenciar permissões
-        if AuthService.get_current_user()['role'] != 'admin':
-            st.warning("⚠️ Apenas administradores podem gerenciar permissões.")
+        # Seleciona cliente
+        all_clients = db.query(Client).filter(Client.active == True).order_by(Client.name).all()
+        
+        if not all_clients:
+            st.info("ℹ️ Nenhum cliente cadastrado.")
         else:
-            # Seleciona usuário
-            users = db.query(User).filter(User.active == True).all()
+            selected_permission_client_id = st.selectbox(
+                "Selecione um cliente:",
+                options=[c.id for c in all_clients],
+                format_func=lambda x: next(f"{c.name} ({c.cpf_cnpj})" for c in all_clients if c.id == x),
+                key="permission_client_select"
+            )
             
-            if not users:
-                st.info("ℹ️ Nenhum usuário cadastrado.")
-            else:
-                selected_user_id = st.selectbox(
-                    "Selecione um usuário:",
-                    options=[u.id for u in users],
-                    format_func=lambda x: next(f"{u.username} ({u.role})" for u in users if u.id == x)
-                )
+            if selected_permission_client_id:
+                permission_client = db.query(Client).filter(Client.id == selected_permission_client_id).first()
+                st.info(f"📌 Gerenciando permissões para: **{permission_client.name}**")
                 
-                if selected_user_id:
-                    user = db.query(User).filter(User.id == selected_user_id).first()
+                # Lista usuários com permissões
+                st.markdown("### Usuários com Acesso")
+                
+                permissions = db.query(UserClientPermission).filter(
+                    UserClientPermission.client_id == selected_permission_client_id
+                ).all()
+                
+                if permissions:
+                    perm_data = []
+                    for perm in permissions:
+                        user = db.query(User).filter(User.id == perm.user_id).first()
+                        perm_data.append({
+                            'Usuário': user.username if user else 'N/A',
+                            'Perfil': user.role if user else 'N/A',
+                            'Ações': '🔐'
+                        })
                     
-                    st.markdown(f"**Usuário:** {user.username}")
-                    st.markdown(f"**Perfil:** {user.role}")
+                    perm_df = pd.DataFrame(perm_data)
+                    st.dataframe(perm_df, use_container_width=True, hide_index=True)
                     
-                    if user.role == 'admin':
-                        st.info("ℹ️ Administradores têm acesso total a todos os clientes.")
+                    # Remover permissão
+                    st.markdown("### Remover Permissão")
+                    perm_to_remove = st.selectbox(
+                        "Selecione uma permissão para remover:",
+                        options=[p.id for p in permissions],
+                        format_func=lambda x: next(
+                            f"{db.query(User).filter(User.id == p.user_id).first().username if db.query(User).filter(User.id == p.user_id).first() else 'N/A'}"
+                            for p in permissions if p.id == x
+                        ),
+                        key="remove_perm_select"
+                    )
+                    
+                    if st.button("🗑️ Remover Permissão", type="secondary"):
+                        try:
+                            perm = db.query(UserClientPermission).filter(UserClientPermission.id == perm_to_remove).first()
+                            if perm:
+                                db.delete(perm)
+                                db.commit()
+                                st.success("✅ Permissão removida com sucesso!")
+                                st.rerun()
+                        except Exception as e:
+                            db.rollback()
+                            st.error(f"❌ Erro ao remover permissão: {str(e)}")
+                else:
+                    st.info("ℹ️ Nenhum usuário com acesso a este cliente.")
+                
+                st.markdown("---")
+                
+                # Adicionar permissão
+                st.markdown("### Adicionar Permissão")
+                
+                all_users = db.query(User).all()
+                if all_users:
+                    # Filtra usuários que já têm permissão
+                    users_with_permission = [p.user_id for p in permissions]
+                    available_users = [u for u in all_users if u.id not in users_with_permission]
+                    
+                    if available_users:
+                        user_to_add = st.selectbox(
+                            "Selecione um usuário:",
+                            options=[u.id for u in available_users],
+                            format_func=lambda x: next(f"{u.username} ({u.role})" for u in available_users if u.id == x),
+                            key="add_perm_user"
+                        )
+                        
+                        if st.button("➕ Adicionar Permissão", type="primary"):
+                            try:
+                                new_perm = UserClientPermission(
+                                    user_id=user_to_add,
+                                    client_id=selected_permission_client_id
+                                )
+                                db.add(new_perm)
+                                db.commit()
+                                st.success("✅ Permissão adicionada com sucesso!")
+                                st.rerun()
+                            except Exception as e:
+                                db.rollback()
+                                st.error(f"❌ Erro ao adicionar permissão: {str(e)}")
                     else:
-                        st.markdown("---")
-                        st.markdown("**Permissões por Cliente:**")
-                        
-                        # Lista todos os clientes
-                        all_clients = db.query(Client).filter(Client.active == True).all()
-                        
-                        if all_clients:
-                            # Obtém permissões atuais
-                            current_perms = db.query(UserClientPermission).filter(
-                                UserClientPermission.user_id == selected_user_id
-                            ).all()
-                            
-                            perm_dict = {p.client_id: p for p in current_perms}
-                            
-                            # Formulário de permissões
-                            with st.form("permissions_form"):
-                                perm_changes = {}
-                                
-                                for client in all_clients:
-                                    st.markdown(f"**{client.name}** ({client.cpf_cnpj})")
-                                    
-                                    col1, col2, col3 = st.columns(3)
-                                    
-                                    current_perm = perm_dict.get(client.id)
-                                    
-                                    with col1:
-                                        can_view = st.checkbox(
-                                            "👁️ Visualizar",
-                                            value=current_perm.can_view if current_perm else False,
-                                            key=f"view_{client.id}"
-                                        )
-                                    
-                                    with col2:
-                                        can_edit = st.checkbox(
-                                            "✏️ Editar",
-                                            value=current_perm.can_edit if current_perm else False,
-                                            key=f"edit_{client.id}"
-                                        )
-                                    
-                                    with col3:
-                                        can_delete = st.checkbox(
-                                            "🗑️ Excluir",
-                                            value=current_perm.can_delete if current_perm else False,
-                                            key=f"delete_{client.id}"
-                                        )
-                                    
-                                    perm_changes[client.id] = {
-                                        'can_view': can_view,
-                                        'can_edit': can_edit,
-                                        'can_delete': can_delete
-                                    }
-                                    
-                                    st.markdown("---")
-                                
-                                submit_perms = st.form_submit_button("💾 Salvar Permissões", use_container_width=True)
-                                
-                                if submit_perms:
-                                    # Atualiza permissões
-                                    for client_id, perms in perm_changes.items():
-                                        if any(perms.values()):  # Se alguma permissão está marcada
-                                            AuthService.grant_permission(
-                                                db, selected_user_id, client_id,
-                                                perms['can_view'], perms['can_edit'], perms['can_delete']
-                                            )
-                                        else:
-                                            # Remove permissão se todas estão desmarcadas
-                                            perm = db.query(UserClientPermission).filter(
-                                                UserClientPermission.user_id == selected_user_id,
-                                                UserClientPermission.client_id == client_id
-                                            ).first()
-                                            if perm:
-                                                db.delete(perm)
-                                    
-                                    db.commit()
-                                    st.success("✅ Permissões atualizadas com sucesso!")
-                                    st.rerun()
-                        else:
-                            st.info("ℹ️ Nenhum cliente cadastrado.")
+                        st.info("ℹ️ Todos os usuários já têm acesso a este cliente.")
+                else:
+                    st.info("ℹ️ Nenhum usuário cadastrado.")
     
     # TAB 4: Configuração de Relatórios
     with tab4:
@@ -316,7 +301,6 @@ try:
                 sazonalidade_config = ReportConfigService.get_client_report_config(db, selected_config_client_id, 'sazonalidade')
                 
                 # Se não houver configuração, cria com valores padrão (todos habilitados)
-                from services.report_config_service import DATA_TYPES
                 data_types = DATA_TYPES
                 
                 if not dre_config:
@@ -329,9 +313,9 @@ try:
                 # Formulário de configuração
                 with st.form("report_config_form"):
                     st.markdown("### 📊 DRE - Demonstração do Resultado do Exercício")
-                    dre_enabled = {}
+                    dre_checkboxes = {}
                     for data_type, label in data_types.items():
-                        dre_enabled[data_type] = st.checkbox(
+                        dre_checkboxes[data_type] = st.checkbox(
                             label,
                             value=dre_config.get(data_type, True),
                             key=f"dre_{data_type}"
@@ -339,45 +323,246 @@ try:
                     
                     st.markdown("---")
                     st.markdown("### 💵 DFC - Demonstração do Fluxo de Caixa")
-                    dfc_enabled = {}
+                    dfc_checkboxes = {}
                     for data_type, label in data_types.items():
-                        dfc_enabled[data_type] = st.checkbox(
+                        dfc_checkboxes[data_type] = st.checkbox(
                             label,
                             value=dfc_config.get(data_type, True),
                             key=f"dfc_{data_type}"
                         )
                     
                     st.markdown("---")
-                    st.markdown("### 📈 Sazonalidade")
-                    sazonalidade_enabled = {}
+                    st.markdown("### 📉 Análise de Sazonalidade")
+                    sazonalidade_checkboxes = {}
                     for data_type, label in data_types.items():
-                        sazonalidade_enabled[data_type] = st.checkbox(
+                        sazonalidade_checkboxes[data_type] = st.checkbox(
                             label,
                             value=sazonalidade_config.get(data_type, True),
-                            key=f"sazonalidade_{data_type}"
+                            key=f"saz_{data_type}"
                         )
                     
-                    st.markdown("---")
+                    submitted = st.form_submit_button("💾 Salvar Configurações", type="primary")
                     
-                    submit_config = st.form_submit_button("💾 Salvar Configurações", use_container_width=True)
-                    
-                    if submit_config:
-                        # Validação: não permitir desabilitar todos os tipos
-                        if not any(dre_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DRE.")
-                        elif not any(dfc_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DFC.")
-                        elif not any(sazonalidade_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para Sazonalidade.")
-                        else:
-                            # Atualiza configurações
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dre', dre_enabled)
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dfc', dfc_enabled)
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'sazonalidade', sazonalidade_enabled)
-                            
-                            st.success("✅ Configurações de relatórios atualizadas com sucesso!")
-                            st.rerun()
+                    if submitted:
+                        try:
+                            # Valida que pelo menos um tipo está habilitado para cada relatório
+                            if not any(dre_checkboxes.values()):
+                                st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DRE!")
+                            elif not any(dfc_checkboxes.values()):
+                                st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DFC!")
+                            elif not any(sazonalidade_checkboxes.values()):
+                                st.error("❌ Pelo menos um tipo de dado deve estar habilitado para Sazonalidade!")
+                            else:
+                                # Atualiza configurações
+                                ReportConfigService.update_client_report_config(
+                                    db, selected_config_client_id, 'dre', dre_checkboxes
+                                )
+                                ReportConfigService.update_client_report_config(
+                                    db, selected_config_client_id, 'dfc', dfc_checkboxes
+                                )
+                                ReportConfigService.update_client_report_config(
+                                    db, selected_config_client_id, 'sazonalidade', sazonalidade_checkboxes
+                                )
+                                
+                                st.success("✅ Configurações salvas com sucesso!")
+                                st.rerun()
+                        except Exception as e:
+                            db.rollback()
+                            st.error(f"❌ Erro ao salvar configurações: {str(e)}")
+    
+    # TAB 5: Mapa Visual de Dados
+    with tab5:
+        st.subheader("🗺️ Mapa Visual de Dados e Relatórios")
+        st.markdown("Visualize como os tipos de dados importados se conectam aos relatórios baseado na configuração do cliente.")
+        
+        # Seleciona cliente
+        all_clients = db.query(Client).filter(Client.active == True).order_by(Client.name).all()
+        
+        if not all_clients:
+            st.info("ℹ️ Nenhum cliente cadastrado.")
+        else:
+            selected_map_client_id = st.selectbox(
+                "Selecione um cliente:",
+                options=[c.id for c in all_clients],
+                format_func=lambda x: next(f"{c.name} ({c.cpf_cnpj})" for c in all_clients if c.id == x),
+                key="map_client_select"
+            )
+            
+            if selected_map_client_id:
+                map_client = db.query(Client).filter(Client.id == selected_map_client_id).first()
+                st.info(f"📌 Visualizando mapa para: **{map_client.name}**")
+                
+                # Garante que existe configuração padrão
+                ReportConfigService.ensure_default_config(db, selected_map_client_id)
+                
+                # Obtém todas as configurações
+                all_configs = ReportConfigService.get_all_configs(db, selected_map_client_id)
+                
+                # Cria o mapa visual usando Plotly
+                st.markdown("### 📊 Mapa de Conexões: Tipos de Dados → Relatórios")
+                
+                # Preparar dados para o gráfico
+                # Tipos de dados (lado esquerdo)
+                data_type_labels = list(DATA_TYPES.values())
+                data_type_keys = list(DATA_TYPES.keys())
+                
+                # Relatórios (lado direito)
+                report_labels = {
+                    'dre': '📈 DRE',
+                    'dfc': '💵 DFC',
+                    'sazonalidade': '📉 Sazonalidade'
+                }
+                
+                # Criar conexões (edges)
+                connections = []
+                for data_idx, data_type in enumerate(data_type_keys):
+                    for report_type, report_label in report_labels.items():
+                        if all_configs.get(report_type, {}).get(data_type, True):
+                            connections.append({
+                                'from': data_idx,
+                                'to': len(data_type_labels) + list(report_labels.keys()).index(report_type),
+                                'enabled': True
+                            })
+                
+                # Criar posições dos nós
+                # Dados à esquerda, relatórios à direita
+                node_x = []
+                node_y = []
+                node_text = []
+                node_colors = []
+                
+                # Posições dos tipos de dados (lado esquerdo)
+                for i, label in enumerate(data_type_labels):
+                    node_x.append(0)
+                    node_y.append(i * 2)
+                    node_text.append(label)
+                    node_colors.append('#3498db')  # Azul para dados
+                
+                # Posições dos relatórios (lado direito)
+                for i, (report_type, label) in enumerate(report_labels.items()):
+                    node_x.append(10)
+                    node_y.append(i * 4)
+                    node_text.append(label)
+                    node_colors.append('#2ecc71')  # Verde para relatórios
+                
+                # Criar arestas (conexões)
+                edge_x = []
+                edge_y = []
+                
+                for conn in connections:
+                    x0, y0 = node_x[conn['from']], node_y[conn['from']]
+                    x1, y1 = node_x[conn['to']], node_y[conn['to']]
+                    edge_x.extend([x0, x1, None])
+                    edge_y.extend([y0, y1, None])
+                
+                # Criar gráfico
+                fig = go.Figure()
+                
+                # Adicionar arestas
+                fig.add_trace(go.Scatter(
+                    x=edge_x, y=edge_y,
+                    line=dict(width=2, color='#95a5a6'),
+                    hoverinfo='none',
+                    mode='lines',
+                    showlegend=False
+                ))
+                
+                # Adicionar nós de dados
+                data_nodes_x = [node_x[i] for i in range(len(data_type_labels))]
+                data_nodes_y = [node_y[i] for i in range(len(data_type_labels))]
+                fig.add_trace(go.Scatter(
+                    x=data_nodes_x,
+                    y=data_nodes_y,
+                    mode='markers+text',
+                    marker=dict(size=30, color='#3498db', line=dict(width=2, color='white')),
+                    text=[label.split(' ')[-1] if len(label.split(' ')) > 1 else label for label in data_type_labels],
+                    textposition="middle center",
+                    textfont=dict(size=9, color='white'),
+                    name='Tipos de Dados',
+                    hovertemplate='<b>%{text}</b><extra></extra>',
+                    showlegend=True
+                ))
+                
+                # Adicionar nós de relatórios
+                report_start_idx = len(data_type_labels)
+                report_nodes_x = [node_x[i] for i in range(report_start_idx, len(node_x))]
+                report_nodes_y = [node_y[i] for i in range(report_start_idx, len(node_y))]
+                report_node_text = [text for i, text in enumerate(node_text) if i >= report_start_idx]
+                fig.add_trace(go.Scatter(
+                    x=report_nodes_x,
+                    y=report_nodes_y,
+                    mode='markers+text',
+                    marker=dict(size=40, color='#2ecc71', line=dict(width=2, color='white')),
+                    text=report_node_text,
+                    textposition="middle center",
+                    textfont=dict(size=12, color='white', weight='bold'),
+                    name='Relatórios',
+                    hovertemplate='<b>%{text}</b><extra></extra>',
+                    showlegend=True
+                ))
+                
+                # Layout
+                fig.update_layout(
+                    title=dict(
+                        text=f"Mapa de Conexões: {map_client.name}",
+                        x=0.5,
+                        font=dict(size=20)
+                    ),
+                    showlegend=True,
+                    hovermode='closest',
+                    margin=dict(b=20, l=50, r=50, t=80),
+                    annotations=[
+                        dict(
+                            text="Tipos de Dados Importados",
+                            xref="paper", yref="paper",
+                            x=0.05, y=1.05,
+                            showarrow=False,
+                            font=dict(size=14, color='#3498db')
+                        ),
+                        dict(
+                            text="Relatórios",
+                            xref="paper", yref="paper",
+                            x=0.95, y=1.05,
+                            showarrow=False,
+                            font=dict(size=14, color='#2ecc71')
+                        )
+                    ],
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    plot_bgcolor='white',
+                    height=600
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabela resumo
+                st.markdown("### 📋 Resumo da Configuração")
+                
+                summary_data = []
+                for data_type, label in DATA_TYPES.items():
+                    row = {'Tipo de Dado': label}
+                    for report_type, report_label in report_labels.items():
+                        enabled = all_configs.get(report_type, {}).get(data_type, True)
+                        row[report_label] = '✅ Sim' if enabled else '❌ Não'
+                    summary_data.append(row)
+                
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                
+                # Estatísticas
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    dre_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('dre', {}).get(dt, True))
+                    st.metric("DRE", f"{dre_count}/{len(DATA_TYPES)} tipos habilitados")
+                
+                with col2:
+                    dfc_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('dfc', {}).get(dt, True))
+                    st.metric("DFC", f"{dfc_count}/{len(DATA_TYPES)} tipos habilitados")
+                
+                with col3:
+                    saz_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('sazonalidade', {}).get(dt, True))
+                    st.metric("Sazonalidade", f"{saz_count}/{len(DATA_TYPES)} tipos habilitados")
 
 finally:
     db.close()
-
