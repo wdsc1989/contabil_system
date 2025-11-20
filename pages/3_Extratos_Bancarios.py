@@ -20,6 +20,10 @@ from utils.ui_components import show_client_selector
 
 st.set_page_config(page_title="Extratos Bancários", page_icon="🏦", layout="wide")
 
+# Esconde o menu automático do Streamlit
+from utils.hide_auto_menu import hide_streamlit_menu
+hide_streamlit_menu()
+
 AuthService.init_session_state()
 AuthService.require_auth()
 

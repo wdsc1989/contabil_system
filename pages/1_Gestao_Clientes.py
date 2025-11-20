@@ -16,6 +16,10 @@ import pandas as pd
 
 st.set_page_config(page_title="Gestão de Clientes", page_icon="👥", layout="wide")
 
+# Esconde o menu automático do Streamlit
+from utils.hide_auto_menu import hide_streamlit_menu
+hide_streamlit_menu()
+
 # Verifica autenticação e permissão
 AuthService.init_session_state()
 AuthService.require_role(['admin', 'manager'])

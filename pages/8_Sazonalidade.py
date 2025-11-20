@@ -19,6 +19,10 @@ from utils.formatters import format_currency
 
 st.set_page_config(page_title="Sazonalidade", page_icon="📈", layout="wide")
 
+# Esconde o menu automático do Streamlit
+from utils.hide_auto_menu import hide_streamlit_menu
+hide_streamlit_menu()
+
 AuthService.init_session_state()
 AuthService.require_auth()
 
