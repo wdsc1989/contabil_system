@@ -79,18 +79,27 @@ def recreate_admin_user():
     
     db = SessionLocal()
     try:
-        # Verifica se usuário admin existe
-        admin = db.query(User).filter(User.username == 'admin').first()
+        # Verifica se usuário admin existe por username OU email
+        admin = db.query(User).filter(
+            (User.username == 'admin') | (User.email == 'admin@contabil.com')
+        ).first()
         
         if admin:
             print("📋 Usuário admin encontrado. Atualizando...")
             print(f"   ID: {admin.id}")
+            print(f"   Username atual: {admin.username}")
             print(f"   Email atual: {admin.email}")
             print(f"   Role atual: {admin.role}")
             print()
             
+            # Atualiza username para 'admin' (caso esteja diferente)
+            admin.username = 'admin'
+            
             # Atualiza role para admin (garantir que seja admin, não viewer)
             admin.role = 'admin'
+            
+            # Atualiza email para garantir que seja o correto
+            admin.email = 'admin@contabil.com'
             
             # Atualiza senha
             admin.password_hash = AuthService.hash_password('admin123')
@@ -138,10 +147,36 @@ def recreate_admin_user():
                 print("⚠️  IMPORTANTE: Altere a senha após o primeiro acesso!")
             except Exception as create_error:
                 db.rollback()
-                print(f"❌ Erro ao criar usuário: {create_error}")
-                import traceback
-                traceback.print_exc()
-                return False
+                # Se erro for de duplicação, tenta atualizar o usuário existente
+                if 'duplicate key' in str(create_error).lower() or 'unique' in str(create_error).lower():
+                    print("⚠️  Usuário com email já existe. Tentando atualizar...")
+                    # Busca por email
+                    existing_user = db.query(User).filter(User.email == 'admin@contabil.com').first()
+                    if existing_user:
+                        existing_user.username = 'admin'
+                        existing_user.role = 'admin'
+                        existing_user.password_hash = AuthService.hash_password('admin123')
+                        if hasattr(existing_user, 'active'):
+                            existing_user.active = True
+                        db.commit()
+                        db.refresh(existing_user)
+                        print("✅ Usuário atualizado com sucesso!")
+                        print()
+                        print("📋 Credenciais:")
+                        print("   Usuário: admin")
+                        print("   Senha: admin123")
+                        print("   Role: admin")
+                        print(f"   Email: {existing_user.email}")
+                    else:
+                        print(f"❌ Erro ao criar usuário: {create_error}")
+                        import traceback
+                        traceback.print_exc()
+                        return False
+                else:
+                    print(f"❌ Erro ao criar usuário: {create_error}")
+                    import traceback
+                    traceback.print_exc()
+                    return False
         
         print()
         print("=" * 70)
