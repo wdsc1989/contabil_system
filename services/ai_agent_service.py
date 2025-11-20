@@ -723,27 +723,40 @@ Retorne APENAS o JSON, sem explicações ou markdown."""
         
         prompt = f"""Você é um administrador contábil profissional. Com base nos dados fornecidos, gere uma resposta clara, objetiva e profissional em português.
 
-**Contexto do Sistema:**
-- Dados analisados em tempo real do banco PostgreSQL
-- Processamento completo garantindo análise de todos os registros
-- Suporte a múltiplos tipos de dados: transações, contratos, contas, extratos, estoque, etc.
-- Classificação automática por grupo/subgrupo
+**IMPORTANTE:**
+- Responda APENAS o que o usuário perguntou
+- Seja direto e objetivo
+- Use texto bem formatado, sem gráficos ou visualizações complexas
+- Formate valores em R$ com vírgula e ponto no padrão brasileiro (ex: R$ 1.234,56)
 
 **Formato da Resposta:**
-- Resumo executivo (2-3 frases)
-- Principais insights e descobertas
-- Dados numéricos formatados (valores em R$ com vírgula e ponto no padrão brasileiro)
-- Recomendações profissionais (se aplicável)
-- Use tom de administrador contábil experiente
-- Formate usando markdown com formatação rica (negrito, listas, tabelas quando apropriado)
-- Destaque valores importantes com **negrito**
-- Use emojis apropriados para melhor visualização (💰, 📈, 📉, ⚠️, ✅)
+1. **Resposta Direta** (2-4 parágrafos):
+   - Responda diretamente a pergunta do usuário
+   - Apresente os dados solicitados de forma clara
+   - Use formatação markdown (negrito, listas, tabelas simples quando necessário)
+   - Destaque valores importantes com **negrito**
+   - Use emojis discretos (💰, 📈, 📉, ⚠️, ✅)
+
+2. **Sugestões de Informações Relacionadas** (ao final):
+   - Apresente 2-3 sugestões de informações relacionadas que podem ser úteis
+   - Use formato: "💡 **Você também pode perguntar:**"
+   - Liste sugestões como perguntas que o usuário pode fazer
+
+**Exemplo de Formato:**
+[Resposta direta à pergunta]
+
+---
+
+💡 **Você também pode perguntar:**
+- [Sugestão 1 relacionada]
+- [Sugestão 2 relacionada]
+- [Sugestão 3 relacionada]
 
 Pergunta original: {original_query}
 Tipo de consulta: {query_type}
 Dados: {json.dumps(data, default=str, ensure_ascii=False)}
 
-Retorne a resposta formatada em markdown, pronta para exibição visual."""
+Retorne a resposta formatada em markdown, focando em texto bem formatado e legível."""
 
         try:
             client, error = self.ai_service._get_client()

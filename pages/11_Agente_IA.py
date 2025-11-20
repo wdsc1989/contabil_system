@@ -104,32 +104,24 @@ st.markdown("---")
 
 
 def create_visualizations(query_result: dict, query_analysis: dict) -> list:
-    """Cria visualizações baseadas no resultado da consulta"""
+    """
+    Cria visualizações simples baseadas no resultado da consulta.
+    Retorna apenas tabelas simples quando necessário, sem gráficos complexos.
+    """
     visualizations = []
     query_type = query_result.get('type', '')
     data = query_result.get('data', {})
     output_format = query_analysis.get('output_format', 'completo')
     
-    if output_format == 'resumo':
-        return visualizations  # Não cria visualizações para resumo
+    # Não cria visualizações para resumo ou relatórios gerenciais
+    if output_format == 'resumo' or query_type == 'relatorio_gerencial':
+        return visualizations
     
     try:
-        if query_type == 'transacoes':
-            # Gráfico de barras: Entradas vs Saídas
-            if data.get('total_entradas', 0) > 0 or data.get('total_saidas', 0) > 0:
-                fig = go.Figure(data=[
-                    go.Bar(name='Entradas', x=['Entradas'], y=[data.get('total_entradas', 0)], marker_color='green'),
-                    go.Bar(name='Saídas', x=['Saídas'], y=[data.get('total_saidas', 0)], marker_color='red')
-                ])
-                fig.update_layout(
-                    title='Entradas vs Saídas',
-                    yaxis_title='Valor (R$)',
-                    barmode='group',
-                    height=400
-                )
-                visualizations.append({'type': 'chart', 'data': fig})
-            
-            # Tabela de transações (primeiras 20)
+        # Apenas tabelas simples quando o usuário pedir explicitamente
+        # Removemos todos os gráficos para manter a interface clean
+        if query_type == 'transacoes' and output_format == 'tabela':
+            # Tabela de transações (apenas se solicitado explicitamente)
             if data.get('transactions'):
                 df = pd.DataFrame(data['transactions'][:20])
                 if not df.empty:
@@ -139,77 +131,10 @@ def create_visualizations(query_result: dict, query_analysis: dict) -> list:
                     df.columns = ['Data', 'Descrição', 'Valor', 'Tipo']
                     visualizations.append({'type': 'table', 'data': df})
         
-        elif query_type == 'dre':
-            # Gráfico de pizza: Receitas vs Despesas
-            receitas = data.get('receitas', 0)
-            despesas = abs(data.get('despesas', 0))
-            
-            if receitas > 0 or despesas > 0:
-                fig = go.Figure(data=[go.Pie(
-                    labels=['Receitas', 'Despesas'],
-                    values=[receitas, despesas],
-                    marker_colors=['green', 'red']
-                )])
-                fig.update_layout(
-                    title='Distribuição: Receitas vs Despesas',
-                    height=400
-                )
-                visualizations.append({'type': 'chart', 'data': fig})
-            
-            # Gráfico de barras: Receitas por grupo
-            if data.get('receitas_por_grupo'):
-                grupos = [r['grupo'] for r in data['receitas_por_grupo']]
-                valores = [r['valor'] for r in data['receitas_por_grupo']]
-                
-                fig = go.Figure(data=[go.Bar(x=grupos, y=valores, marker_color='green')])
-                fig.update_layout(
-                    title='Receitas por Grupo',
-                    xaxis_title='Grupo',
-                    yaxis_title='Valor (R$)',
-                    height=400
-                )
-                visualizations.append({'type': 'chart', 'data': fig})
-            
-            # Gráfico de barras: Despesas por grupo
-            if data.get('despesas_por_grupo'):
-                grupos = [d['grupo'] for d in data['despesas_por_grupo']]
-                valores = [d['valor'] for d in data['despesas_por_grupo']]
-                
-                fig = go.Figure(data=[go.Bar(x=grupos, y=valores, marker_color='red')])
-                fig.update_layout(
-                    title='Despesas por Grupo',
-                    xaxis_title='Grupo',
-                    yaxis_title='Valor (R$)',
-                    height=400
-                )
-                visualizations.append({'type': 'chart', 'data': fig})
-        
-        elif query_type == 'dfc':
-            # Gráfico de linha: Fluxo mensal
-            if data.get('fluxo_mensal'):
-                meses = sorted(data['fluxo_mensal'].keys())
-                entradas = [data['fluxo_mensal'][m].get('entradas', 0) for m in meses]
-                saidas = [abs(data['fluxo_mensal'][m].get('saidas', 0)) for m in meses]
-                
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=meses, y=entradas, name='Entradas', line=dict(color='green')))
-                fig.add_trace(go.Scatter(x=meses, y=saidas, name='Saídas', line=dict(color='red')))
-                fig.update_layout(
-                    title='Fluxo de Caixa Mensal',
-                    xaxis_title='Mês',
-                    yaxis_title='Valor (R$)',
-                    height=400
-                )
-                visualizations.append({'type': 'chart', 'data': fig})
-        
-        elif query_type == 'kpis':
-            # KPIs serão exibidos no texto da resposta, não como visualização separada
-            pass
-        
-        elif query_type == 'contratos':
-            # Tabela de contratos
+        elif query_type == 'contratos' and output_format == 'tabela':
+            # Tabela de contratos (apenas se solicitado explicitamente)
             if data.get('contracts'):
-                df = pd.DataFrame(data['contracts'])
+                df = pd.DataFrame(data['contracts'][:10])
                 if not df.empty:
                     df['event_date'] = pd.to_datetime(df['event_date']).dt.strftime('%d/%m/%Y')
                     df['service_value'] = df['service_value'].apply(lambda x: format_currency(x))
@@ -218,10 +143,10 @@ def create_visualizations(query_result: dict, query_analysis: dict) -> list:
                     df.columns = ['Data do Evento', 'Contratante', 'Valor Total', 'Status']
                     visualizations.append({'type': 'table', 'data': df})
         
-        elif query_type == 'contas':
-            # Tabelas de contas a pagar e receber
+        elif query_type == 'contas' and output_format == 'tabela':
+            # Tabelas de contas (apenas se solicitado explicitamente)
             if data.get('accounts_payable'):
-                df = pd.DataFrame(data['accounts_payable'])
+                df = pd.DataFrame(data['accounts_payable'][:10])
                 if not df.empty:
                     df['due_date'] = pd.to_datetime(df['due_date']).dt.strftime('%d/%m/%Y')
                     df['value'] = df['value'].apply(lambda x: format_currency(x))
@@ -230,7 +155,7 @@ def create_visualizations(query_result: dict, query_analysis: dict) -> list:
                     visualizations.append({'type': 'table', 'data': df})
             
             if data.get('accounts_receivable'):
-                df = pd.DataFrame(data['accounts_receivable'])
+                df = pd.DataFrame(data['accounts_receivable'][:10])
                 if not df.empty:
                     df['due_date'] = pd.to_datetime(df['due_date']).dt.strftime('%d/%m/%Y')
                     df['value'] = df['value'].apply(lambda x: format_currency(x))
@@ -239,7 +164,8 @@ def create_visualizations(query_result: dict, query_analysis: dict) -> list:
                     visualizations.append({'type': 'table', 'data': df})
     
     except Exception as e:
-        st.error(f"Erro ao criar visualização: {str(e)}")
+        # Silenciosamente ignora erros de visualização
+        pass
     
     return visualizations
 
@@ -387,66 +313,8 @@ with chat_container:
                         st.markdown(report_content)
                         st.markdown("</div>", unsafe_allow_html=True)
                         
-                        # Exibe gráficos organizados por seção
-                        if visualizations:
-                            st.markdown("---")
-                            st.markdown("### 📊 Visualizações e Gráficos")
-                            
-                            # Disponíveis e Obrigações
-                            if 'disponiveis_obrigacoes' in viz_by_section:
-                                st.markdown("#### 💰 Disponíveis Financeiros vs Obrigações")
-                                for viz in viz_by_section['disponiveis_obrigacoes']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # Receitas e Despesas
-                            if 'receitas_despesas' in viz_by_section:
-                                st.markdown("#### 📈 Receitas vs Despesas")
-                                for viz in viz_by_section['receitas_despesas']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # Entradas Detalhadas
-                            if 'entradas_detalhadas' in viz_by_section:
-                                st.markdown("#### 💵 Entradas Detalhadas por Grupo/Subgrupo")
-                                for viz in viz_by_section['entradas_detalhadas']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # Saídas Detalhadas
-                            if 'saidas_detalhadas' in viz_by_section:
-                                st.markdown("#### 💸 Saídas Detalhadas por Grupo/Subgrupo")
-                                for viz in viz_by_section['saidas_detalhadas']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # Fluxo de Caixa
-                            if 'fluxo_caixa' in viz_by_section:
-                                st.markdown("#### 💳 Fluxo de Caixa Mensal")
-                                for viz in viz_by_section['fluxo_caixa']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # Projeções
-                            if 'projecoes' in viz_by_section:
-                                st.markdown("#### 🔮 Projeções Futuras")
-                                for viz in viz_by_section['projecoes']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
-                            
-                            # KPIs
-                            if 'kpis' in viz_by_section:
-                                st.markdown("#### 📊 Indicadores Principais (KPIs)")
-                                for viz in viz_by_section['kpis']:
-                                    if viz['type'] == 'chart':
-                                        st.plotly_chart(viz['data'], use_container_width=True)
-                                st.markdown("---")
+                        # Para relatórios gerenciais, não exibimos gráficos complexos
+                        # O conteúdo textual já contém todas as informações necessárias
                         
                         # Botões para exportar relatório
                         st.markdown("---")
@@ -508,12 +376,11 @@ with chat_container:
                 else:
                     st.markdown(message['content'])
                 
-                # Exibe visualizações se houver (para outros tipos de resposta)
+                # Exibe apenas tabelas simples se houver (sem gráficos)
                 if not message.get('is_management_report') and 'visualizations' in message and message['visualizations']:
                     for viz in message['visualizations']:
-                        if viz['type'] == 'chart':
-                            st.plotly_chart(viz['data'], use_container_width=True)
-                        elif viz['type'] == 'table':
+                        if viz['type'] == 'table':
+                            st.markdown("---")
                             st.dataframe(viz['data'], use_container_width=True, hide_index=True)
 
 # Input de pergunta

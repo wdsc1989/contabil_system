@@ -10,7 +10,16 @@ from pathlib import Path
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.database import SessionLocal
+# Carrega variáveis de ambiente do .env
+from dotenv import load_dotenv
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ Arquivo .env carregado: {env_path}")
+else:
+    print(f"⚠️  Arquivo .env não encontrado em: {env_path}")
+
+from config.database import SessionLocal, init_db
 from services.auth_service import AuthService
 from models.user import User
 
@@ -20,6 +29,16 @@ def recreate_admin_user():
     print("👤 RECRIAR/ATUALIZAR USUÁRIO ADMIN")
     print("=" * 70)
     print()
+    
+    # Garante que o banco está inicializado
+    try:
+        print("🔄 Verificando inicialização do banco de dados...")
+        init_db()
+        print("✅ Banco de dados inicializado")
+        print()
+    except Exception as e:
+        print(f"⚠️  Aviso ao inicializar banco: {e}")
+        print()
     
     db = SessionLocal()
     try:
@@ -40,7 +59,8 @@ def recreate_admin_user():
             admin.password_hash = AuthService.hash_password('admin123')
             
             # Ativa usuário se estiver inativo
-            admin.active = True
+            if hasattr(admin, 'active'):
+                admin.active = True
             
             db.commit()
             db.refresh(admin)
@@ -51,7 +71,7 @@ def recreate_admin_user():
             print("   Usuário: admin")
             print("   Senha: admin123")
             print("   Role: admin")
-            print("   Email: " + admin.email)
+            print(f"   Email: {admin.email}")
             print()
             print("⚠️  IMPORTANTE: Altere a senha após o primeiro acesso!")
             
@@ -60,23 +80,31 @@ def recreate_admin_user():
             print()
             
             # Cria novo usuário admin
-            admin = AuthService.create_user(
-                db=db,
-                username='admin',
-                password='admin123',
-                email='admin@contabil.com',
-                role='admin'
-            )
-            
-            print("✅ Usuário admin criado com sucesso!")
-            print()
-            print("📋 Credenciais:")
-            print("   Usuário: admin")
-            print("   Senha: admin123")
-            print("   Role: admin")
-            print("   Email: admin@contabil.com")
-            print()
-            print("⚠️  IMPORTANTE: Altere a senha após o primeiro acesso!")
+            try:
+                admin = AuthService.create_user(
+                    db=db,
+                    username='admin',
+                    password='admin123',
+                    email='admin@contabil.com',
+                    role='admin'
+                )
+                db.commit()
+                
+                print("✅ Usuário admin criado com sucesso!")
+                print()
+                print("📋 Credenciais:")
+                print("   Usuário: admin")
+                print("   Senha: admin123")
+                print("   Role: admin")
+                print("   Email: admin@contabil.com")
+                print()
+                print("⚠️  IMPORTANTE: Altere a senha após o primeiro acesso!")
+            except Exception as create_error:
+                db.rollback()
+                print(f"❌ Erro ao criar usuário: {create_error}")
+                import traceback
+                traceback.print_exc()
+                return False
         
         print()
         print("=" * 70)
