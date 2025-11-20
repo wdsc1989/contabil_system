@@ -1,0 +1,24 @@
+========================================
+  COMANDOS PARA DEPLOY EM PRODUÇÃO
+========================================
+
+1. CONECTAR NA VPS:
+   ssh root@72.61.56.204
+
+2. EXECUTAR DEPLOY (copie e cole na VPS):
+   cd /opt/contabil/contabil_system && bash deploy/deploy.sh main
+
+3. VERIFICAR STATUS:
+   systemctl status contabil.service
+
+4. VER LOGS:
+   journalctl -u contabil.service -n 50
+
+========================================
+  COMANDO COMPLETO (uma linha):
+========================================
+
+ssh root@72.61.56.204 "cd /opt/contabil/contabil_system && bash deploy/deploy.sh main"
+
+========================================
+

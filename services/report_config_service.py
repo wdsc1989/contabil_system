@@ -144,16 +144,24 @@ class ReportConfigService:
         """
         Retorna lista de tipos de dados habilitados para um relatório
         Se não houver configuração, retorna todos os tipos (comportamento padrão)
+        Se houver configuração parcial, retorna apenas os habilitados explicitamente
         """
+        # Verifica se existe alguma configuração para este cliente e report_type
+        has_any_config = db.query(ClientReportConfig).filter(
+            ClientReportConfig.client_id == client_id,
+            ClientReportConfig.report_type == report_type
+        ).first()
+        
+        if not has_any_config:
+            # Se não houver configuração alguma, retorna todos os tipos (comportamento padrão)
+            return AVAILABLE_DATA_TYPES.copy()
+        
+        # Se houver configuração, retorna apenas os habilitados
         configs = db.query(ClientReportConfig).filter(
             ClientReportConfig.client_id == client_id,
             ClientReportConfig.report_type == report_type,
             ClientReportConfig.enabled == True
         ).all()
-        
-        if not configs:
-            # Se não houver configuração, retorna todos os tipos (comportamento padrão)
-            return AVAILABLE_DATA_TYPES.copy()
         
         return [c.data_type for c in configs]
 

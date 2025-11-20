@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.database import SessionLocal
 from services.auth_service import AuthService
 from services.report_service import ReportService
+from services.report_config_service import DATA_TYPES
 from models.client import Client
 from models.transaction import Transaction
 from models.group import Group, Subgroup

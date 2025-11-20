@@ -1,115 +1,100 @@
-# 🚀 Deploy Rápido - Executar Agora
+# 🚀 Deploy em Produção - Guia Rápido
 
-## ✅ Status: Código commitado e enviado para o GitHub
-
-O código foi commitado e enviado para o repositório. Agora você precisa executar o deploy na VPS.
-
----
+## ✅ Status Atual
+- ✅ Código commitado e pushado no GitHub
+- ✅ Branch: `main`
+- ✅ Último commit: `99e9567`
 
 ## 📋 Passos para Deploy
 
-### 1️⃣ Conectar na VPS
+### 1. Conectar na VPS via SSH
 
-No PowerShell do Windows, execute:
-
+**No Windows PowerShell:**
 ```powershell
 ssh root@72.61.56.204
 ```
+*(Digite a senha quando solicitado)*
 
-Digite a senha quando solicitado.
+### 2. Executar Deploy Automatizado
 
----
+**Na VPS (após conectar via SSH, copie e cole os comandos abaixo):**
 
-### 2️⃣ Executar Script de Deploy
+```bash
+cd /opt/contabil/contabil_system && bash deploy/deploy.sh main
+```
 
-Após conectar na VPS, execute:
+**OU execute passo a passo:**
 
 ```bash
 cd /opt/contabil/contabil_system
-bash deploy/deploy.sh
+bash deploy/deploy.sh main
 ```
 
-O script irá:
-- ✅ Fazer `git pull` para atualizar o código
+O script irá automaticamente:
+- ✅ Puxar código atualizado do GitHub
 - ✅ Instalar/atualizar dependências Python
-- ✅ Executar migrações do banco de dados (criar nova tabela `client_report_configs`)
-- ✅ Reiniciar o serviço Streamlit
+- ✅ Executar migrações do banco (se necessário)
+- ✅ Criar backup antes de atualizar
+- ✅ Reiniciar o serviço
 - ✅ Verificar se está funcionando
 
----
+### 3. Verificar Deploy
 
-### 3️⃣ Verificar se Funcionou
-
+**Na VPS:**
 ```bash
-# Ver status do serviço
+# Verifica status do serviço
 systemctl status contabil.service
 
-# Ver logs em tempo real
+# Verifica logs (últimas 50 linhas)
+journalctl -u contabil.service -n 50
+
+# Verifica logs em tempo real
 journalctl -u contabil.service -f
 
-# Verificar se a aplicação está respondendo
+# Testa aplicação
 curl http://localhost:8501
 ```
 
----
+### 4. Verificar no Navegador
 
-### 4️⃣ Acessar a Aplicação
+Acesse a aplicação no navegador:
+- URL: `http://72.61.56.204` (ou seu domínio configurado)
+- Verifique se a aplicação está funcionando corretamente
 
-Abra no navegador:
-- **HTTP:** `http://72.61.56.204`
-- **HTTPS:** `https://72.61.56.204` (se SSL estiver configurado)
+## 🔧 Troubleshooting
 
----
+### Se o serviço não iniciar:
+```bash
+# Ver logs detalhados
+journalctl -u contabil.service -n 100
 
-## 🔍 O que foi adicionado nesta versão
+# Reiniciar manualmente
+systemctl restart contabil.service
 
-1. **Nova tabela:** `client_report_configs` - Configuração de relatórios por cliente
-2. **Novas páginas:**
-   - `13_Aplicacoes_Financeiras.py` - Gestão de aplicações financeiras
-   - `14_Maquina_Cartao.py` - Gestão de extratos de máquina de cartão
-   - `15_Estoque.py` - Gestão de controle de estoque
-3. **Novo serviço:** `ReportConfigService` - Gerencia configurações de relatórios
-4. **Atualizações:**
-   - Página de Gestão de Clientes com configuração de relatórios
-   - Páginas DRE, DFC e Sazonalidade agora respeitam configurações do cliente
-   - Navegação atualizada com links para novas páginas
+# Verificar se há erros no código
+cd /opt/contabil/contabil_system
+source venv/bin/activate
+python app.py
+```
 
----
+### Se houver erro de dependências:
+```bash
+cd /opt/contabil/contabil_system
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-## ⚠️ Importante
+### Se houver erro de banco de dados:
+```bash
+# Verificar conexão com PostgreSQL
+cd /opt/contabil/contabil_system
+source venv/bin/activate
+python -c "from config.database import engine; print(engine.connect())"
+```
 
-- O script de deploy criará automaticamente a nova tabela no banco de dados
-- Configurações padrão serão criadas para todos os clientes existentes (todos os tipos habilitados)
-- Se houver erro, verifique os logs: `journalctl -u contabil.service -n 50`
+## 📞 Suporte
 
----
-
-## 🆘 Problemas?
-
-Se algo der errado:
-
-1. **Ver logs:**
-   ```bash
-   journalctl -u contabil.service -n 100
-   ```
-
-2. **Verificar banco de dados:**
-   ```bash
-   sudo -u postgres psql -d contabil_db -c "\dt" | grep client_report_configs
-   ```
-
-3. **Reiniciar serviço manualmente:**
-   ```bash
-   systemctl restart contabil.service
-   ```
-
-4. **Verificar se o código foi atualizado:**
-   ```bash
-   cd /opt/contabil/contabil_system
-   git log -1
-   ```
-
----
-
-**✅ Pronto! Execute os comandos acima para fazer o deploy.**
-
+Se encontrar problemas, verifique:
+1. Logs do serviço: `journalctl -u contabil.service -n 100`
+2. Logs do Nginx: `journalctl -u nginx -n 50`
+3. Status do PostgreSQL: `systemctl status postgresql`
