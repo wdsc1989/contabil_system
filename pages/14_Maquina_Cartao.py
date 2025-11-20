@@ -24,7 +24,9 @@ st.set_page_config(page_title="Máquina de Cartão", page_icon="🏪", layout="w
 AuthService.init_session_state()
 AuthService.require_auth()
 
-show_sidebar_navigation()
+# Usa sidebar centralizada
+from utils.sidebar import show_sidebar
+show_sidebar()
 
 st.title("🏪 Extratos de Máquina de Cartão")
 

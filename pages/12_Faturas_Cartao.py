@@ -24,7 +24,9 @@ st.set_page_config(page_title="Faturas de Cartão", page_icon="💳", layout="wi
 AuthService.init_session_state()
 AuthService.require_auth()
 
-show_sidebar_navigation()
+# Usa sidebar centralizada
+from utils.sidebar import show_sidebar
+show_sidebar()
 
 st.title("💳 Faturas de Cartão de Crédito")
 

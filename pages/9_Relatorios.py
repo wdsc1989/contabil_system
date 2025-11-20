@@ -26,18 +26,8 @@ AuthService.init_session_state()
 AuthService.require_auth()
 
 
-def show_sidebar():
-    with st.sidebar:
-        st.title("📊 Sistema Contábil")
-        user = AuthService.get_current_user()
-        st.markdown(f"**Usuário:** {user['username']}")
-        st.markdown(f"**Perfil:** {user['role'].title()}")
-        st.markdown("---")
-        if st.button("🚪 Sair", use_container_width=True):
-            AuthService.logout()
-            st.rerun()
-
-
+# Usa sidebar centralizada
+from utils.sidebar import show_sidebar
 show_sidebar()
 
 st.title("📑 Relatórios e Exportação")

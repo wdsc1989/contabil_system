@@ -103,6 +103,14 @@ def login_page():
 def sidebar_navigation():
     """
     Navegação na sidebar com seleção de cliente
+    DEPRECATED: Use utils.sidebar.show_sidebar() ao invés desta função
+    """
+    from utils.sidebar import show_sidebar
+    show_sidebar()
+
+def _old_sidebar_navigation():
+    """
+    Função antiga - mantida para referência
     """
     with st.sidebar:
         st.title("📊 Sistema Contábil")

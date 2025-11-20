@@ -25,19 +25,8 @@ if 'sidebar_loaded' not in st.session_state:
     st.session_state.sidebar_loaded = True
 
 
-def show_sidebar():
-    """Mostra a sidebar de navegação"""
-    with st.sidebar:
-        st.title("📊 Sistema Contábil")
-        user = AuthService.get_current_user()
-        st.markdown(f"**Usuário:** {user['username']}")
-        st.markdown(f"**Perfil:** {user['role'].title()}")
-        st.markdown("---")
-        if st.button("🚪 Sair", use_container_width=True):
-            AuthService.logout()
-            st.rerun()
-
-
+# Usa sidebar centralizada
+from utils.sidebar import show_sidebar
 show_sidebar()
 
 st.title("👥 Gestão de Clientes")
