@@ -1,0 +1,11 @@
+[ui]
+# Esconde a barra superior padrão do Streamlit
+hideTopBar = false
+# Esconde o menu de navegação automático do Streamlit
+hideSidebarNav = true
+
+[server]
+# Configurações do servidor
+headless = true
+port = 8501
+

@@ -18,7 +18,12 @@ st.set_page_config(
     page_title="Início",
     page_icon="🏠",
     layout="wide",
-    initial_sidebar_state="collapsed"  # Sidebar colapsada por padrão
+    initial_sidebar_state="expanded",  # Sidebar expandida para mostrar nosso menu customizado
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
+    }
 )
 
 # Inicializa estado da sessão
