@@ -888,75 +888,29 @@ Analise o arquivo fornecido e forneça uma análise estrutural completa.
         """
         Cria prompt para detecção automática do tipo de dado
         """
-        prompt = f"""Você é um especialista em análise de dados financeiros e contábeis.
+        prompt = f"""Identifique o tipo de dado financeiro do arquivo.
 
-Analise o arquivo fornecido e identifique automaticamente qual tipo de dado ele contém.
+**Tipos disponíveis:**
+- transactions: data, descrição, valor, tipo (entrada/saida)
+- bank_statements: data, histórico, valor, saldo, banco
+- contracts: data_evento, contratante, valor_servico
+- accounts_payable: fornecedor, vencimento, valor, pago
+- accounts_receivable: cliente, vencimento, valor, recebido
+- financial_investments: data, tipo_aplicacao, valor_aplicado/resgatado
+- credit_card_invoices: data, estabelecimento, valor, bandeira, parcela
+- card_machine_statements: data, valor_bruto, taxa, valor_liquido
+- inventory: produto, quantidade, valor_unitario, tipo_movimento
 
-**Tipos de dados suportados e suas características:**
+**Colunas:** {', '.join(columns)}
+**Amostra (5 linhas):** {data_sample}
 
-1. **💳 Transações Financeiras (transactions):**
-   - Campos típicos: data, descrição, valor, tipo (entrada/saida), categoria
-   - Valores podem ser positivos ou negativos
-   - Geralmente tem coluna de tipo ou sinal
-   - Pode ter categoria, conta, grupo
-
-2. **🏦 Extratos Bancários (bank_statements):**
-   - Campos típicos: data, histórico/descrição, valor, saldo, banco, conta
-   - Valores podem ser positivos (crédito) ou negativos (débito)
-   - Geralmente tem saldo acumulado
-   - Pode ter informações de banco e conta
-   - Padrões: "TED", "DOC", "PIX", "SALDO", "EXTRATO"
-
-3. **📝 Contratos/Eventos (contracts):**
-   - Campos típicos: data_inicio, data_evento, valor_servico, contratante, tipo_evento
-   - Geralmente tem datas de início e evento
-   - Tem valor de serviço e possível valor de deslocamento
-   - Tem nome do contratante/cliente
-
-4. **💸 Contas a Pagar (accounts_payable):**
-   - Campos típicos: conta, vencimento, valor, cpf_cnpj, mes_referencia
-   - Tem data de vencimento
-   - Geralmente tem nome da conta/fornecedor
-   - Pode ter status de pagamento
-
-5. **💰 Contas a Receber (accounts_receivable):**
-   - Campos típicos: conta, vencimento, valor, cpf_cnpj, mes_referencia
-   - Tem data de vencimento
-   - Geralmente tem nome do devedor/cliente
-   - Pode ter status de recebimento
-
-**Colunas encontradas no arquivo:**
-{', '.join(columns)}
-
-**Amostra dos dados (primeiras 15 linhas):**
-{data_sample}
-
-**Tarefa:**
-Analise as colunas e a amostra de dados para identificar qual tipo de dado o arquivo contém.
-Compare os padrões encontrados com as características de cada tipo.
-Retorne o tipo mais provável com nível de confiança e justificativa.
-
-**Responda em formato JSON:**
+**Responda JSON:**
 {{
-    "suggested_type": "transactions" | "bank_statements" | "contracts" | "accounts_payable" | "accounts_receivable",
+    "suggested_type": "tipo_identificado",
     "confidence": 0.0-1.0,
-    "reasoning": "explicação detalhada do motivo",
-    "alternative_types": [
-        {{
-            "type": "bank_statements",
-            "confidence": 0.3,
-            "reason": "motivo da alternativa"
-        }}
-    ],
-    "detected_fields": {{
-        "date": "nome_coluna_encontrada",
-        "value": "nome_coluna_encontrada",
-        "description": "nome_coluna_encontrada"
-    }},
-    "key_indicators": [
-        "indicador 1 que levou à conclusão",
-        "indicador 2 que levou à conclusão"
-    ]
+    "reasoning": "breve justificativa",
+    "alternative_types": [{{"type": "tipo", "confidence": 0.0}}],
+    "key_indicators": ["indicador1"]
 }}
 """
         return prompt

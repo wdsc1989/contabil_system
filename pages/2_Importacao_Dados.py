@@ -315,52 +315,48 @@ if uploaded_file:
                         suggested_name = type_names.get(suggested_type, suggested_type)
                         confidence_percent = int(confidence * 100)
                         
-                        # Exibe sugestão
-                        col1, col2 = st.columns([3, 1])
+                        # Exibe sugestão de forma mais concisa
+                        col1, col2, col3 = st.columns([2, 1, 1])
                         with col1:
                             if confidence >= 0.7:
-                                st.success(f"🤖 **IA Sugeriu:** {suggested_name}")
+                                st.success(f"🤖 **Tipo detectado:** {suggested_name}")
                             elif confidence >= 0.5:
-                                st.warning(f"🤖 **IA Sugeriu:** {suggested_name}")
+                                st.warning(f"🤖 **Tipo detectado:** {suggested_name}")
                             else:
-                                st.info(f"🤖 **IA Sugeriu:** {suggested_name} (baixa confiança)")
+                                st.info(f"🤖 **Tipo detectado:** {suggested_name} (baixa confiança)")
                         
                         with col2:
                             st.metric("Confiança", f"{confidence_percent}%")
                         
-                        if reasoning:
-                            with st.expander("💡 Motivo da detecção"):
-                                st.write(reasoning)
-                                if key_indicators:
-                                    st.write("**Indicadores encontrados:**")
-                                    for indicator in key_indicators:
-                                        st.write(f"- {indicator}")
-                        
-                        # Tipos alternativos
-                        if alternative_types:
-                            with st.expander("📋 Tipos alternativos"):
-                                for alt in alternative_types:
-                                    alt_name = type_names.get(alt.get('type'), alt.get('type'))
-                                    alt_confidence = int(alt.get('confidence', 0) * 100)
-                                    st.write(f"- {alt_name} ({alt_confidence}% de confiança)")
-                        
-                        # Opções de confirmação
-                        col_btn1, col_btn2 = st.columns(2)
-                        with col_btn1:
-                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
-                                import_type = suggested_type
-                                st.session_state.detected_import_type = import_type
-                                st.session_state.type_confirmed = True
-                                st.rerun()
-                        
-                        with col_btn2:
-                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True):
+                        with col3:
+                            if st.button("✏️ Alterar", use_container_width=True, help="Selecione manualmente se a detecção estiver incorreta"):
                                 st.session_state.show_manual_selection = True
-                                st.session_state.type_confirmed = False  # Limpa confirmação anterior
+                                st.session_state.type_confirmed = False
                                 st.rerun()
+                        
+                        # Detalhes opcionais (colapsados)
+                        if reasoning or key_indicators or alternative_types:
+                            with st.expander("ℹ️ Detalhes da detecção"):
+                                if reasoning:
+                                    st.write(f"**Motivo:** {reasoning}")
+                                if key_indicators:
+                                    st.write("**Indicadores:** " + ", ".join(key_indicators))
+                                if alternative_types:
+                                    st.write("**Alternativas:**")
+                                    for alt in alternative_types[:3]:  # Mostra apenas top 3
+                                        alt_name = type_names.get(alt.get('type'), alt.get('type'))
+                                        alt_confidence = int(alt.get('confidence', 0) * 100)
+                                        st.write(f"- {alt_name} ({alt_confidence}%)")
+                        
+                        # Botão de confirmação
+                        if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
+                            import_type = suggested_type
+                            st.session_state.detected_import_type = import_type
+                            st.session_state.type_confirmed = True
+                            st.rerun()
                         
                         # Se já foi confirmado anteriormente, usa o tipo confirmado
-                        if 'detected_import_type' in st.session_state:
+                        if 'detected_import_type' in st.session_state and st.session_state.get('type_confirmed', False):
                             import_type = st.session_state.detected_import_type
                     else:
                         # Erro na detecção, mostra seleção manual
