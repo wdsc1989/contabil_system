@@ -15,6 +15,7 @@ from services.import_service import ImportService
 from services.ai_service import AIService
 from services.data_processor import DataProcessor
 from utils.column_mapper import ColumnMapper
+from utils.translations import translate_dataframe
 from models.client import Client
 from models.group import Group, Subgroup
 
@@ -240,13 +241,14 @@ if uploaded_file:
                 show_full_preview = st.checkbox("📋 Ver todos os dados", value=False, 
                                                 help="Mostra todos os dados com barra de rolagem")
             
-            # Exibe preview
+            # Exibe preview (traduzido para português)
+            df_preview_translated = translate_dataframe(df_preview.copy(), translate_columns=True, translate_values=False)
             if show_full_preview:
-                st.dataframe(df_preview, use_container_width=True, height=400)
-                st.caption(f"📊 Exibindo todas as {len(df_preview)} linhas (após remover linhas vazias)")
+                st.dataframe(df_preview_translated, use_container_width=True, height=400)
+                st.caption(f"📊 Exibindo todas as {len(df_preview_translated)} linhas (após remover linhas vazias)")
             else:
-                st.dataframe(df_preview.head(10), use_container_width=True)
-                st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
+                st.dataframe(df_preview_translated.head(10), use_container_width=True)
+                st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview_translated)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
             
             # Detecção automática do tipo de dado
             st.markdown("---")
@@ -747,20 +749,26 @@ if uploaded_file:
                             column_config["balance"] = st.column_config.TextColumn("Saldo", width="small")
                 
                 # Adiciona configuração para outros campos que possam existir (genérico)
+                # Importa função de tradução
+                from utils.translations import translate_column_name
+                
                 for col in edit_df.columns:
                     if col not in column_config and col not in ['_row_num', '_select']:
+                        # Traduz nome da coluna para português
+                        translated_col_name = translate_column_name(col)
+                        
                         # Tenta inferir o tipo
                         if pd.api.types.is_bool_dtype(edit_df[col]):
                             # Colunas booleanas devem usar CheckboxColumn
-                            column_config[col] = st.column_config.CheckboxColumn(col, width="small")
+                            column_config[col] = st.column_config.CheckboxColumn(translated_col_name, width="small")
                         elif pd.api.types.is_datetime64_any_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.DateColumn(col, format="YYYY-MM-DD", width="small")
+                            column_config[col] = st.column_config.DateColumn(translated_col_name, format="YYYY-MM-DD", width="small")
                         elif pd.api.types.is_numeric_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.NumberColumn(col, width="small")
+                            column_config[col] = st.column_config.NumberColumn(translated_col_name, width="small")
                         else:
-                            column_config[col] = st.column_config.TextColumn(col, width="medium")
+                            column_config[col] = st.column_config.TextColumn(translated_col_name, width="medium")
                 
-                # Exibe tabela editável
+                # Exibe tabela editável (com colunas traduzidas)
                 edited_df = st.data_editor(
                     edit_df,
                     column_config=column_config,

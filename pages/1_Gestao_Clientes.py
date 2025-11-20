@@ -80,6 +80,9 @@ try:
                 })
             
             df = pd.DataFrame(client_data)
+            # Traduz colunas para português (já estão em português, mas garante consistência)
+            from utils.translations import translate_dataframe
+            df = translate_dataframe(df, translate_columns=True, translate_values=True)
             st.dataframe(df, use_container_width=True, hide_index=True)
             
             st.markdown("---")
@@ -493,7 +496,7 @@ try:
                                     'type': 'intermediate_to_report'
                                 })
                                 connection_labels.append(f"{intermediate_types[intermediate_type]} → {report_label}")
-                    else:
+                        else:
                         # Caminho direto: Dado → Relatório
                         for report_type, report_label in report_labels.items():
                             if all_configs.get(report_type, {}).get(data_type, True):
@@ -672,6 +675,9 @@ try:
                     summary_data.append(row)
                 
                 summary_df = pd.DataFrame(summary_data)
+                # Traduz colunas para português
+                from utils.translations import translate_dataframe
+                summary_df = translate_dataframe(summary_df, translate_columns=True, translate_values=True)
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
                 
                 # Estatísticas
