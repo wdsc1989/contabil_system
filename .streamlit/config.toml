@@ -9,3 +9,7 @@ hideSidebarNav = true
 headless = true
 port = 8501
 
+[browser]
+# Não abre o navegador automaticamente
+gatherUsageStats = false
+
