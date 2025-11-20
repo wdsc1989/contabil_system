@@ -155,15 +155,8 @@ def sidebar_navigation():
         
         st.markdown("---")
         
-        # Menu de navegação - Melhorado com visualização mais clara
+        # Menu de navegação - Organizado por seções
         st.markdown("### 🧭 Navegação")
-        
-        # Seção Principal - Agente IA em destaque
-        st.markdown("#### 🤖 Inteligência Artificial")
-        st.page_link("pages/11_Agente_IA.py", label="💬 Agente IA - Faça perguntas sobre seus dados", icon="🤖")
-        st.caption("Pergunte em linguagem natural e receba análises inteligentes")
-        
-        st.markdown("---")
         
         # Seção Início
         st.markdown("#### 🏠 Início")
@@ -171,22 +164,33 @@ def sidebar_navigation():
         
         st.markdown("---")
         
-        # Seção Dados - com descrições claras
+        # Seção Administração (primeiro para admin/manager)
+        if user['role'] in ['admin', 'manager']:
+            st.markdown("#### ⚙️ Administração")
+            st.page_link("pages/1_Gestao_Clientes.py", label="👥 Gestão de Clientes", icon="👥")
+            st.caption("Cadastre e gerencie clientes")
+            st.markdown("---")
+        
+        # Seção Dados
         st.markdown("#### 📥 Gestão de Dados")
         st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥")
         st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
         
-        # Seção para Visualizar Dados Importados - usando container colapsável
-        st.markdown("**📊 Visualizar Dados Importados**")
-        st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão de Crédito", icon="💳")
+        # Seção Visualizar Dados Importados
+        st.markdown("**📊 Visualizar Dados Importados:**")
+        st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳")
         st.page_link("pages/13_Aplicacoes_Financeiras.py", label="📈 Aplicações Financeiras", icon="📈")
-        st.page_link("pages/14_Maquina_Cartao.py", label="🏪 Extratos de Máquina de Cartão", icon="🏪")
+        st.page_link("pages/14_Maquina_Cartao.py", label="🏪 Máquina de Cartão", icon="🏪")
         st.page_link("pages/15_Estoque.py", label="📦 Controle de Estoque", icon="📦")
         
         st.markdown("---")
         
+        # Outros dados
         st.page_link("pages/2_Transacoes.py", label="💳 Transações Financeiras", icon="💳")
         st.caption("Visualize e gerencie transações")
+        
+        # Verificar se existe página de Extratos Bancários
+        # st.page_link("pages/X_Extratos_Bancarios.py", label="🏦 Extratos Bancários", icon="🏦")
         
         st.page_link("pages/4_Contratos.py", label="📝 Contratos e Eventos", icon="📝")
         st.caption("Gerencie contratos e eventos")
@@ -196,7 +200,7 @@ def sidebar_navigation():
         
         st.markdown("---")
         
-        # Seção Dashboards - com descrições claras
+        # Seção Dashboards e Relatórios
         st.markdown("#### 📊 Dashboards e Relatórios")
         st.page_link("pages/6_DRE.py", label="📈 DRE - Demonstração do Resultado", icon="📊")
         st.caption("Receitas vs Despesas e resultado")
@@ -212,14 +216,17 @@ def sidebar_navigation():
         
         st.markdown("---")
         
-        # Páginas administrativas
-        if user['role'] in ['admin', 'manager']:
-            st.markdown("#### ⚙️ Administração")
-            st.page_link("pages/1_Gestao_Clientes.py", label="👥 Gestão de Clientes", icon="👥")
-            st.caption("Cadastre e gerencie clientes")
+        # Seção Inteligência Artificial
+        st.markdown("#### 🤖 Inteligência Artificial")
+        st.page_link("pages/11_Agente_IA.py", label="💬 Agente IA", icon="🤖")
+        st.caption("Faça perguntas sobre seus dados")
         
+        st.markdown("---")
+        
+        # Configurações (apenas admin)
         if user['role'] == 'admin':
-            st.page_link("pages/10_Admin.py", label="🔧 Configurações do Sistema", icon="⚙️")
+            st.markdown("#### 🔧 Configurações")
+            st.page_link("pages/10_Admin.py", label="⚙️ Configurações do Sistema", icon="⚙️")
             st.caption("Configurações avançadas e IA")
         
         st.markdown("---")
