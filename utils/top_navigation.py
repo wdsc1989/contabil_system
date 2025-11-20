@@ -104,7 +104,11 @@ def show_top_navigation():
         
         with col1:
             st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥", use_container_width=True)
-            st.page_link("pages/2_Visualizar_Dados.py", label="📊 Visualizar Dados", icon="📊", use_container_width=True)
+            st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
+            
+            st.page_link("pages/2_Visualizar_Dados.py", label="📊 Visualizar Dados Importados", icon="📊", use_container_width=True)
+            st.caption("Visualize todos os tipos de dados importados")
+            
             st.page_link("pages/2_Transacoes.py", label="💳 Transações", icon="💳", use_container_width=True)
         
         with col2:
