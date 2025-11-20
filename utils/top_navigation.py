@@ -105,6 +105,7 @@ def show_top_navigation():
         with col1:
             st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥", use_container_width=True)
             st.page_link("pages/2_Transacoes.py", label="💳 Transações", icon="💳", use_container_width=True)
+            st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳", use_container_width=True)
         
         with col2:
             st.page_link("pages/4_Contratos.py", label="📝 Contratos", icon="📝", use_container_width=True)
