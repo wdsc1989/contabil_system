@@ -16,14 +16,16 @@ from services.auth_service import AuthService
 from models.client import Client
 from models.transaction import BankStatement, Transaction
 from utils.formatters import format_currency, format_date
-from utils.ui_components import show_client_selector, show_sidebar_navigation
+from utils.ui_components import show_client_selector
 
 st.set_page_config(page_title="Extratos Bancários", page_icon="🏦", layout="wide")
 
 AuthService.init_session_state()
 AuthService.require_auth()
 
-show_sidebar_navigation()
+# Usa sidebar centralizada
+from utils.sidebar import show_sidebar
+show_sidebar()
 
 st.title("🏦 Extratos Bancários")
 
