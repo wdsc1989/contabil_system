@@ -164,7 +164,7 @@ try:
             showlegend=False
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="aging_receber")
     
     with col2:
         st.subheader("💸 Aging - Contas a Pagar")
@@ -186,7 +186,7 @@ try:
             showlegend=False
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="aging_pagar")
     
     st.markdown("---")
     
@@ -266,7 +266,7 @@ try:
             hovermode='x unified'
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="projecao_90d")
 
 finally:
     db.close()
