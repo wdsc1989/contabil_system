@@ -1,0 +1,15 @@
+# ⚡ EXECUTE ESTE COMANDO NO SERVIDOR
+
+# Copie e cole TODA esta linha no terminal SSH:
+
+cd /opt/contabil && source venv/bin/activate && git pull origin main && python3 scripts/verificar_e_corrigir_colunas.py && sudo systemctl restart contabil && echo "✅ CONCLUÍDO! Verifique os logs: sudo journalctl -u contabil.service -f"
+
+# OU execute passo a passo:
+
+cd /opt/contabil
+source venv/bin/activate
+git pull origin main
+python3 scripts/verificar_e_corrigir_colunas.py
+sudo systemctl restart contabil
+sudo journalctl -u contabil.service -f
+
