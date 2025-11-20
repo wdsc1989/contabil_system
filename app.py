@@ -176,20 +176,11 @@ def sidebar_navigation():
         st.page_link("pages/2_Importacao_Dados.py", label="📤 Importar Dados", icon="📥")
         st.caption("Importe arquivos CSV, Excel, PDF ou OFX")
         
+        st.page_link("pages/2_Visualizar_Dados.py", label="📊 Visualizar Dados Importados", icon="📊")
+        st.caption("Visualize e gerencie todos os tipos de dados importados")
+        
         st.page_link("pages/2_Transacoes.py", label="💳 Transações Financeiras", icon="💳")
         st.caption("Visualize e gerencie transações")
-        
-        st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳")
-        st.caption("Visualize e gerencie faturas de cartão de crédito")
-        
-        st.page_link("pages/13_Aplicacoes_Financeiras.py", label="📈 Aplicações Financeiras", icon="📈")
-        st.caption("Visualize e gerencie aplicações financeiras")
-        
-        st.page_link("pages/14_Maquina_Cartao.py", label="🏪 Máquina de Cartão", icon="🏪")
-        st.caption("Visualize e gerencie extratos de máquina de cartão")
-        
-        st.page_link("pages/15_Estoque.py", label="📦 Controle de Estoque", icon="📦")
-        st.caption("Visualize e gerencie movimentações de estoque")
         
         st.page_link("pages/4_Contratos.py", label="📝 Contratos e Eventos", icon="📝")
         st.caption("Gerencie contratos e eventos")
