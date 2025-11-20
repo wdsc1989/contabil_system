@@ -33,6 +33,7 @@ pyyaml>=6.0.0
 # Utilities
 python-dateutil>=2.8.0
 validators>=0.22.0
+python-dotenv>=1.0.0  # Para carregar variáveis de ambiente do .env
 
 # AI/ML (Opcional - instale apenas o que for usar)
 openai>=1.0.0  # Para OpenAI e Ollama
@@ -42,4 +43,5 @@ groq>=0.4.0  # Para Groq
 # Development
 pytest>=7.4.0
 faker>=21.0.0
+
 

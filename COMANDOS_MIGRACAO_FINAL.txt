@@ -1,0 +1,24 @@
+# Comandos para executar no servidor - MÉTODO CORRETO
+
+# O PostgreSQL está com autenticação peer, então vamos usar Python
+# que já tem as credenciais configuradas no .env
+
+# 1. Ir para o diretório
+cd /opt/contabil
+
+# 2. Ativar ambiente virtual
+source venv/bin/activate
+
+# 3. Atualizar código (se necessário)
+git pull origin main
+
+# 4. Executar migrações via Python (método correto)
+python3 scripts/migrate_expand_contracts.py
+python3 scripts/migrate_expand_accounts.py
+
+# 5. Reiniciar serviço
+sudo systemctl restart contabil
+
+# 6. Verificar logs
+sudo journalctl -u contabil.service -f
+

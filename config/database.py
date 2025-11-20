@@ -6,6 +6,12 @@ from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do arquivo .env
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Diretório do banco de dados (apenas para SQLite)
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
@@ -129,5 +135,6 @@ def init_db():
     
     # Executa migrações automáticas para adicionar colunas faltantes
     run_migrations()
+
 
 

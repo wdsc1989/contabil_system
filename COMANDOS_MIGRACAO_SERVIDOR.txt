@@ -1,0 +1,23 @@
+# Comandos para executar no servidor
+
+# 1. Atualizar código do GitHub
+cd /opt/contabil
+git pull origin main
+
+# 2. Verificar se o script existe agora
+ls -la scripts/run_migrations.sh
+
+# 3. Se existir, executar migrações
+source venv/bin/activate
+bash scripts/run_migrations.sh
+
+# 4. Se o script ainda não existir, executar migrações manualmente:
+python3 scripts/migrate_expand_contracts.py
+python3 scripts/migrate_expand_accounts.py
+
+# 5. Reiniciar serviço
+sudo systemctl restart contabil
+
+# 6. Verificar logs
+sudo journalctl -u contabil.service -f
+
