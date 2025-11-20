@@ -976,13 +976,6 @@ def main_page():
         - Formato complexo ou não estruturado é detectado
         """)
     
-    with st.expander("📚 Documentação e Tutoriais"):
-        st.markdown("""
-        - **Tutorial Completo**: Consulte `docs/TUTORIAL_COMPLETO.md` para guia detalhado
-        - **Deploy em Produção**: Consulte `docs/TUTORIAL_DEPLOY_PRODUCAO.md` para instruções de deploy
-        - **README**: Consulte `README.md` para visão geral e funcionalidades
-        """)
-    
     st.markdown("---")
     
     # Rodapé
