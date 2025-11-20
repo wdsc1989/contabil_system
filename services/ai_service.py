@@ -2110,7 +2110,10 @@ Processe e retorne em JSON com array "processed_data".
                     file_metadata = "**Informações adicionais do arquivo:**\n" + "\n".join(metadata_parts) + "\n"
             
             # Prepara dados para JSON
-            if not df.empty:
+            # Se for imagem ou PDF com OCR, prioriza usar o texto completo mesmo se tiver DataFrame
+            is_image_or_ocr = pdf_full_data and pdf_full_data.get('metadata', {}).get('ocr_used', False)
+            
+            if not df.empty and not is_image_or_ocr:
                 # Informa quantidade total de linhas no metadata
                 total_rows = len(file_data_df)
                 if status_callback:
@@ -2123,13 +2126,28 @@ Processe e retorne em JSON com array "processed_data".
                     ensure_ascii=False
                 )
             else:
-                # Se não tem DataFrame, usa texto completo do PDF (SEM limitação)
+                # Se não tem DataFrame OU se é imagem/OCR, usa texto completo (SEM limitação)
                 if pdf_full_data and pdf_full_data.get('full_text'):
                     full_text = pdf_full_data.get('full_text', '')
                     # Usa TODO o texto, não apenas 10k chars
                     file_data = full_text
                     if status_callback:
-                        status_callback(f"Processando texto completo do PDF ({len(full_text)} caracteres)...")
+                        if is_image_or_ocr:
+                            status_callback(f"Processando texto completo extraído por OCR ({len(full_text)} caracteres)...")
+                        else:
+                            status_callback(f"Processando texto completo do PDF ({len(full_text)} caracteres)...")
+                elif not df.empty:
+                    # Fallback: se não tem texto mas tem DataFrame, usa DataFrame
+                    total_rows = len(file_data_df)
+                    if status_callback:
+                        status_callback(f"Processando {total_rows} linhas do arquivo...")
+                    
+                    file_data = json.dumps(
+                        file_data_df.to_dict('records'),
+                        indent=2,
+                        default=str,
+                        ensure_ascii=False
+                    )
                 else:
                     file_data = ''
             
