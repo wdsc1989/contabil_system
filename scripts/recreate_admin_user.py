@@ -10,14 +10,30 @@ from pathlib import Path
 # Adiciona o diretório raiz ao path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Carrega variáveis de ambiente do .env
-from dotenv import load_dotenv
-env_path = Path(__file__).parent.parent / '.env'
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"✅ Arquivo .env carregado: {env_path}")
-else:
-    print(f"⚠️  Arquivo .env não encontrado em: {env_path}")
+# Carrega variáveis de ambiente do .env (opcional)
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Arquivo .env carregado: {env_path}")
+    else:
+        print(f"⚠️  Arquivo .env não encontrado em: {env_path}")
+except ImportError:
+    # Se dotenv não estiver instalado, tenta carregar manualmente
+    env_path = Path(__file__).parent.parent / '.env'
+    if env_path.exists():
+        print(f"📋 Carregando .env manualmente...")
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip().strip('"').strip("'")
+        print(f"✅ Variáveis de ambiente carregadas de: {env_path}")
+    else:
+        print(f"⚠️  Arquivo .env não encontrado em: {env_path}")
+        print("   Usando variáveis de ambiente do sistema")
 
 from config.database import SessionLocal, init_db
 from services.auth_service import AuthService
