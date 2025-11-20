@@ -179,6 +179,9 @@ def sidebar_navigation():
         st.page_link("pages/2_Transacoes.py", label="💳 Transações Financeiras", icon="💳")
         st.caption("Visualize e gerencie transações")
         
+        st.page_link("pages/12_Faturas_Cartao.py", label="💳 Faturas de Cartão", icon="💳")
+        st.caption("Visualize e gerencie faturas de cartão de crédito")
+        
         st.page_link("pages/4_Contratos.py", label="📝 Contratos e Eventos", icon="📝")
         st.caption("Gerencie contratos e eventos")
         
