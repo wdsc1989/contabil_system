@@ -376,6 +376,8 @@ def main():
     if not AuthService.is_authenticated():
         login_page()
     else:
+        # Renderiza a sidebar de navegação
+        sidebar_navigation()
         main_page()
 
 
