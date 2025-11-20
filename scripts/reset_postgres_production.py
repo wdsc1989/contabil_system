@@ -11,6 +11,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.database import engine, Base, DATABASE_URL
 from sqlalchemy import text, inspect
 
+# Importar todos os modelos para garantir que sejam criados
+from models import (
+    user, client, transaction, contract, account, group, 
+    ai_config, financial_investment, credit_card, card_machine, inventory,
+    client_report_config
+)
+
 def confirmar():
     """Solicita confirmação do usuário"""
     print("=" * 70)
@@ -84,7 +91,11 @@ def limpar_banco():
             for tabela in ordem_deletar:
                 if tabela in tabelas:
                     try:
-                        conn.execute(text(f"DELETE FROM {tabela}"))
+                        # SQLite precisa de aspas em alguns casos, PostgreSQL não
+                        if is_sqlite:
+                            conn.execute(text(f'DELETE FROM "{tabela}"'))
+                        else:
+                            conn.execute(text(f"DELETE FROM {tabela}"))
                         print(f"   ✅ {tabela} - dados deletados")
                     except Exception as e:
                         print(f"   ⚠️  {tabela} - {str(e)[:100]}")
@@ -125,7 +136,11 @@ def recriar_tabelas():
             
             for tabela in tabelas:
                 try:
-                    conn.execute(text(f"DROP TABLE IF EXISTS {tabela} CASCADE"))
+                    if is_postgres:
+                        conn.execute(text(f"DROP TABLE IF EXISTS {tabela} CASCADE"))
+                    else:
+                        # SQLite não suporta CASCADE, mas aceita IF EXISTS
+                        conn.execute(text(f"DROP TABLE IF EXISTS {tabela}"))
                     print(f"   ✅ {tabela} - removida")
                 except Exception as e:
                     print(f"   ⚠️  {tabela} - {str(e)[:100]}")
