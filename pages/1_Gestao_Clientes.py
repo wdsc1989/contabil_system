@@ -432,12 +432,19 @@ try:
                     is_configured = False
                     for report_type in REPORT_TYPES:
                         report_config = all_configs.get(report_type, {})
-                        # Se o report_type não existe, cria com padrão True
+                        # get_all_configs sempre retorna todos os report_types com todos os data_types
+                        # Se report_config está vazio, significa que não há configuração = padrão True
                         if not report_config:
                             is_configured = True  # Sem configuração = todos habilitados por padrão
                             break
-                        # Verifica se o tipo está habilitado (padrão True se não existir)
-                        if report_config.get(data_type, True):
+                        # Verifica se o tipo está habilitado (padrão True se não existir na config)
+                        # get_all_configs já inicializa todos os tipos com True, então se existe na config, usa o valor
+                        if data_type in report_config:
+                            if report_config[data_type]:
+                                is_configured = True
+                                break
+                        else:
+                            # Se não existe na config, padrão é True
                             is_configured = True
                             break
                     
