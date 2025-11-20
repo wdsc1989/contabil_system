@@ -789,6 +789,9 @@ class ParserService:
             for page_num, image in enumerate(images, 1):
                 try:
                     # Extrai texto usando pytesseract
+                    # Converte PIL Image para formato compatível se necessário
+                    if hasattr(image, 'mode') and image.mode != 'RGB':
+                        image = image.convert('RGB')
                     page_text = pytesseract.image_to_string(image, lang='por+eng')
                     full_text_parts.append(page_text)
                     
@@ -855,11 +858,19 @@ class ParserService:
                 # Fallback: tenta easyocr se disponível
                 try:
                     import easyocr
+                    import numpy as np
+                    # Converte PIL Image para numpy array (formato RGB)
+                    if image.mode != 'RGB':
+                        image = image.convert('RGB')
+                    image_array = np.array(image)
                     reader = easyocr.Reader(['pt', 'en'])
-                    result = reader.readtext(image)
+                    result = reader.readtext(image_array)
                     text = '\n'.join([item[1] for item in result])
                 except ImportError:
-                    raise Exception(f"Erro ao processar OCR: {str(e)}")
+                    raise Exception(f"Erro ao processar OCR: {str(e)}. Certifique-se de que pytesseract ou easyocr está instalado.")
+                except Exception as easyocr_error:
+                    # Se easyocr também falhar, retorna o erro original do pytesseract
+                    raise Exception(f"Erro ao processar OCR: {str(e)}. Fallback easyocr também falhou: {str(easyocr_error)}")
             
             # Tenta criar DataFrame do texto extraído
             dataframe = ParserService._text_to_dataframe_from_ocr(text)
