@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.database import SessionLocal
 from services.auth_service import AuthService
+from services.report_config_service import ReportConfigService
 from models.client import Client
 from models.user import User, UserClientPermission
 import pandas as pd
@@ -43,7 +44,7 @@ st.title("👥 Gestão de Clientes")
 st.markdown("---")
 
 # Tabs para diferentes funcionalidades
-tab1, tab2, tab3 = st.tabs(["📋 Lista de Clientes", "➕ Novo Cliente", "🔐 Permissões"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Lista de Clientes", "➕ Novo Cliente", "🔐 Permissões", "⚙️ Configuração de Relatórios"])
 
 db = SessionLocal()
 
@@ -178,6 +179,8 @@ try:
                         )
                         db.add(new_client)
                         db.commit()
+                        # Cria configuração padrão de relatórios para o novo cliente
+                        ReportConfigService.ensure_default_config(db, new_client.id)
                         st.success(f"✅ Cliente '{name}' cadastrado com sucesso!")
                         st.rerun()
     
@@ -288,6 +291,99 @@ try:
                                     st.rerun()
                         else:
                             st.info("ℹ️ Nenhum cliente cadastrado.")
+    
+    # TAB 4: Configuração de Relatórios
+    with tab4:
+        st.subheader("⚙️ Configuração de Relatórios por Cliente")
+        st.markdown("Configure quais tipos de dados devem aparecer em cada relatório para cada cliente.")
+        
+        # Seleciona cliente
+        all_clients = db.query(Client).filter(Client.active == True).order_by(Client.name).all()
+        
+        if not all_clients:
+            st.info("ℹ️ Nenhum cliente cadastrado.")
+        else:
+            selected_config_client_id = st.selectbox(
+                "Selecione um cliente:",
+                options=[c.id for c in all_clients],
+                format_func=lambda x: next(f"{c.name} ({c.cpf_cnpj})" for c in all_clients if c.id == x),
+                key="config_client_select"
+            )
+            
+            if selected_config_client_id:
+                config_client = db.query(Client).filter(Client.id == selected_config_client_id).first()
+                st.info(f"📌 Configurando relatórios para: **{config_client.name}**")
+                
+                # Garante que existe configuração padrão
+                ReportConfigService.ensure_default_config(db, selected_config_client_id)
+                
+                # Obtém configurações atuais
+                dre_config = ReportConfigService.get_client_report_config(db, selected_config_client_id, 'dre')
+                dfc_config = ReportConfigService.get_client_report_config(db, selected_config_client_id, 'dfc')
+                sazonalidade_config = ReportConfigService.get_client_report_config(db, selected_config_client_id, 'sazonalidade')
+                
+                # Se não houver configuração, cria com valores padrão (todos habilitados)
+                from services.report_config_service import DATA_TYPES
+                data_types = DATA_TYPES
+                
+                if not dre_config:
+                    dre_config = {dt: True for dt in data_types.keys()}
+                if not dfc_config:
+                    dfc_config = {dt: True for dt in data_types.keys()}
+                if not sazonalidade_config:
+                    sazonalidade_config = {dt: True for dt in data_types.keys()}
+                
+                # Formulário de configuração
+                with st.form("report_config_form"):
+                    st.markdown("### 📊 DRE - Demonstração do Resultado do Exercício")
+                    dre_enabled = {}
+                    for data_type, label in data_types.items():
+                        dre_enabled[data_type] = st.checkbox(
+                            label,
+                            value=dre_config.get(data_type, True),
+                            key=f"dre_{data_type}"
+                        )
+                    
+                    st.markdown("---")
+                    st.markdown("### 💵 DFC - Demonstração do Fluxo de Caixa")
+                    dfc_enabled = {}
+                    for data_type, label in data_types.items():
+                        dfc_enabled[data_type] = st.checkbox(
+                            label,
+                            value=dfc_config.get(data_type, True),
+                            key=f"dfc_{data_type}"
+                        )
+                    
+                    st.markdown("---")
+                    st.markdown("### 📈 Sazonalidade")
+                    sazonalidade_enabled = {}
+                    for data_type, label in data_types.items():
+                        sazonalidade_enabled[data_type] = st.checkbox(
+                            label,
+                            value=sazonalidade_config.get(data_type, True),
+                            key=f"sazonalidade_{data_type}"
+                        )
+                    
+                    st.markdown("---")
+                    
+                    submit_config = st.form_submit_button("💾 Salvar Configurações", use_container_width=True)
+                    
+                    if submit_config:
+                        # Validação: não permitir desabilitar todos os tipos
+                        if not any(dre_enabled.values()):
+                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DRE.")
+                        elif not any(dfc_enabled.values()):
+                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DFC.")
+                        elif not any(sazonalidade_enabled.values()):
+                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para Sazonalidade.")
+                        else:
+                            # Atualiza configurações
+                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dre', dre_enabled)
+                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dfc', dfc_enabled)
+                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'sazonalidade', sazonalidade_enabled)
+                            
+                            st.success("✅ Configurações de relatórios atualizadas com sucesso!")
+                            st.rerun()
 
 finally:
     db.close()

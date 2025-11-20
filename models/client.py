@@ -33,6 +33,8 @@ class Client(Base):
     card_machine_statements = relationship('CardMachineStatement', back_populates='client', cascade='all, delete-orphan')
     inventory = relationship('Inventory', back_populates='client', cascade='all, delete-orphan')
     import_mappings = relationship('ImportMapping', back_populates='client', cascade='all, delete-orphan')
+    report_configs = relationship('ClientReportConfig', back_populates='client', cascade='all, delete-orphan')
+    report_configs = relationship('ClientReportConfig', back_populates='client', cascade='all, delete-orphan')
 
     def __repr__(self):
         return f"<Client(name='{self.name}', cpf_cnpj='{self.cpf_cnpj}')>"

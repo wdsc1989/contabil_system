@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.database import SessionLocal
 from services.auth_service import AuthService
 from services.report_service import ReportService
+from services.report_config_service import ReportConfigService, DATA_TYPES
 from models.client import Client
 from models.transaction import Transaction
 from utils.formatters import format_currency, format_date
@@ -92,6 +93,11 @@ st.markdown("---")
 db = SessionLocal()
 try:
     dfc_data = ReportService.get_dfc_data(db, client_id, start_date, end_date)
+    
+    # Mostra tipos de dados incluídos no relatório
+    enabled_types = dfc_data.get('enabled_data_types', [])
+    if enabled_types:
+        st.info(f"📊 **Tipos de dados incluídos no DFC:** {', '.join([DATA_TYPES.get(dt, dt) for dt in enabled_types])}")
     
     if dfc_data['fluxo_mensal']:
         # KPIs

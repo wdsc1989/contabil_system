@@ -6,6 +6,10 @@ from sqlalchemy import func, extract
 from models.transaction import Transaction, BankStatement
 from models.account import AccountPayable, AccountReceivable
 from models.contract import Contract
+from models.financial_investment import FinancialInvestment
+from models.credit_card import CreditCardInvoice
+from models.card_machine import CardMachineStatement
+from services.report_config_service import ReportConfigService
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Any, Optional
 import pandas as pd
@@ -20,61 +24,106 @@ class ReportService:
     def get_dre_data(db: Session, client_id: int, start_date: date, end_date: date) -> Dict[str, Any]:
         """
         Gera dados para DRE (Demonstração do Resultado do Exercício)
-        Inclui transações (que já incluem extratos convertidos), contratos, contas a pagar e contas a receber
+        Inclui apenas os tipos de dados habilitados na configuração do cliente
         """
-        # Receitas de transações (inclui extratos bancários convertidos automaticamente)
-        receitas_trans = db.query(
-            func.sum(Transaction.value)
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'entrada',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).scalar() or 0
+        # Verifica quais tipos de dados estão habilitados para DRE
+        enabled_types = ReportConfigService.get_enabled_data_types(db, client_id, 'dre')
         
-        # Despesas de transações (inclui extratos bancários convertidos automaticamente)
-        despesas_trans = db.query(
-            func.sum(Transaction.value)
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'saida',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).scalar() or 0
+        # Receitas de transações (inclui extratos bancários convertidos automaticamente)
+        receitas_trans = 0
+        despesas_trans = 0
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            receitas_trans = db.query(
+                func.sum(Transaction.value)
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'entrada',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).scalar() or 0
+            
+            despesas_trans = db.query(
+                func.sum(Transaction.value)
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'saida',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).scalar() or 0
         
         # Receitas de contratos concluídos
-        receitas_contratos = db.query(
-            func.sum(Contract.service_value + Contract.displacement_value)
-        ).filter(
-            Contract.client_id == client_id,
-            Contract.status == 'concluido',
-            Contract.event_date >= start_date,
-            Contract.event_date <= end_date
-        ).scalar() or 0
+        receitas_contratos = 0
+        if 'contracts' in enabled_types:
+            receitas_contratos = db.query(
+                func.sum(Contract.service_value + Contract.displacement_value)
+            ).filter(
+                Contract.client_id == client_id,
+                Contract.status == 'concluido',
+                Contract.event_date >= start_date,
+                Contract.event_date <= end_date
+            ).scalar() or 0
         
         # Despesas de contas a pagar pagas
-        despesas_contas_pagar = db.query(
-            func.sum(AccountPayable.value)
-        ).filter(
-            AccountPayable.client_id == client_id,
-            AccountPayable.paid == True,
-            AccountPayable.payment_date >= start_date,
-            AccountPayable.payment_date <= end_date
-        ).scalar() or 0
+        despesas_contas_pagar = 0
+        if 'accounts_payable' in enabled_types:
+            despesas_contas_pagar = db.query(
+                func.sum(AccountPayable.value)
+            ).filter(
+                AccountPayable.client_id == client_id,
+                AccountPayable.paid == True,
+                AccountPayable.payment_date >= start_date,
+                AccountPayable.payment_date <= end_date
+            ).scalar() or 0
         
         # Receitas de contas a receber recebidas
-        receitas_contas_receber = db.query(
-            func.sum(AccountReceivable.value)
-        ).filter(
-            AccountReceivable.client_id == client_id,
-            AccountReceivable.received == True,
-            AccountReceivable.receipt_date >= start_date,
-            AccountReceivable.receipt_date <= end_date
-        ).scalar() or 0
+        receitas_contas_receber = 0
+        if 'accounts_receivable' in enabled_types:
+            receitas_contas_receber = db.query(
+                func.sum(AccountReceivable.value)
+            ).filter(
+                AccountReceivable.client_id == client_id,
+                AccountReceivable.received == True,
+                AccountReceivable.receipt_date >= start_date,
+                AccountReceivable.receipt_date <= end_date
+            ).scalar() or 0
+        
+        # Receitas de faturas de cartão (despesas)
+        despesas_cartao = 0
+        if 'credit_card_invoices' in enabled_types:
+            despesas_cartao = db.query(
+                func.sum(CreditCardInvoice.value)
+            ).filter(
+                CreditCardInvoice.client_id == client_id,
+                CreditCardInvoice.transaction_date >= start_date,
+                CreditCardInvoice.transaction_date <= end_date
+            ).scalar() or 0
+        
+        # Receitas de máquina de cartão (receitas líquidas)
+        receitas_maquina_cartao = 0
+        if 'card_machine_statements' in enabled_types:
+            receitas_maquina_cartao = db.query(
+                func.sum(CardMachineStatement.net_value)
+            ).filter(
+                CardMachineStatement.client_id == client_id,
+                CardMachineStatement.date >= start_date,
+                CardMachineStatement.date <= end_date
+            ).scalar() or 0
+        
+        # Receitas de aplicações financeiras (rendimentos)
+        receitas_aplicacoes = 0
+        if 'financial_investments' in enabled_types:
+            receitas_aplicacoes = db.query(
+                func.sum(FinancialInvestment.yield_value)
+            ).filter(
+                FinancialInvestment.client_id == client_id,
+                FinancialInvestment.date >= start_date,
+                FinancialInvestment.date <= end_date,
+                FinancialInvestment.yield_value.isnot(None)
+            ).scalar() or 0
         
         # Total
-        receitas = receitas_trans + receitas_contratos + receitas_contas_receber
-        despesas = despesas_trans + despesas_contas_pagar
+        receitas = receitas_trans + receitas_contratos + receitas_contas_receber + receitas_maquina_cartao + receitas_aplicacoes
+        despesas = despesas_trans + despesas_contas_pagar + despesas_cartao
         
         # Resultado
         resultado = receitas - despesas
@@ -83,88 +132,102 @@ class ReportService:
         # Agregação por grupos e subgrupos (CLASSIFICAÇÃO PRINCIPAL)
         from models.group import Group, Subgroup
         
-        # Receitas por grupo
-        receitas_por_grupo = db.query(
-            Group.name,
-            func.sum(Transaction.value).label('total')
-        ).join(Transaction, Transaction.group_id == Group.id).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'entrada',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Group.name).all()
+        # Receitas por grupo (apenas se transactions/bank_statements habilitados)
+        receitas_por_grupo = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            receitas_por_grupo = db.query(
+                Group.name,
+                func.sum(Transaction.value).label('total')
+            ).join(Transaction, Transaction.group_id == Group.id).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'entrada',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).group_by(Group.name).all()
         
-        # Despesas por grupo
-        despesas_por_grupo = db.query(
-            Group.name,
-            func.sum(Transaction.value).label('total')
-        ).join(Transaction, Transaction.group_id == Group.id).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'saida',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Group.name).all()
+        # Despesas por grupo (apenas se transactions/bank_statements habilitados)
+        despesas_por_grupo = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            despesas_por_grupo = db.query(
+                Group.name,
+                func.sum(Transaction.value).label('total')
+            ).join(Transaction, Transaction.group_id == Group.id).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'saida',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).group_by(Group.name).all()
         
-        # Receitas por subgrupo
-        receitas_por_subgrupo = db.query(
-            Group.name.label('grupo'),
-            Subgroup.name.label('subgrupo'),
-            func.sum(Transaction.value).label('total')
-        ).join(Transaction, Transaction.subgroup_id == Subgroup.id).join(
-            Group, Subgroup.group_id == Group.id
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'entrada',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Group.name, Subgroup.name).all()
+        # Receitas por subgrupo (apenas se transactions/bank_statements habilitados)
+        receitas_por_subgrupo = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            receitas_por_subgrupo = db.query(
+                Group.name.label('grupo'),
+                Subgroup.name.label('subgrupo'),
+                func.sum(Transaction.value).label('total')
+            ).join(Transaction, Transaction.subgroup_id == Subgroup.id).join(
+                Group, Subgroup.group_id == Group.id
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'entrada',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).group_by(Group.name, Subgroup.name).all()
         
-        # Despesas por subgrupo
-        despesas_por_subgrupo = db.query(
-            Group.name.label('grupo'),
-            Subgroup.name.label('subgrupo'),
-            func.sum(Transaction.value).label('total')
-        ).join(Transaction, Transaction.subgroup_id == Subgroup.id).join(
-            Group, Subgroup.group_id == Group.id
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'saida',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Group.name, Subgroup.name).all()
+        # Despesas por subgrupo (apenas se transactions/bank_statements habilitados)
+        despesas_por_subgrupo = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            despesas_por_subgrupo = db.query(
+                Group.name.label('grupo'),
+                Subgroup.name.label('subgrupo'),
+                func.sum(Transaction.value).label('total')
+            ).join(Transaction, Transaction.subgroup_id == Subgroup.id).join(
+                Group, Subgroup.group_id == Group.id
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'saida',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).group_by(Group.name, Subgroup.name).all()
         
-        # Agregação por grupos/subgrupos para contratos
-        receitas_por_grupo_contratos = db.query(
-            Group.name,
-            func.sum(Contract.service_value + Contract.displacement_value).label('total')
-        ).join(Contract, Contract.group_id == Group.id).filter(
-            Contract.client_id == client_id,
-            Contract.status == 'concluido',
-            Contract.event_date >= start_date,
-            Contract.event_date <= end_date
-        ).group_by(Group.name).all()
+        # Agregação por grupos/subgrupos para contratos (apenas se habilitado)
+        receitas_por_grupo_contratos = []
+        if 'contracts' in enabled_types:
+            receitas_por_grupo_contratos = db.query(
+                Group.name,
+                func.sum(Contract.service_value + Contract.displacement_value).label('total')
+            ).join(Contract, Contract.group_id == Group.id).filter(
+                Contract.client_id == client_id,
+                Contract.status == 'concluido',
+                Contract.event_date >= start_date,
+                Contract.event_date <= end_date
+            ).group_by(Group.name).all()
         
-        # Agregação por grupos/subgrupos para contas a pagar
-        despesas_por_grupo_contas_pagar = db.query(
-            Group.name,
-            func.sum(AccountPayable.value).label('total')
-        ).join(AccountPayable, AccountPayable.group_id == Group.id).filter(
-            AccountPayable.client_id == client_id,
-            AccountPayable.paid == True,
-            AccountPayable.payment_date >= start_date,
-            AccountPayable.payment_date <= end_date
-        ).group_by(Group.name).all()
+        # Agregação por grupos/subgrupos para contas a pagar (apenas se habilitado)
+        despesas_por_grupo_contas_pagar = []
+        if 'accounts_payable' in enabled_types:
+            despesas_por_grupo_contas_pagar = db.query(
+                Group.name,
+                func.sum(AccountPayable.value).label('total')
+            ).join(AccountPayable, AccountPayable.group_id == Group.id).filter(
+                AccountPayable.client_id == client_id,
+                AccountPayable.paid == True,
+                AccountPayable.payment_date >= start_date,
+                AccountPayable.payment_date <= end_date
+            ).group_by(Group.name).all()
         
-        # Agregação por grupos/subgrupos para contas a receber
-        receitas_por_grupo_contas_receber = db.query(
-            Group.name,
-            func.sum(AccountReceivable.value).label('total')
-        ).join(AccountReceivable, AccountReceivable.group_id == Group.id).filter(
-            AccountReceivable.client_id == client_id,
-            AccountReceivable.received == True,
-            AccountReceivable.receipt_date >= start_date,
-            AccountReceivable.receipt_date <= end_date
-        ).group_by(Group.name).all()
+        # Agregação por grupos/subgrupos para contas a receber (apenas se habilitado)
+        receitas_por_grupo_contas_receber = []
+        if 'accounts_receivable' in enabled_types:
+            receitas_por_grupo_contas_receber = db.query(
+                Group.name,
+                func.sum(AccountReceivable.value).label('total')
+            ).join(AccountReceivable, AccountReceivable.group_id == Group.id).filter(
+                AccountReceivable.client_id == client_id,
+                AccountReceivable.received == True,
+                AccountReceivable.receipt_date >= start_date,
+                AccountReceivable.receipt_date <= end_date
+            ).group_by(Group.name).all()
         
         # Consolidar receitas por grupo (todas as fontes)
         receitas_por_grupo_consolidado = {}
@@ -188,28 +251,32 @@ class ReportService:
             despesas_por_grupo_consolidado[grupo] = despesas_por_grupo_consolidado.get(grupo, 0) + float(d[1])
         
         # Receitas por categoria (FALLBACK - apenas para transações sem grupo/subgrupo)
-        receitas_por_categoria = db.query(
-            Transaction.category,
-            func.sum(Transaction.value).label('total')
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'entrada',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
-            Transaction.group_id.is_(None)  # Apenas transações sem grupo
-        ).group_by(Transaction.category).all()
+        receitas_por_categoria = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            receitas_por_categoria = db.query(
+                Transaction.category,
+                func.sum(Transaction.value).label('total')
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'entrada',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.group_id.is_(None)  # Apenas transações sem grupo
+            ).group_by(Transaction.category).all()
         
         # Despesas por categoria (FALLBACK - apenas para transações sem grupo/subgrupo)
-        despesas_por_categoria = db.query(
-            Transaction.category,
-            func.sum(Transaction.value).label('total')
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'saida',
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
-            Transaction.group_id.is_(None)  # Apenas transações sem grupo
-        ).group_by(Transaction.category).all()
+        despesas_por_categoria = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            despesas_por_categoria = db.query(
+                Transaction.category,
+                func.sum(Transaction.value).label('total')
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'saida',
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                Transaction.group_id.is_(None)  # Apenas transações sem grupo
+            ).group_by(Transaction.category).all()
         
         return {
             'receitas': float(receitas),
@@ -226,7 +293,11 @@ class ReportService:
             'despesas_por_categoria': [{'categoria': d[0] or 'Sem categoria', 'valor': float(d[1])} for d in despesas_por_categoria],
             'receitas_contratos': float(receitas_contratos),
             'receitas_contas_receber': float(receitas_contas_receber),
-            'despesas_contas_pagar': float(despesas_contas_pagar)
+            'despesas_contas_pagar': float(despesas_contas_pagar),
+            'receitas_maquina_cartao': float(receitas_maquina_cartao),
+            'receitas_aplicacoes': float(receitas_aplicacoes),
+            'despesas_cartao': float(despesas_cartao),
+            'enabled_data_types': enabled_types  # Lista de tipos habilitados
         }
 
     @staticmethod
@@ -234,7 +305,7 @@ class ReportService:
                      group_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Gera dados para DFC (Demonstração do Fluxo de Caixa)
-        Inclui transações (que já incluem extratos convertidos), contratos, contas a pagar e contas a receber
+        Inclui apenas os tipos de dados habilitados na configuração do cliente
         
         Args:
             db: Sessão do banco de dados
@@ -243,6 +314,9 @@ class ReportService:
             end_date: Data final
             group_id: ID do grupo para filtrar (opcional). Se None, retorna todos os grupos
         """
+        # Verifica quais tipos de dados estão habilitados para DFC
+        enabled_types = ReportConfigService.get_enabled_data_types(db, client_id, 'dfc')
+        
         # Filtro base
         transaction_filter = [
             Transaction.client_id == client_id,
@@ -255,28 +329,32 @@ class ReportService:
             transaction_filter.append(Transaction.group_id == group_id)
         
         # Fluxo por mês - Transações (inclui extratos bancários convertidos automaticamente)
-        transactions = db.query(
-            extract('year', Transaction.date).label('year'),
-            extract('month', Transaction.date).label('month'),
-            Transaction.type,
-            func.sum(Transaction.value).label('total')
-        ).filter(*transaction_filter).group_by('year', 'month', Transaction.type).all()
+        transactions = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            transactions = db.query(
+                extract('year', Transaction.date).label('year'),
+                extract('month', Transaction.date).label('month'),
+                Transaction.type,
+                func.sum(Transaction.value).label('total')
+            ).filter(*transaction_filter).group_by('year', 'month', Transaction.type).all()
         
         # Fluxo por grupo (para análises detalhadas)
         from models.group import Group
         fluxo_por_grupo = {}
         
-        transactions_por_grupo = db.query(
-            Group.name.label('grupo'),
-            extract('year', Transaction.date).label('year'),
-            extract('month', Transaction.date).label('month'),
-            Transaction.type,
-            func.sum(Transaction.value).label('total')
-        ).join(Transaction, Transaction.group_id == Group.id).filter(
-            Transaction.client_id == client_id,
-            Transaction.date >= start_date,
-            Transaction.date <= end_date
-        ).group_by(Group.name, 'year', 'month', Transaction.type).all()
+        transactions_por_grupo = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            transactions_por_grupo = db.query(
+                Group.name.label('grupo'),
+                extract('year', Transaction.date).label('year'),
+                extract('month', Transaction.date).label('month'),
+                Transaction.type,
+                func.sum(Transaction.value).label('total')
+            ).join(Transaction, Transaction.group_id == Group.id).filter(
+                Transaction.client_id == client_id,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date
+            ).group_by(Group.name, 'year', 'month', Transaction.type).all()
         
         # Organiza fluxo por grupo
         for trans in transactions_por_grupo:
@@ -294,41 +372,87 @@ class ReportService:
             else:
                 fluxo_por_grupo[grupo][month_key]['saidas'] += float(trans.total)
         
-        # Fluxo por mês - Contratos concluídos
-        contracts = db.query(
-            extract('year', Contract.event_date).label('year'),
-            extract('month', Contract.event_date).label('month'),
-            func.sum(Contract.service_value + Contract.displacement_value).label('total')
-        ).filter(
-            Contract.client_id == client_id,
-            Contract.status == 'concluido',
-            Contract.event_date >= start_date,
-            Contract.event_date <= end_date
-        ).group_by('year', 'month').all()
+        # Fluxo por mês - Contratos concluídos (apenas se habilitado)
+        contracts = []
+        if 'contracts' in enabled_types:
+            contracts = db.query(
+                extract('year', Contract.event_date).label('year'),
+                extract('month', Contract.event_date).label('month'),
+                func.sum(Contract.service_value + Contract.displacement_value).label('total')
+            ).filter(
+                Contract.client_id == client_id,
+                Contract.status == 'concluido',
+                Contract.event_date >= start_date,
+                Contract.event_date <= end_date
+            ).group_by('year', 'month').all()
         
-        # Fluxo por mês - Contas a pagar pagas
-        accounts_payable = db.query(
-            extract('year', AccountPayable.payment_date).label('year'),
-            extract('month', AccountPayable.payment_date).label('month'),
-            func.sum(AccountPayable.value).label('total')
-        ).filter(
-            AccountPayable.client_id == client_id,
-            AccountPayable.paid == True,
-            AccountPayable.payment_date >= start_date,
-            AccountPayable.payment_date <= end_date
-        ).group_by('year', 'month').all()
+        # Fluxo por mês - Contas a pagar pagas (apenas se habilitado)
+        accounts_payable = []
+        if 'accounts_payable' in enabled_types:
+            accounts_payable = db.query(
+                extract('year', AccountPayable.payment_date).label('year'),
+                extract('month', AccountPayable.payment_date).label('month'),
+                func.sum(AccountPayable.value).label('total')
+            ).filter(
+                AccountPayable.client_id == client_id,
+                AccountPayable.paid == True,
+                AccountPayable.payment_date >= start_date,
+                AccountPayable.payment_date <= end_date
+            ).group_by('year', 'month').all()
         
-        # Fluxo por mês - Contas a receber recebidas
-        accounts_receivable = db.query(
-            extract('year', AccountReceivable.receipt_date).label('year'),
-            extract('month', AccountReceivable.receipt_date).label('month'),
-            func.sum(AccountReceivable.value).label('total')
-        ).filter(
-            AccountReceivable.client_id == client_id,
-            AccountReceivable.received == True,
-            AccountReceivable.receipt_date >= start_date,
-            AccountReceivable.receipt_date <= end_date
-        ).group_by('year', 'month').all()
+        # Fluxo por mês - Contas a receber recebidas (apenas se habilitado)
+        accounts_receivable = []
+        if 'accounts_receivable' in enabled_types:
+            accounts_receivable = db.query(
+                extract('year', AccountReceivable.receipt_date).label('year'),
+                extract('month', AccountReceivable.receipt_date).label('month'),
+                func.sum(AccountReceivable.value).label('total')
+            ).filter(
+                AccountReceivable.client_id == client_id,
+                AccountReceivable.received == True,
+                AccountReceivable.receipt_date >= start_date,
+                AccountReceivable.receipt_date <= end_date
+            ).group_by('year', 'month').all()
+        
+        # Fluxo por mês - Faturas de cartão (despesas) (apenas se habilitado)
+        credit_card_invoices = []
+        if 'credit_card_invoices' in enabled_types:
+            credit_card_invoices = db.query(
+                extract('year', CreditCardInvoice.transaction_date).label('year'),
+                extract('month', CreditCardInvoice.transaction_date).label('month'),
+                func.sum(CreditCardInvoice.value).label('total')
+            ).filter(
+                CreditCardInvoice.client_id == client_id,
+                CreditCardInvoice.transaction_date >= start_date,
+                CreditCardInvoice.transaction_date <= end_date
+            ).group_by('year', 'month').all()
+        
+        # Fluxo por mês - Máquina de cartão (receitas líquidas) (apenas se habilitado)
+        card_machine_statements = []
+        if 'card_machine_statements' in enabled_types:
+            card_machine_statements = db.query(
+                extract('year', CardMachineStatement.date).label('year'),
+                extract('month', CardMachineStatement.date).label('month'),
+                func.sum(CardMachineStatement.net_value).label('total')
+            ).filter(
+                CardMachineStatement.client_id == client_id,
+                CardMachineStatement.date >= start_date,
+                CardMachineStatement.date <= end_date
+            ).group_by('year', 'month').all()
+        
+        # Fluxo por mês - Aplicações financeiras (rendimentos) (apenas se habilitado)
+        financial_investments = []
+        if 'financial_investments' in enabled_types:
+            financial_investments = db.query(
+                extract('year', FinancialInvestment.date).label('year'),
+                extract('month', FinancialInvestment.date).label('month'),
+                func.sum(FinancialInvestment.yield_value).label('total')
+            ).filter(
+                FinancialInvestment.client_id == client_id,
+                FinancialInvestment.date >= start_date,
+                FinancialInvestment.date <= end_date,
+                FinancialInvestment.yield_value.isnot(None)
+            ).group_by('year', 'month').all()
         
         # Organiza por mês
         fluxo_mensal = {}
@@ -364,6 +488,27 @@ class ReportService:
             if month_key not in fluxo_mensal:
                 fluxo_mensal[month_key] = {'entradas': 0, 'saidas': 0}
             fluxo_mensal[month_key]['entradas'] += float(account.total)
+        
+        # Adiciona faturas de cartão (saídas)
+        for invoice in credit_card_invoices:
+            month_key = f"{int(invoice.year)}-{int(invoice.month):02d}"
+            if month_key not in fluxo_mensal:
+                fluxo_mensal[month_key] = {'entradas': 0, 'saidas': 0}
+            fluxo_mensal[month_key]['saidas'] += float(invoice.total)
+        
+        # Adiciona máquina de cartão (entradas líquidas)
+        for machine in card_machine_statements:
+            month_key = f"{int(machine.year)}-{int(machine.month):02d}"
+            if month_key not in fluxo_mensal:
+                fluxo_mensal[month_key] = {'entradas': 0, 'saidas': 0}
+            fluxo_mensal[month_key]['entradas'] += float(machine.total)
+        
+        # Adiciona aplicações financeiras (entradas - rendimentos)
+        for investment in financial_investments:
+            month_key = f"{int(investment.year)}-{int(investment.month):02d}"
+            if month_key not in fluxo_mensal:
+                fluxo_mensal[month_key] = {'entradas': 0, 'saidas': 0}
+            fluxo_mensal[month_key]['entradas'] += float(investment.total)
         
         # Calcula saldo acumulado
         saldo_acumulado = 0
@@ -411,34 +556,116 @@ class ReportService:
         return {
             'fluxo_mensal': fluxo_list,
             'saldo_final': saldo_acumulado,
-            'fluxo_por_grupo': fluxo_por_grupo_list  # Agrupamento opcional por grupo
+            'fluxo_por_grupo': fluxo_por_grupo_list,  # Agrupamento opcional por grupo
+            'enabled_data_types': enabled_types  # Lista de tipos habilitados
         }
 
     @staticmethod
     def get_seasonality_data(db: Session, client_id: int) -> Dict[str, Any]:
         """
         Analisa sazonalidade dos dados
+        Inclui apenas os tipos de dados habilitados na configuração do cliente
         """
-        # Receitas por mês (todos os anos)
-        receitas_mensal = db.query(
-            extract('year', Transaction.date).label('year'),
-            extract('month', Transaction.date).label('month'),
-            func.sum(Transaction.value).label('total')
-        ).filter(
-            Transaction.client_id == client_id,
-            Transaction.type == 'entrada'
-        ).group_by('year', 'month').all()
+        # Verifica quais tipos de dados estão habilitados para Sazonalidade
+        enabled_types = ReportConfigService.get_enabled_data_types(db, client_id, 'sazonalidade')
         
-        # Organiza por ano e mês
-        data_by_year = {}
+        # Receitas por mês (todos os anos) - Transações
+        receitas_mensal = []
+        if 'transactions' in enabled_types or 'bank_statements' in enabled_types:
+            receitas_mensal = db.query(
+                extract('year', Transaction.date).label('year'),
+                extract('month', Transaction.date).label('month'),
+                func.sum(Transaction.value).label('total')
+            ).filter(
+                Transaction.client_id == client_id,
+                Transaction.type == 'entrada'
+            ).group_by('year', 'month').all()
+        
+        # Receitas de contratos por mês
+        receitas_contratos_mensal = []
+        if 'contracts' in enabled_types:
+            receitas_contratos_mensal = db.query(
+                extract('year', Contract.event_date).label('year'),
+                extract('month', Contract.event_date).label('month'),
+                func.sum(Contract.service_value + Contract.displacement_value).label('total')
+            ).filter(
+                Contract.client_id == client_id,
+                Contract.status == 'concluido'
+            ).group_by('year', 'month').all()
+        
+        # Receitas de contas a receber por mês
+        receitas_contas_receber_mensal = []
+        if 'accounts_receivable' in enabled_types:
+            receitas_contas_receber_mensal = db.query(
+                extract('year', AccountReceivable.receipt_date).label('year'),
+                extract('month', AccountReceivable.receipt_date).label('month'),
+                func.sum(AccountReceivable.value).label('total')
+            ).filter(
+                AccountReceivable.client_id == client_id,
+                AccountReceivable.received == True
+            ).group_by('year', 'month').all()
+        
+        # Receitas de máquina de cartão por mês
+        receitas_maquina_cartao_mensal = []
+        if 'card_machine_statements' in enabled_types:
+            receitas_maquina_cartao_mensal = db.query(
+                extract('year', CardMachineStatement.date).label('year'),
+                extract('month', CardMachineStatement.date).label('month'),
+                func.sum(CardMachineStatement.net_value).label('total')
+            ).filter(
+                CardMachineStatement.client_id == client_id
+            ).group_by('year', 'month').all()
+        
+        # Receitas de aplicações financeiras por mês (rendimentos)
+        receitas_aplicacoes_mensal = []
+        if 'financial_investments' in enabled_types:
+            receitas_aplicacoes_mensal = db.query(
+                extract('year', FinancialInvestment.date).label('year'),
+                extract('month', FinancialInvestment.date).label('month'),
+                func.sum(FinancialInvestment.yield_value).label('total')
+            ).filter(
+                FinancialInvestment.client_id == client_id,
+                FinancialInvestment.yield_value.isnot(None)
+            ).group_by('year', 'month').all()
+        
+        # Consolida todas as receitas
+        all_receitas = {}
         for rec in receitas_mensal:
             year = int(rec.year)
             month = int(rec.month)
-            
+            key = (year, month)
+            all_receitas[key] = all_receitas.get(key, 0) + float(rec.total)
+        
+        for rec in receitas_contratos_mensal:
+            year = int(rec.year)
+            month = int(rec.month)
+            key = (year, month)
+            all_receitas[key] = all_receitas.get(key, 0) + float(rec.total)
+        
+        for rec in receitas_contas_receber_mensal:
+            year = int(rec.year)
+            month = int(rec.month)
+            key = (year, month)
+            all_receitas[key] = all_receitas.get(key, 0) + float(rec.total)
+        
+        for rec in receitas_maquina_cartao_mensal:
+            year = int(rec.year)
+            month = int(rec.month)
+            key = (year, month)
+            all_receitas[key] = all_receitas.get(key, 0) + float(rec.total)
+        
+        for rec in receitas_aplicacoes_mensal:
+            year = int(rec.year)
+            month = int(rec.month)
+            key = (year, month)
+            all_receitas[key] = all_receitas.get(key, 0) + float(rec.total)
+        
+        # Organiza por ano e mês
+        data_by_year = {}
+        for (year, month), total in all_receitas.items():
             if year not in data_by_year:
                 data_by_year[year] = {}
-            
-            data_by_year[year][month] = float(rec.total)
+            data_by_year[year][month] = total
         
         # Média por mês (considerando todos os anos)
         month_averages = {}
@@ -462,7 +689,8 @@ class ReportService:
         
         return {
             'por_ano': data_by_year,
-            'media_mensal': month_avg_list
+            'media_mensal': month_avg_list,
+            'enabled_data_types': enabled_types  # Lista de tipos habilitados
         }
 
     @staticmethod

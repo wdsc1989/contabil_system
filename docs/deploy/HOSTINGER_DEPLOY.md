@@ -2,10 +2,12 @@
 
 Este guia fornece instruções passo a passo para fazer deploy do Sistema Contábil em uma VPS Hostinger com Ubuntu 24.04 LTS.
 
+> **📌 Primeiro Passo:** Se você ainda não sabe como conectar na VPS, veja o guia: [SSH_CONNECTION.md](./SSH_CONNECTION.md)
+
 ## 📋 Pré-requisitos
 
 - VPS Hostinger com Ubuntu 24.04 LTS
-- Acesso SSH com privilégios de root
+- Acesso SSH com privilégios de root (veja [SSH_CONNECTION.md](./SSH_CONNECTION.md))
 - Domínio configurado apontando para o IP da VPS (opcional, mas recomendado)
 - Repositório GitHub do projeto
 
@@ -586,6 +588,25 @@ Em caso de problemas:
 1. Verifique os logs: `journalctl -u contabil.service -f`
 2. Verifique a documentação: `docs/deploy/BACKUP_GUIDE.md`
 3. Consulte os logs do Nginx: `/var/log/nginx/contabil_error.log`
+
+---
+
+## 📊 Monitoramento
+
+Para monitorar o banco de dados PostgreSQL, consulte:
+- [Guia de Monitoramento PostgreSQL](POSTGRESQL_MONITORING.md)
+
+Comandos rápidos:
+```bash
+# Monitoramento rápido
+/opt/contabil/contabil_system/scripts/monitor_postgres.sh
+
+# Verificação de saúde
+/opt/contabil/contabil_system/scripts/check_postgres_health.sh
+
+# Relatório diário
+/opt/contabil/contabil_system/scripts/postgres_daily_report.sh
+```
 
 ---
 

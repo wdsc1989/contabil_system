@@ -1728,8 +1728,10 @@ copy data\contabil.db backups\contabil_%data%.db
 O sistema agora suporta deploy em produção com PostgreSQL e configuração completa de servidor.
 
 **Documentação completa:**
+- 🔐 [Como Conectar na VPS via SSH](docs/deploy/SSH_CONNECTION.md) - **Comece aqui!**
 - 📖 [Guia de Deploy - Hostinger VPS](docs/deploy/HOSTINGER_DEPLOY.md)
 - 💾 [Guia de Backup e Restauração](docs/deploy/BACKUP_GUIDE.md)
+- 🔄 [Guia de Deploy Contínuo](docs/deploy/CONTINUOUS_DEPLOY.md)
 
 **Recursos incluídos:**
 - ✅ Scripts de setup automatizado da VPS

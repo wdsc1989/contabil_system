@@ -12,6 +12,8 @@ from models.financial_investment import FinancialInvestment
 from models.credit_card import CreditCardInvoice
 from models.card_machine import CardMachineStatement
 from models.inventory import Inventory
+from models.client_report_config import ClientReportConfig
+from models.client_report_config import ClientReportConfig
 
 __all__ = [
     'User',
@@ -30,6 +32,7 @@ __all__ = [
     'CreditCardInvoice',
     'CardMachineStatement',
     'Inventory',
+    'ClientReportConfig',
 ]
 
 

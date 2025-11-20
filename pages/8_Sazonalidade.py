@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.database import SessionLocal
 from services.auth_service import AuthService
 from services.report_service import ReportService
+from services.report_config_service import ReportConfigService, DATA_TYPES
 from models.client import Client
 from utils.formatters import format_currency
 
@@ -64,6 +65,11 @@ st.markdown("---")
 db = SessionLocal()
 try:
     seasonality_data = ReportService.get_seasonality_data(db, client_id)
+    
+    # Mostra tipos de dados incluídos no relatório
+    enabled_types = seasonality_data.get('enabled_data_types', [])
+    if enabled_types:
+        st.info(f"📊 **Tipos de dados incluídos na Sazonalidade:** {', '.join([DATA_TYPES.get(dt, dt) for dt in enabled_types])}")
     
     if seasonality_data['por_ano']:
         # Média mensal

@@ -96,6 +96,11 @@ db = SessionLocal()
 try:
     dre_data = ReportService.get_dre_data(db, client_id, start_date, end_date)
     
+    # Mostra tipos de dados incluídos no relatório
+    enabled_types = dre_data.get('enabled_data_types', [])
+    if enabled_types:
+        st.info(f"📊 **Tipos de dados incluídos no DRE:** {', '.join([DATA_TYPES.get(dt, dt) for dt in enabled_types])}")
+    
     # KPIs principais
     st.subheader("📈 Indicadores Principais")
     
