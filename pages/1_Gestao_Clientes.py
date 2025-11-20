@@ -401,8 +401,49 @@ try:
                 # Obtém todas as configurações
                 all_configs = ReportConfigService.get_all_configs(db, selected_map_client_id)
                 
+                # Verifica quais tipos de dados realmente existem no banco para este cliente
+                from models.transaction import Transaction, BankStatement
+                from models.contract import Contract
+                from models.account import AccountPayable, AccountReceivable
+                from models.financial_investment import FinancialInvestment
+                from models.credit_card import CreditCardInvoice
+                from models.card_machine import CardMachineStatement
+                from models.inventory import Inventory
+                
+                # Conta registros por tipo de dado
+                data_type_counts = {
+                    'transactions': db.query(Transaction).filter(Transaction.client_id == selected_map_client_id).count(),
+                    'bank_statements': db.query(BankStatement).filter(BankStatement.client_id == selected_map_client_id).count(),
+                    'contracts': db.query(Contract).filter(Contract.client_id == selected_map_client_id).count(),
+                    'accounts_payable': db.query(AccountPayable).filter(AccountPayable.client_id == selected_map_client_id).count(),
+                    'accounts_receivable': db.query(AccountReceivable).filter(AccountReceivable.client_id == selected_map_client_id).count(),
+                    'financial_investments': db.query(FinancialInvestment).filter(FinancialInvestment.client_id == selected_map_client_id).count(),
+                    'credit_card_invoices': db.query(CreditCardInvoice).filter(CreditCardInvoice.client_id == selected_map_client_id).count(),
+                    'card_machine_statements': db.query(CardMachineStatement).filter(CardMachineStatement.client_id == selected_map_client_id).count(),
+                }
+                
+                # Filtra apenas tipos de dados que existem OU estão configurados para algum relatório
+                available_data_types = []
+                for data_type in DATA_TYPES.keys():
+                    # Inclui se tem dados OU se está habilitado em pelo menos um relatório
+                    has_data = data_type_counts.get(data_type, 0) > 0
+                    is_configured = any(
+                        all_configs.get(report_type, {}).get(data_type, False)
+                        for report_type in REPORT_TYPES
+                    )
+                    if has_data or is_configured:
+                        available_data_types.append(data_type)
+                
+                # Se não houver nenhum tipo disponível, mostra todos (para configuração inicial)
+                if not available_data_types:
+                    available_data_types = list(DATA_TYPES.keys())
+                
                 # Cria o mapa visual usando Plotly
                 st.markdown("### 📊 Mapa de Conexões: Tipos de Dados → Relatórios")
+                
+                # Mostra informações sobre dados existentes
+                if any(data_type_counts.values()):
+                    st.info(f"📊 **Dados encontrados:** {sum(1 for count in data_type_counts.values() if count > 0)} tipo(s) com dados importados")
                 
                 # Define mapeamento de tipos de dados para tipos intermediários
                 # Alguns tipos de dados geram transações automaticamente
@@ -414,9 +455,9 @@ try:
                     'accounts_receivable': 'transactions',  # Contas a receber podem gerar transações
                 }
                 
-                # Tipos de dados (lado esquerdo)
-                data_type_labels = list(DATA_TYPES.values())
-                data_type_keys = list(DATA_TYPES.keys())
+                # Tipos de dados (lado esquerdo) - apenas os disponíveis
+                data_type_labels = [DATA_TYPES[dt] for dt in available_data_types]
+                data_type_keys = available_data_types
                 
                 # Tipos intermediários (centro) - apenas "Transações" por enquanto
                 intermediate_types = {
@@ -684,16 +725,16 @@ try:
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    dre_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('dre', {}).get(dt, True))
-                    st.metric("DRE", f"{dre_count}/{len(DATA_TYPES)} tipos habilitados")
+                    dre_count = sum(1 for dt in available_data_types if all_configs.get('dre', {}).get(dt, True))
+                    st.metric("DRE", f"{dre_count}/{len(available_data_types)} tipos habilitados")
                 
                 with col2:
-                    dfc_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('dfc', {}).get(dt, True))
-                    st.metric("DFC", f"{dfc_count}/{len(DATA_TYPES)} tipos habilitados")
+                    dfc_count = sum(1 for dt in available_data_types if all_configs.get('dfc', {}).get(dt, True))
+                    st.metric("DFC", f"{dfc_count}/{len(available_data_types)} tipos habilitados")
                 
                 with col3:
-                    saz_count = sum(1 for dt in DATA_TYPES.keys() if all_configs.get('sazonalidade', {}).get(dt, True))
-                    st.metric("Sazonalidade", f"{saz_count}/{len(DATA_TYPES)} tipos habilitados")
+                    saz_count = sum(1 for dt in available_data_types if all_configs.get('sazonalidade', {}).get(dt, True))
+                    st.metric("Sazonalidade", f"{saz_count}/{len(available_data_types)} tipos habilitados")
 
 finally:
     db.close()
