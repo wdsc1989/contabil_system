@@ -124,6 +124,7 @@ from utils.sidebar import show_sidebar
 show_sidebar()
 
 st.title("📥 Importação de Dados")
+st.markdown("**Processamento automático com IA Vision - Suporta CSV, Excel, PDF, OFX e Imagens**")
 st.markdown("---")
 
 # Verifica se há cliente selecionado
@@ -138,21 +139,24 @@ db = SessionLocal()
 try:
     client = db.query(Client).filter(Client.id == client_id).first()
     if client:
-        st.info(f"📌 Importando dados para: **{client.name}**")
+        st.info(f"📌 **Cliente:** {client.name}")
 finally:
     db.close()
 
 # Upload de arquivo
-st.subheader("1️⃣ Faça Upload do Arquivo")
+st.subheader("📤 Upload do Arquivo")
 
 uploaded_file = st.file_uploader(
-    "Selecione um arquivo (CSV, Excel, PDF, OFX, ou Imagens: JPG, PNG, TIFF, etc)",
+    "Selecione um arquivo para importar",
     type=['csv', 'txt', 'xlsx', 'xls', 'pdf', 'ofx', 'jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'],
-    help="O sistema processará o arquivo automaticamente usando IA Vision."
+    help="Formatos suportados: CSV, Excel, PDF, OFX, Imagens (JPG, PNG, etc). O sistema detecta e processa automaticamente."
 )
 
 if uploaded_file:
-    st.success(f"✅ Arquivo carregado: {uploaded_file.name}")
+    file_size = len(uploaded_file.read())
+    uploaded_file.seek(0)  # Reset para ler novamente depois
+    file_size_kb = file_size / 1024
+    st.success(f"✅ **{uploaded_file.name}** ({file_size_kb:.1f} KB)")
     
     # Verifica se Vision API está disponível
     db = SessionLocal()
@@ -195,7 +199,6 @@ if uploaded_file:
     
     # Processamento direto com Vision API
     st.markdown("---")
-    st.subheader("2️⃣ Processamento Automático com IA Vision")
     
     file_content = uploaded_file.read()
     
@@ -203,9 +206,20 @@ if uploaded_file:
     file_hash = f"{uploaded_file.name}_{len(file_content)}"
     if 'processed_file_hash' not in st.session_state or st.session_state.processed_file_hash != file_hash:
         # Processa arquivo
-        with st.spinner("🤖 Processando arquivo com IA Vision (isso pode levar alguns segundos)..."):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        def update_status(message):
+            status_text.info(f"🤖 {message}")
+        
+        with st.spinner("Processando com IA Vision..."):
+            update_status("Analisando arquivo...")
+            progress_bar.progress(20)
             db = SessionLocal()
             try:
+                update_status("Extraindo dados com IA...")
+                progress_bar.progress(50)
+                
                 processor = VisionProcessor(db)
                 result = processor.process_file(
                     file_content=file_content,
@@ -214,20 +228,21 @@ if uploaded_file:
                     groups_subgroups=groups_subgroups if groups_subgroups else None
                 )
                 
+                update_status("Classificando dados...")
+                progress_bar.progress(80)
+                
                 if not result.get('success'):
+                    progress_bar.empty()
+                    status_text.empty()
                     error_msg = result.get('error', 'Erro desconhecido')
-                    st.error(f"❌ Erro no processamento: {error_msg}")
+                    st.error(f"❌ **Erro no processamento:** {error_msg}")
                     
                     # Mensagens de ajuda específicas
                     if 'pdf' in error_msg.lower() and ('poppler' in error_msg.lower() or 'pdf2image' in error_msg.lower()):
                         st.warning("📦 **Dependência faltando:** É necessária uma biblioteca para processar PDFs.")
-                        st.info("💡 **Solução recomendada (Windows):** Execute no terminal:\n```bash\npip install PyMuPDF\n```")
-                        st.caption("💡 PyMuPDF funciona no Windows sem precisar instalar poppler separadamente.")
-                        st.info("💡 **Alternativa:** Se preferir usar pdf2image:\n```bash\npip install pdf2image\n```")
-                        st.caption("⚠️ pdf2image requer poppler instalado no sistema (mais complexo no Windows).")
+                        st.info("💡 **Solução:** Execute no terminal: `pip install PyMuPDF`")
                     elif 'matplotlib' in error_msg.lower():
-                        st.warning("📦 **Dependência faltando:** A biblioteca `matplotlib` é necessária para processar CSV/Excel.")
-                        st.info("💡 **Solução:** Execute no terminal:\n```bash\npip install matplotlib\n```")
+                        st.warning("📦 **Dependência faltando:** Execute: `pip install matplotlib`")
                     
                     if result.get('issues'):
                         with st.expander("⚠️ Detalhes dos problemas"):
@@ -235,11 +250,17 @@ if uploaded_file:
                                 st.warning(f"⚠️ {issue}")
                     st.stop()
                 
+                update_status("Finalizando...")
+                progress_bar.progress(100)
+                
                 # Salva resultado no session state
                 st.session_state.processed_data = result.get('processed_data', [])
                 st.session_state.processed_summary = result.get('summary', {})
                 st.session_state.detected_type = result.get('detected_type', 'transactions')
                 st.session_state.processed_file_hash = file_hash
+                
+                progress_bar.empty()
+                status_text.empty()
                 
             finally:
                 db.close()
@@ -253,28 +274,42 @@ if uploaded_file:
         st.warning("⚠️ Nenhum dado foi extraído do arquivo.")
         st.stop()
     
-    # Exibe estatísticas
-    st.success(f"✅ Processamento concluído! {len(processed_data)} registro(s) extraído(s).")
+    # Exibe estatísticas de forma mais limpa
+    st.markdown("---")
+    st.subheader("✅ Dados Processados")
     
-    col1, col2, col3 = st.columns(3)
+    type_names = {
+        'transactions': '💳 Transações Financeiras',
+        'bank_statements': '🏦 Extratos Bancários',
+        'contracts': '📝 Contratos/Eventos',
+        'accounts_payable': '💸 Contas a Pagar',
+        'accounts_receivable': '💰 Contas a Receber',
+        'financial_investments': '📈 Investimentos Financeiros',
+        'credit_card_invoices': '💳 Faturas de Cartão',
+        'card_machine_statements': '🏪 Extratos de Máquina de Cartão',
+        'inventory': '📦 Controle de Estoque'
+    }
+    
+    # Métricas em cards mais limpos
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Total de Registros", len(processed_data))
+        st.metric("📊 Registros", f"{len(processed_data):,}".replace(',', '.'))
     with col2:
-        type_names = {
-            'transactions': '💳 Transações',
-            'bank_statements': '🏦 Extratos',
-            'contracts': '📝 Contratos',
-            'accounts_payable': '💸 Contas a Pagar',
-            'accounts_receivable': '💰 Contas a Receber',
-            'financial_investments': '📈 Investimentos',
-            'credit_card_invoices': '💳 Faturas',
-            'card_machine_statements': '🏪 Máquina Cartão',
-            'inventory': '📦 Estoque'
-        }
-        st.metric("Tipo Detectado", type_names.get(detected_type, detected_type))
+        type_display = type_names.get(detected_type, detected_type)
+        type_short = type_display.split(' ')[-1] if ' ' in type_display else type_display
+        st.metric("📋 Tipo", type_short)
     with col3:
-        if 'bank_name' in summary:
-            st.metric("Banco", summary.get('bank_name', '-'))
+        if 'bank_name' in summary and summary.get('bank_name'):
+            st.metric("🏦 Banco", summary.get('bank_name', '-'))
+        else:
+            st.metric("✓ Status", "Pronto")
+    with col4:
+        total_value = sum(float(r.get('value', 0)) for r in processed_data if r.get('value') and pd.notna(r.get('value')))
+        if total_value != 0:
+            from utils.formatters import format_currency
+            st.metric("💰 Valor Total", format_currency(total_value))
+        else:
+            st.metric("✓ Classificado", "Sim")
     
     # Normaliza dados
     processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
@@ -284,10 +319,10 @@ if uploaded_file:
         st.session_state.selected_rows = set(range(len(processed_data)))
     
     st.markdown("---")
-    st.subheader("3️⃣ Revisão e Edição dos Dados")
+    st.subheader("✏️ Revisão e Edição")
     
-    # Controles de seleção
-    col1, col2, col3, col4 = st.columns(4)
+    # Controles de seleção simplificados
+    col1, col2, col3 = st.columns([2, 2, 3])
     
     with col1:
         if st.button("✅ Selecionar Todas", use_container_width=True):
@@ -301,12 +336,7 @@ if uploaded_file:
         
     with col3:
         total_selected = len(st.session_state.selected_rows)
-        st.metric("Selecionadas", f"{total_selected} / {len(processed_data)}")
-    
-    with col4:
-        if st.button("🔄 Reprocessar", use_container_width=True):
-            del st.session_state.processed_file_hash
-            st.rerun()
+        st.info(f"📌 **{total_selected} de {len(processed_data)}** registros selecionados para importação")
     
     # Prepara dados para edição
     db_edit = SessionLocal()
@@ -378,6 +408,12 @@ if uploaded_file:
     if 'bank_name' in edit_df.columns:
         column_config["bank_name"] = st.column_config.TextColumn("Banco", width="medium")
     
+    # Dica de uso
+    if len(edit_df) > 10:
+        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela e use as checkboxes para selecionar quais importar.")
+    else:
+        st.caption("💡 Edite os dados diretamente na tabela e selecione quais registros importar.")
+    
     # Exibe tabela editável
     edited_df = st.data_editor(
         edit_df,
@@ -385,7 +421,8 @@ if uploaded_file:
         hide_index=True,
         use_container_width=True,
         num_rows="fixed",
-        height=min(500, max(300, len(edit_df) * 35))
+        height=min(600, max(400, len(edit_df) * 40)),
+        key="data_editor_import"
     )
     
     # Atualiza seleção e dados
@@ -423,30 +460,34 @@ if uploaded_file:
     st.session_state.processed_data = updated_data
     
     st.markdown("---")
-    st.subheader("4️⃣ Importação Final")
+    st.subheader("📥 Importação")
     
-    # Configurações específicas por tipo
+    # Configurações específicas por tipo (apenas se necessário)
     bank_name = "Banco"
     if detected_type == 'bank_statements':
         bank_name = summary.get('bank_name', 'Banco')
         if 'bank_name_override' not in st.session_state:
             st.session_state.bank_name_override = bank_name
         
-        edited_bank_name = st.text_input(
+        bank_name = st.text_input(
             "Nome do banco:",
             value=st.session_state.get('bank_name_override', bank_name),
             key="bank_name_input"
         )
-        st.session_state.bank_name_override = edited_bank_name
-        bank_name = edited_bank_name
+        st.session_state.bank_name_override = bank_name
     
-    # Botão de importar
-    import_btn = st.button(
-        "📥 Importar Dados Selecionados",
-        use_container_width=True,
-        disabled=len(st.session_state.selected_rows) == 0,
-        type="primary"
-    )
+    # Botão de importar (mais destacado)
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        import_btn = st.button(
+            "📥 **Importar Dados**",
+            use_container_width=True,
+            disabled=len(st.session_state.selected_rows) == 0,
+            type="primary"
+        )
+    with col2:
+        if len(st.session_state.selected_rows) == 0:
+            st.warning("⚠️ Selecione pelo menos um registro para importar")
     
     if import_btn and len(st.session_state.selected_rows) > 0:
         # Filtra apenas linhas selecionadas
@@ -570,70 +611,29 @@ if uploaded_file:
             db.close()
 
 else:
-    st.info("ℹ️ Faça upload de um arquivo para começar.")
-
-# Informações sobre formatos
-with st.expander("ℹ️ Informações sobre Formatos"):
-    st.markdown("""
-    ### Formatos Suportados
+    st.info("💡 **Como funciona:** Faça upload do arquivo e o sistema processará automaticamente com IA Vision, detectando o tipo de dado e classificando por grupos/subgrupos.")
     
-    **CSV, Excel, PDF, OFX, Imagens**
-    - Todos os formatos são processados automaticamente usando IA Vision
-    - O sistema detecta e extrai dados de qualquer tipo de arquivo
-    - Não é necessário configurar encoding, delimitadores ou outras opções
-    
-    **Processamento Automático**
-    - Upload → Processamento com IA → Edição → Importação
-    - Detecção automática do tipo de dado
-    - Classificação automática por grupos e subgrupos
-    """)
-
-with st.expander("✏️ Edição de Dados Importados"):
-    st.markdown("""
-    ### Como Editar Dados Importados
-    
-    Após importar seus dados, você pode editá-los nas páginas específicas:
-    
-    - **💳 Transações** → Edite, exclua ou adicione transações manualmente
-    - **📝 Contratos** → Gerencie contratos importados ou manuais
-    - **💰 Contas** → Edite contas a pagar e receber
-    
-    **Dica:** Todos os dados importados podem ser editados ou excluídos individualmente!
-    """)
-# Informações sobre formatos
-with st.expander("ℹ️ Informações sobre Formatos"):
-    st.markdown("""
-    ### Formatos Suportados
-    
-    **CSV (Comma-Separated Values)**
-    - Formato texto com valores separados por vírgula, ponto-e-vírgula ou tabulação
-    - Suporta diferentes encodings (UTF-8, Latin-1, etc)
-    
-    **Excel (XLSX/XLS)**
-    - Planilhas do Microsoft Excel
-    - Suporta múltiplas abas
-    
-    **PDF**
-    - Extração automática de tabelas
-    - Funciona melhor com PDFs que contêm tabelas estruturadas
-    
-    **OFX (Open Financial Exchange)**
-    - Formato padrão de extratos bancários
-    - Usado por bancos brasileiros (BB, Itaú, Bradesco, etc)
-    """)
-
-with st.expander("✏️ Edição de Dados Importados"):
-    st.markdown("""
-    ### Como Editar Dados Importados
-    
-    Após importar seus dados, você pode editá-los nas páginas específicas:
-    
-    - **💳 Transações** → Edite, exclua ou adicione transações manualmente
-    - **📝 Contratos** → Gerencie contratos importados ou manuais
-    - **💰 Contas** → Edite contas a pagar e receber
-    
-    **Dica:** Todos os dados importados podem ser editados ou excluídos individualmente!
-    """)
+    st.markdown("---")
+    with st.expander("ℹ️ Sobre o Processamento Automático"):
+        st.markdown("""
+        **Formatos Suportados:**
+        - 📄 CSV, Excel, TXT
+        - 📑 PDF (incluindo PDFs escaneados/imagens)
+        - 🖼️ Imagens (JPG, PNG, TIFF, etc)
+        - 💳 OFX (extratos bancários)
+        
+        **O que a IA faz automaticamente:**
+        - ✅ Detecta o tipo de dado (transações, extratos, contratos, etc)
+        - ✅ Extrai todos os dados estruturados
+        - ✅ Classifica por grupos e subgrupos
+        - ✅ Normaliza datas e valores
+        - ✅ Identifica tipo de transação (entrada/saída)
+        
+        **Você só precisa:**
+        1. Fazer upload do arquivo
+        2. Revisar e editar se necessário
+        3. Importar!
+        """)
 
 
 
