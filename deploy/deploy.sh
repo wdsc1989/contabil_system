@@ -57,9 +57,21 @@ if [ -d "${APP_DIR}/.git" ]; then
     git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 fi
 
+# Verifica se há mudanças locais que podem causar conflito
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo -e "${YELLOW}⚠️  Mudanças locais detectadas. Fazendo stash...${NC}"
+    git stash push -m "Mudanças locais antes do deploy $(date +%Y-%m-%d_%H:%M:%S)" || true
+fi
+
 git fetch origin
 git checkout "$BRANCH"
-git pull origin "$BRANCH"
+git pull origin "$BRANCH" || {
+    echo -e "${RED}❌ Erro ao fazer pull. Tentando resolver conflitos...${NC}"
+    # Se houver conflito, faz reset para a versão remota (cuidado!)
+    echo -e "${YELLOW}⚠️  Fazendo reset para versão remota...${NC}"
+    git reset --hard origin/"$BRANCH"
+    echo -e "${GREEN}✅ Reset concluído${NC}"
+}
 
 COMMIT_HASH=$(git rev-parse --short HEAD)
 echo -e "${GREEN}✅ Código atualizado (commit: $COMMIT_HASH)${NC}"
