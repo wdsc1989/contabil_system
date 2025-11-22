@@ -20,6 +20,28 @@ cd /opt/contabil
 # Atualiza código
 git fetch origin
 git checkout main
+
+# Se houver conflito (mudanças locais), resolve automaticamente
+if git pull origin main 2>&1 | grep -q "would be overwritten"; then
+    echo "⚠️  Conflito detectado. Resolvendo..."
+    git stash push -m "Mudanças locais antes do pull $(date +%Y-%m-%d)"
+    git pull origin main
+fi
+```
+
+**OU use o script automático:**
+```bash
+bash deploy/resolve_git_conflict.sh
+```
+
+**OU resolva manualmente:**
+```bash
+# Opção 1: Salvar mudanças locais
+git stash push -m "Mudanças locais"
+git pull origin main
+
+# Opção 2: Descartar mudanças locais (se não forem importantes)
+git checkout -- deploy/deploy.sh deploy/setup_vps_hostinger.sh
 git pull origin main
 ```
 
@@ -190,6 +212,23 @@ pip install -r requirements.txt
 chmod +x deploy/deploy.sh
 chmod +x deploy/*.sh
 chmod +x scripts/*.sh 2>/dev/null || true
+```
+
+### Problema: Conflito Git (mudanças locais)
+
+```bash
+# Erro: "Your local changes would be overwritten by merge"
+
+# Solução rápida (salva mudanças):
+git stash push -m "Mudanças locais"
+git pull origin main
+
+# Ou descarta mudanças (se não forem importantes):
+git checkout -- deploy/deploy.sh deploy/setup_vps_hostinger.sh
+git pull origin main
+
+# Ou use script automático:
+bash deploy/resolve_git_conflict.sh
 ```
 
 ## 📝 Comandos Úteis
