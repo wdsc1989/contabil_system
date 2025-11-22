@@ -48,7 +48,12 @@ git pull origin main
 ### 4. Opção A: Deploy Automático (Recomendado)
 
 ```bash
-# Usa o script de deploy completo (faz tudo automaticamente)
+# Se der erro de permissão, corrija primeiro:
+chmod +x deploy/deploy.sh
+# OU use o script de correção:
+bash deploy/fix_permissions.sh
+
+# Depois execute o deploy:
 ./deploy/deploy.sh
 ```
 
@@ -205,11 +210,20 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Problema: Permissões negadas
+### Problema: Permissões negadas (Permission denied)
 
 ```bash
-# Corrige permissões dos scripts
+# Erro: "./deploy/deploy.sh: Permission denied"
+
+# Solução rápida:
 chmod +x deploy/deploy.sh
+./deploy/deploy.sh
+
+# OU use o script de correção:
+bash deploy/fix_permissions.sh
+./deploy/deploy.sh
+
+# OU corrija todas as permissões de uma vez:
 chmod +x deploy/*.sh
 chmod +x scripts/*.sh 2>/dev/null || true
 ```
