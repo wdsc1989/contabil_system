@@ -25,9 +25,12 @@ ExecStart=/opt/contabil/venv/bin/streamlit run app.py \
 Restart=always
 RestartSec=10
 
-# Limites de recursos
+# Limites de recursos (aumentados para processamento de imagens)
 LimitNOFILE=65536
-MemoryMax=2G
+MemoryMax=4G
+MemoryHigh=3G
+# Timeout para operações longas (Vision API pode demorar)
+TimeoutStopSec=300
 
 # Logs
 StandardOutput=journal

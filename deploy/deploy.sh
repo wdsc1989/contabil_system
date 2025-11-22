@@ -79,6 +79,16 @@ source "${VENV_DIR}/bin/activate"
 pip install --upgrade pip
 pip install -r requirements.txt
 
+# Verifica instalação de PyMuPDF (crítico para Vision API)
+echo -e "${YELLOW}🔍 Verificando PyMuPDF...${NC}"
+if ! python -c "import fitz" 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  PyMuPDF não encontrado. Instalando...${NC}"
+    pip install PyMuPDF>=1.23.0
+    echo -e "${GREEN}✅ PyMuPDF instalado${NC}"
+else
+    echo -e "${GREEN}✅ PyMuPDF OK${NC}"
+fi
+
 # Verifica se dependências do sistema estão instaladas (para PDFs)
 if ! command -v pdftoppm &> /dev/null; then
     echo -e "${YELLOW}⚠️  poppler-utils não encontrado. Instalando...${NC}"
