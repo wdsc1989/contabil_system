@@ -1,8 +1,6 @@
-# 🚀 Próximos Passos para Produção - Vision API
+# 🚀 Próximos Passos para Produção
 
-## ✅ Commit e Push Realizados
-
-Todas as mudanças foram commitadas e enviadas para o repositório.
+> **⚠️ ATENÇÃO:** Este arquivo está desatualizado. Use `DEPLOY_PRODUCAO.md` para o guia completo e atualizado.
 
 ## 📋 Passos para Executar na VPS (Hostinger)
 
