@@ -14,10 +14,18 @@ class AIConfigManager:
     
     # Modelos padrão por provedor
     DEFAULT_MODELS = {
-        'openai': 'gpt-4o-mini',
+        'openai': 'gpt-4o',  # Atualizado para gpt-4o (suporta Vision API)
         'gemini': 'gemini-1.5-flash',
         'ollama': 'llama3.2',
         'groq': 'llama-3.3-70b-versatile'  # Atualizado: llama-3.1-70b-versatile foi descontinuado
+    }
+    
+    # Modelos que suportam Vision API
+    VISION_MODELS = {
+        'openai': ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4-vision-preview'],
+        'gemini': ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro-vision'],
+        'ollama': [],  # Ollama não suporta Vision API diretamente
+        'groq': []  # Groq não suporta Vision API diretamente
     }
     
     # URLs base padrão
@@ -29,9 +37,24 @@ class AIConfigManager:
     # IMPORTANTE: Configure as variáveis de ambiente AI_FIXED_* para usar esta funcionalidade
     # Exemplo: export AI_FIXED_API_KEY="sua-chave-aqui"
     FIXED_PROVIDER = os.getenv('AI_FIXED_PROVIDER', 'openai')
-    FIXED_MODEL = os.getenv('AI_FIXED_MODEL', DEFAULT_MODELS.get('openai', 'gpt-4o-mini'))
+    FIXED_MODEL = os.getenv('AI_FIXED_MODEL', DEFAULT_MODELS.get('openai', 'gpt-4o'))
     FIXED_API_KEY = os.getenv('AI_FIXED_API_KEY', None)  # Deve ser configurado via variável de ambiente
     FIXED_CONFIG_ENABLED = os.getenv('AI_FIXED_CONFIG_ENABLED', 'true').lower() == 'true'
+    
+    @staticmethod
+    def supports_vision(provider: str, model: str) -> bool:
+        """
+        Verifica se o modelo configurado suporta Vision API
+        
+        Args:
+            provider: Provedor de IA (openai, gemini, etc.)
+            model: Nome do modelo
+            
+        Returns:
+            True se o modelo suporta Vision API, False caso contrário
+        """
+        vision_models = AIConfigManager.VISION_MODELS.get(provider, [])
+        return model.lower() in [m.lower() for m in vision_models]
 
     @staticmethod
     def get_config(db: Session) -> Optional[AIConfig]:
@@ -162,4 +185,5 @@ class AIConfigManager:
             'base_url': AIConfigManager.DEFAULT_BASE_URLS.get(AIConfigManager.FIXED_PROVIDER),
             'enabled': True
         }
+
 

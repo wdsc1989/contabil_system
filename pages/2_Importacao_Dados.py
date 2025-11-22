@@ -10,14 +10,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.database import SessionLocal
 from services.auth_service import AuthService
-from services.parser_service import ParserService
 from services.import_service import ImportService
 from services.ai_service import AIService
-from services.data_processor import DataProcessor
-from utils.column_mapper import ColumnMapper
+from services.vision_processor import VisionProcessor
 from utils.translations import translate_dataframe
 from models.client import Client
 from models.group import Group, Subgroup
+from config.ai_config import AIConfigManager
 
 # Constantes
 CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.70  # 70% de confiança mínima para classificação
@@ -149,1142 +148,458 @@ st.subheader("1️⃣ Faça Upload do Arquivo")
 uploaded_file = st.file_uploader(
     "Selecione um arquivo (CSV, Excel, PDF, OFX, ou Imagens: JPG, PNG, TIFF, etc)",
     type=['csv', 'txt', 'xlsx', 'xls', 'pdf', 'ofx', 'jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'],
-    help="O sistema detectará automaticamente o tipo de arquivo. Imagens serão processadas com OCR."
+    help="O sistema processará o arquivo automaticamente usando IA Vision."
 )
 
 if uploaded_file:
     st.success(f"✅ Arquivo carregado: {uploaded_file.name}")
     
+    # Verifica se Vision API está disponível
+    db = SessionLocal()
     try:
-        # Detecta tipo de arquivo automaticamente
-        file_content_preview = uploaded_file.read()
-        uploaded_file.seek(0)  # Reset para ler novamente depois
+        ai_service = AIService(db)
         
-        detection_result = ParserService.detect_file_type(file_content_preview, uploaded_file.name)
-        detected_type = detection_result.get('type', 'CSV')
-        confidence = detection_result.get('confidence', 0.0)
-        method = detection_result.get('method', 'unknown')
-        reason = detection_result.get('reason', '')
+        if not ai_service.is_available():
+            st.error("❌ IA não configurada. Configure a IA na página de Administração antes de importar.")
+            st.stop()
         
-        # Detecta se é arquivo de imagem
-        is_image_file = uploaded_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp', '.webp'))
-        if is_image_file:
-            detected_type = 'Image'
+        # Verifica se suporta Vision API
+        config = AIConfigManager.get_config_dict(db)
+        provider = config.get('provider', '')
+        model = config.get('model', '')
         
-        # Exibe tipo detectado
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            type_icons = {
-                'CSV': '📄',
-                'Excel': '📊',
-                'PDF': '📑',
-                'OFX': '🏦',
-                'Image': '🖼️'
-            }
-            icon = type_icons.get(detected_type, '📄')
-            confidence_percent = int(confidence * 100)
-            
-            if confidence >= 0.8:
-                st.info(f"{icon} **Tipo detectado:** {detected_type} ({confidence_percent}% de confiança)")
-            elif confidence >= 0.6:
-                st.warning(f"{icon} **Tipo detectado:** {detected_type} ({confidence_percent}% de confiança)")
-            else:
-                st.warning(f"{icon} **Tipo detectado:** {detected_type} ({confidence_percent}% de confiança - baixa confiança)")
+        if not AIConfigManager.supports_vision(provider, model):
+            st.error(f"❌ O modelo {model} do provedor {provider} não suporta Vision API. Configure um modelo compatível (gpt-4o, gpt-4o-mini, etc).")
+            st.stop()
         
-        with col2:
-            if st.button("✏️ Alterar Tipo", use_container_width=True):
-                st.session_state.show_file_type_override = True
-                st.rerun()
-        
-        if reason and confidence < 0.8:
-            with st.expander("ℹ️ Detalhes da detecção"):
-                st.write(f"**Método:** {method}")
-                st.write(f"**Razão:** {reason}")
-        
-        # Permite override manual se necessário
-        file_type = detected_type
-        if 'show_file_type_override' in st.session_state and st.session_state.show_file_type_override:
-            st.markdown("---")
-            st.subheader("✏️ Seleção Manual do Tipo de Arquivo")
-            file_type = st.selectbox(
-                "Tipo de arquivo:",
-                options=['CSV', 'Excel', 'PDF', 'OFX', 'Image'],
-                index=['CSV', 'Excel', 'PDF', 'OFX', 'Image'].index(detected_type) if detected_type in ['CSV', 'Excel', 'PDF', 'OFX', 'Image'] else 0,
-                key="manual_file_type"
-            )
-            if st.button("✅ Confirmar Tipo", use_container_width=True):
-                st.session_state.detected_file_type = file_type
-                st.session_state.show_file_type_override = False
-                st.rerun()
-            
-            if 'detected_file_type' in st.session_state:
-                file_type = st.session_state.detected_file_type
-        
-        # Parse do arquivo
-        df = None
-        
-        if file_type == 'CSV':
-            file_content = uploaded_file.read()
-            delimiter = ParserService.detect_delimiter(file_content)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                encoding = st.selectbox("Encoding:", ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252'])
-            with col2:
-                delimiter = st.selectbox("Delimitador:", [',', ';', '\t', '|'], 
-                                        index=[',', ';', '\t', '|'].index(delimiter))
-            
-            df = ParserService.parse_csv(file_content, encoding, delimiter)
-        
-        elif file_type == 'Excel':
-            file_content = uploaded_file.read()
-            sheets = ParserService.get_excel_sheets(file_content)
-            
-            if len(sheets) > 1:
-                col1, col2 = st.columns(2)
-                with col1:
-                    read_all = st.checkbox("📋 Ler todas as abas", value=False, 
-                                          help="Se marcado, combina dados de todas as abas em um único arquivo")
-                with col2:
-                    if not read_all:
-                        selected_sheet = st.selectbox("Selecione a planilha:", sheets)
-                    else:
-                        st.info(f"📊 {len(sheets)} abas serão processadas")
-                
-                if read_all:
-                    df = ParserService.parse_excel(file_content, all_sheets=True)
-                    st.success(f"✅ {len(sheets)} abas processadas e combinadas")
-                else:
-                    df = ParserService.parse_excel(file_content, selected_sheet)
-            else:
-                df = ParserService.parse_excel(file_content)
-        
-        elif file_type == 'PDF':
-            file_content = uploaded_file.read()
-            
-            # Tenta extrair usando método completo primeiro (com OCR se necessário)
-            pdf_data = None
-            try:
-                pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
-                df = pdf_data.get('dataframe')
-                
-                # Se OCR foi usado, informa ao usuário
-                if pdf_data.get('metadata', {}).get('ocr_used', False):
-                    st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
-            except Exception as e:
-                st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
-                # Fallback para método simples
-                df = ParserService.parse_pdf_to_dataframe(file_content)
-            
-            if df is None or df.empty:
-                # Se não encontrou tabelas, tenta extrair do texto
-                if pdf_data and pdf_data.get('full_text'):
-                    st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
-                    # A IA processará o texto completo
-                    # Cria DataFrame vazio para passar o texto completo via session_state
-                    df = pd.DataFrame()
-                    st.session_state['pdf_full_data'] = pdf_data
-                else:
-                    st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
-                    st.stop()
-            else:
-                # Salva dados completos do PDF para uso pela IA
-                if pdf_data:
-                    st.session_state['pdf_full_data'] = pdf_data
-        
-        elif file_type == 'OFX':
-            file_content = uploaded_file.read()
-            df = ParserService.ofx_to_dataframe(file_content)
-            # OFX é sempre extrato bancário
-            auto_detected_type = 'bank_statements'
-        elif file_type == 'Image' or is_image_file:
-            file_content = uploaded_file.read()
-            file_extension = uploaded_file.name.split('.')[-1].lower()
-            
-            # Processa imagem com OCR
-            try:
-                # Mostra progresso mais detalhado
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                status_text.info("🖼️ Iniciando processamento de imagem com OCR...")
-                progress_bar.progress(10)
-                
-                # Processa imagem com timeout implícito (o pytesseract tem timeout de 120s)
-                status_text.info("🖼️ Extraindo texto da imagem (isso pode levar até 2 minutos para imagens grandes)...")
-                progress_bar.progress(30)
-                
-                image_data = ParserService.parse_image(file_content, file_extension)
-                progress_bar.progress(80)
-                
-                df = image_data.get('dataframe')
-                full_text = image_data.get('full_text', '')
-                
-                # Salva dados da imagem para uso pela IA
-                st.session_state['pdf_full_data'] = image_data
-                st.session_state['is_image_file'] = True
-                
-                progress_bar.progress(100)
-                status_text.empty()
-                progress_bar.empty()
-                
-                if df is None or df.empty:
-                    if full_text and len(full_text.strip()) > 10:
-                        st.success(f"✅ Imagem processada! {len(full_text)} caracteres extraídos. A IA processará o texto extraído...")
-                    else:
-                        st.warning("⚠️ Pouco texto extraído da imagem. A IA tentará processar mesmo assim...")
-                    df = pd.DataFrame()
-                else:
-                    st.success(f"✅ Imagem processada! {len(df)} linha(s) extraída(s) com OCR.")
-            except Exception as e:
-                error_msg = str(e)
-                st.error(f"❌ Erro ao processar imagem: {error_msg}")
-                
-                # Mensagens de ajuda específicas
-                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                    st.warning("⏱️ O processamento demorou muito. Tente:")
-                    st.markdown("- Redimensionar a imagem para um tamanho menor")
-                    st.markdown("- Converter para PDF e tentar novamente")
-                    st.markdown("- Usar uma imagem com melhor qualidade/resolução")
-                elif "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower():
-                    st.info("💡 Certifique-se de que o Tesseract OCR está instalado:")
-                    st.code("sudo apt-get install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng")
-                else:
-                    st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
-                
-                st.stop()
-            auto_detected_type = None
-        else:
-            auto_detected_type = None
-        
-        # Limpa estado de override após processar
-        if 'show_file_type_override' in st.session_state:
-            del st.session_state.show_file_type_override
-        if 'detected_file_type' in st.session_state:
-            del st.session_state.detected_file_type
-        
-        if df is not None and not df.empty:
-            st.markdown("---")
-            st.subheader("2️⃣ Preview dos Dados Originais")
-            
-            # Remove linhas completamente vazias para melhor visualização
-            df_preview = df.dropna(how='all').copy()
-            
-            # Opção para ver preview completo ou limitado
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.success(f"✅ Arquivo carregado com sucesso: **{len(df)} linhas** e **{len(df.columns)} colunas**")
-            with col2:
-                show_full_preview = st.checkbox("📋 Ver todos os dados", value=False, 
-                                                help="Mostra todos os dados com barra de rolagem")
-            
-            # Exibe preview (traduzido para português)
-            df_preview_translated = translate_dataframe(df_preview.copy(), translate_columns=True, translate_values=False)
-            if show_full_preview:
-                st.dataframe(df_preview_translated, use_container_width=True, height=400)
-                st.caption(f"📊 Exibindo todas as {len(df_preview_translated)} linhas (após remover linhas vazias)")
-            else:
-                st.dataframe(df_preview_translated.head(10), use_container_width=True)
-                st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview_translated)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
-            
-            # Detecção automática do tipo de dado
-            st.markdown("---")
-            st.subheader("3️⃣ Tipo de Dado Detectado")
-            
+        # Busca grupos e subgrupos
+        groups = db.query(Group).filter(Group.client_id == client_id).all()
+        groups_subgroups = []
+        for group in groups:
+            subgroups = db.query(Subgroup).filter(Subgroup.group_id == group.id).all()
+            groups_subgroups.append({
+                'id': group.id,
+                'name': group.name,
+                'description': group.description,
+                'subgroups': [
+                    {
+                        'id': sg.id,
+                        'name': sg.name,
+                        'description': sg.description
+                    }
+                    for sg in subgroups
+                ]
+            })
+    finally:
+        db.close()
+    
+    # Processamento direto com Vision API
+    st.markdown("---")
+    st.subheader("2️⃣ Processamento Automático com IA Vision")
+    
+    file_content = uploaded_file.read()
+    
+    # Verifica se já foi processado
+    file_hash = f"{uploaded_file.name}_{len(file_content)}"
+    if 'processed_file_hash' not in st.session_state or st.session_state.processed_file_hash != file_hash:
+        # Processa arquivo
+        with st.spinner("🤖 Processando arquivo com IA Vision (isso pode levar alguns segundos)..."):
             db = SessionLocal()
             try:
-                ai_service = AIService(db)
-                import_type = None
-                detection_result = None
-                
-                # Verifica se o tipo já foi confirmado anteriormente - se sim, pula toda a detecção
-                if st.session_state.get('type_confirmed', False) and 'detected_import_type' in st.session_state:
-                    import_type = st.session_state.detected_import_type
-                    st.info(f"✅ **Tipo confirmado:** {import_type}")
-                # Se for OFX, já sabemos que é extrato bancário
-                elif file_type == 'OFX':
-                    import_type = 'bank_statements'
-                    st.info("🏦 **Tipo detectado automaticamente:** Extratos Bancários (formato OFX)")
-                    
-                    # Requer confirmação explícita do usuário
-                    if 'type_confirmed' not in st.session_state or not st.session_state.type_confirmed:
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
-                                st.session_state.detected_import_type = import_type
-                                st.session_state.type_confirmed = True
-                                st.rerun()
-                        with col2:
-                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True):
-                                st.session_state.show_manual_selection = True
-                                st.session_state.type_confirmed = False  # Limpa confirmação anterior
-                                st.rerun()
-                        
-                        # Se ainda não foi confirmado, para aqui
-                        if 'detected_import_type' not in st.session_state:
-                            st.stop()
-                        import_type = st.session_state.detected_import_type
-                elif ai_service.is_available():
-                    # Tenta detectar com IA
-                    with st.spinner("🤖 Analisando arquivo para detectar tipo de dado..."):
-                        columns = list(df.columns)
-                        data_sample = ai_service._prepare_data_sample(df, max_rows=15)
-                        detection_result = ai_service.detect_data_type(df, columns, data_sample)
-                    
-                    if detection_result.get('success'):
-                        suggested_type = detection_result.get('suggested_type')
-                        confidence = detection_result.get('confidence', 0.0)
-                        reasoning = detection_result.get('reasoning', '')
-                        alternative_types = detection_result.get('alternative_types', [])
-                        key_indicators = detection_result.get('key_indicators', [])
-                        
-                        # Mapeia tipo para nome amigável
-                        type_names = {
-                            'transactions': '💳 Transações Financeiras',
-                            'bank_statements': '🏦 Extratos Bancários',
-                            'contracts': '📝 Contratos/Eventos',
-                            'accounts_payable': '💸 Contas a Pagar',
-                            'accounts_receivable': '💰 Contas a Receber',
-                            'financial_investments': '📈 Extratos de Aplicações Financeiras',
-                            'credit_card_invoices': '💳 Faturas de Cartão de Crédito',
-                            'card_machine_statements': '🏪 Extratos de Máquina de Cartão',
-                            'inventory': '📦 Controle de Estoque'
-                        }
-                        
-                        suggested_name = type_names.get(suggested_type, suggested_type)
-                        confidence_percent = int(confidence * 100)
-                        
-                        # Exibe sugestão de forma mais concisa
-                        col1, col2, col3 = st.columns([2, 1, 1])
-                        with col1:
-                            if confidence >= 0.7:
-                                st.success(f"🤖 **Tipo detectado:** {suggested_name}")
-                            elif confidence >= 0.5:
-                                st.warning(f"🤖 **Tipo detectado:** {suggested_name}")
-                            else:
-                                st.info(f"🤖 **Tipo detectado:** {suggested_name} (baixa confiança)")
-                        
-                        with col2:
-                            st.metric("Confiança", f"{confidence_percent}%")
-                        
-                        with col3:
-                            if st.button("✏️ Alterar", use_container_width=True, help="Selecione manualmente se a detecção estiver incorreta"):
-                                st.session_state.show_manual_selection = True
-                                st.session_state.type_confirmed = False
-                                st.rerun()
-                        
-                        # Detalhes opcionais (colapsados)
-                        if reasoning or key_indicators or alternative_types:
-                            with st.expander("ℹ️ Detalhes da detecção"):
-                                if reasoning:
-                                    st.write(f"**Motivo:** {reasoning}")
-                                if key_indicators:
-                                    st.write("**Indicadores:** " + ", ".join(key_indicators))
-                                if alternative_types:
-                                    st.write("**Alternativas:**")
-                                    for alt in alternative_types[:3]:  # Mostra apenas top 3
-                                        alt_name = type_names.get(alt.get('type'), alt.get('type'))
-                                        alt_confidence = int(alt.get('confidence', 0) * 100)
-                                        st.write(f"- {alt_name} ({alt_confidence}%)")
-                        
-                        # Botão de confirmação
-                        if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
-                            import_type = suggested_type
-                            st.session_state.detected_import_type = import_type
-                            st.session_state.type_confirmed = True
-                            st.rerun()
-                        
-                        # Se já foi confirmado anteriormente, usa o tipo confirmado
-                        if 'detected_import_type' in st.session_state and st.session_state.get('type_confirmed', False):
-                            import_type = st.session_state.detected_import_type
-                    else:
-                        # Erro na detecção, mostra seleção manual
-                        st.warning(f"⚠️ Não foi possível detectar automaticamente. Erro: {detection_result.get('error', 'Desconhecido')}")
-                        st.session_state.show_manual_selection = True
-                else:
-                    # IA não disponível, mostra seleção manual
-                    st.info("ℹ️ IA não configurada. Selecione o tipo de dado manualmente.")
-                    st.session_state.show_manual_selection = True
-                
-                # Seleção manual (se necessário ou se usuário escolheu)
-                if 'show_manual_selection' in st.session_state and st.session_state.show_manual_selection:
-                    st.markdown("---")
-                    st.subheader("✏️ Seleção Manual do Tipo de Dado")
-                    st.info("💡 Selecione o tipo de dado que melhor descreve o conteúdo do arquivo.")
-                    
-                    # Define mapeamento de tipos para nomes amigáveis
-                    type_names_map = {
-                        'transactions': '💳 Transações Financeiras',
-                        'bank_statements': '🏦 Extratos Bancários',
-                        'contracts': '📝 Contratos/Eventos',
-                        'accounts_payable': '💸 Contas a Pagar',
-                        'accounts_receivable': '💰 Contas a Receber',
-                        'financial_investments': '📈 Extratos de Aplicações Financeiras',
-                        'credit_card_invoices': '💳 Faturas de Cartão de Crédito',
-                        'card_machine_statements': '🏪 Extratos de Máquina de Cartão',
-                        'inventory': '📦 Controle de Estoque'
-                    }
-                    
-                    # Se havia uma sugestão anterior, mostra como referência
-                    if 'detected_import_type' in st.session_state:
-                        previous_suggestion = st.session_state.detected_import_type
-                        previous_name = type_names_map.get(previous_suggestion, previous_suggestion)
-                        st.caption(f"💡 Sugestão anterior da IA: {previous_name}")
-                    
-                    import_type = st.selectbox(
-                        "Tipo de dado:",
-                        options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
-                                'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
-                        format_func=lambda x: type_names_map[x],
-                        key="manual_import_type"
-                    )
-                    if st.button("✅ Confirmar Tipo", use_container_width=True):
-                        st.session_state.detected_import_type = import_type
-                        st.session_state.type_confirmed = True
-                        st.session_state.show_manual_selection = False
-                        st.rerun()
-                
-                # Se ainda não tem tipo definido, para aqui
-                if not import_type:
-                    if 'detected_import_type' not in st.session_state:
-                        st.stop()
-                    import_type = st.session_state.detected_import_type
-                
-                # Verifica se o tipo foi confirmado pelo usuário antes de processar
-                if not st.session_state.get('type_confirmed', False):
-                    st.info("ℹ️ Por favor, confirme o tipo de dado detectado acima para continuar com o processamento.")
-                    st.stop()
-                
-                st.markdown("---")
-                st.subheader("4️⃣ Processamento Automático com IA")
-                
-                if not ai_service.is_available():
-                    st.error("❌ IA não configurada. Configure a IA na página de Administração antes de importar.")
-                    st.stop()
-                
-                # Detecta se é recomendado usar IA
-                is_image = st.session_state.get('is_image_file', False)
-                pdf_full_data = st.session_state.get('pdf_full_data')
-                ai_recommendation = AIService.should_use_ai_for_file(df, file_type, pdf_full_data, is_image)
-                
-                # Exibe recomendação se houver
-                if ai_recommendation.get('recommended', False):
-                    priority = ai_recommendation.get('priority', 'low')
-                    reason = ai_recommendation.get('reason', '')
-                    
-                    if priority == 'high':
-                        st.warning(f"🤖 **Recomendação:** {reason}")
-                    else:
-                        st.info(f"💡 **Recomendação:** {reason}")
-                
-                # Opção para usar IA como avaliador completo
-                default_use_full_ai = ai_recommendation.get('recommended', False) and ai_recommendation.get('priority') == 'high'
-                use_ai_as_full_evaluator = st.checkbox(
-                    "🤖 Usar IA como avaliador completo do arquivo",
-                    value=default_use_full_ai,
-                    help="Quando habilitado, força processamento completo de TODAS as linhas e validação rigorosa. Recomendado para arquivos grandes ou complexos."
+                processor = VisionProcessor(db)
+                result = processor.process_file(
+                    file_content=file_content,
+                    filename=uploaded_file.name,
+                    import_type=None,  # Detecta automaticamente
+                    groups_subgroups=groups_subgroups if groups_subgroups else None
                 )
-                
-                # Busca grupos e subgrupos do cliente
-                db = SessionLocal()
-                try:
-                    groups = db.query(Group).filter(Group.client_id == client_id).all()
-                    groups_subgroups = []
-                    for group in groups:
-                        subgroups = db.query(Subgroup).filter(Subgroup.group_id == group.id).all()
-                        groups_subgroups.append({
-                            'id': group.id,
-                            'name': group.name,
-                            'description': group.description,
-                            'subgroups': [
-                                {
-                                    'id': sg.id,
-                                    'name': sg.name,
-                                    'description': sg.description
-                                }
-                                for sg in subgroups
-                            ]
-                        })
-                finally:
-                    db.close()
-                
-                # Container para status em tempo real
-                status_container = st.empty()
-                status_messages = []  # Lista para armazenar mensagens de status
-                
-                def update_status(message):
-                    status_messages.append(message)
-                    # Atualiza o container com a última mensagem
-                    status_container.info(f"🤖 **Status:** {message}")
-                
-                # Processa automaticamente
-                with st.spinner("🤖 Processando arquivo com IA (isso pode levar alguns segundos)..."):
-                    # Passa dados completos do PDF/imagem se disponível
-                    pdf_full_data = st.session_state.get('pdf_full_data')
-                    is_image = st.session_state.get('is_image_file', False)
-                    
-                    # Se for imagem, trata como PDF para processamento
-                    if is_image and pdf_full_data:
-                        # Marca como PDF para processamento (a IA processará o texto extraído)
-                        result = ai_service.process_and_structure_data(
-                            df, 
-                            import_type,
-                            pdf_full_data=pdf_full_data,
-                            groups_subgroups=groups_subgroups if groups_subgroups else None,
-                            status_callback=update_status
-                        )
-                    else:
-                        result = ai_service.process_and_structure_data(
-                            df, 
-                            import_type,
-                            pdf_full_data=pdf_full_data,
-                            groups_subgroups=groups_subgroups if groups_subgroups else None,
-                            status_callback=update_status
-                        )
-                    
-                    # Limpa dados do PDF da session state após processar
-                    if 'pdf_full_data' in st.session_state:
-                        del st.session_state['pdf_full_data']
-                    
-                    # Limpa o container de status após processar
-                    status_container.empty()
                 
                 if not result.get('success'):
-                    st.error(f"❌ Erro no processamento: {result.get('error', 'Erro desconhecido')}")
-                    if 'raw_response' in result:
-                        with st.expander("🔍 Ver resposta da IA"):
-                            st.code(result['raw_response'], language='text')
+                    error_msg = result.get('error', 'Erro desconhecido')
+                    st.error(f"❌ Erro no processamento: {error_msg}")
+                    
+                    # Mensagens de ajuda específicas
+                    if 'pdf' in error_msg.lower() and ('poppler' in error_msg.lower() or 'pdf2image' in error_msg.lower()):
+                        st.warning("📦 **Dependência faltando:** É necessária uma biblioteca para processar PDFs.")
+                        st.info("💡 **Solução recomendada (Windows):** Execute no terminal:\n```bash\npip install PyMuPDF\n```")
+                        st.caption("💡 PyMuPDF funciona no Windows sem precisar instalar poppler separadamente.")
+                        st.info("💡 **Alternativa:** Se preferir usar pdf2image:\n```bash\npip install pdf2image\n```")
+                        st.caption("⚠️ pdf2image requer poppler instalado no sistema (mais complexo no Windows).")
+                    elif 'matplotlib' in error_msg.lower():
+                        st.warning("📦 **Dependência faltando:** A biblioteca `matplotlib` é necessária para processar CSV/Excel.")
+                        st.info("💡 **Solução:** Execute no terminal:\n```bash\npip install matplotlib\n```")
+                    
+                    if result.get('issues'):
+                        with st.expander("⚠️ Detalhes dos problemas"):
+                            for issue in result.get('issues', []):
+                                st.warning(f"⚠️ {issue}")
                     st.stop()
                 
-                # Exibe estatísticas
-                summary = result.get('summary', {})
-                processed_data = result.get('processed_data', [])
-                processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
-                low_conf_indexes = [
-                    idx for idx, record in enumerate(processed_data)
-                    if record.get('classification_confidence', 1) is not None
-                    and record.get('classification_confidence', 1) < CLASSIFICATION_CONFIDENCE_THRESHOLD
-                ]
-                low_conf_line_numbers = [idx + 1 for idx in low_conf_indexes]
+                # Salva resultado no session state
+                st.session_state.processed_data = result.get('processed_data', [])
+                st.session_state.processed_summary = result.get('summary', {})
+                st.session_state.detected_type = result.get('detected_type', 'transactions')
+                st.session_state.processed_file_hash = file_hash
                 
-                if not processed_data:
-                    st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
-                    st.stop()
-                
-                # Compara quantidade de linhas originais vs processadas
-                original_rows = summary.get('original_rows', len(df))
-                processed_rows = summary.get('processed_rows', len(processed_data))
-                rows_diff = original_rows - processed_rows
-                
-                # Validação: verifica se todas as linhas foram processadas
-                validation_warning = result.get('validation_warning', False)
-                
-                if validation_warning or rows_diff > 0:
-                    st.warning(
-                        f"⚠️ **ATENÇÃO:** {rows_diff} linha(s) não foram processadas. "
-                        f"Esperado: {original_rows}, Processado: {processed_rows}. "
-                        f"Recomendamos reprocessar o arquivo com a opção 'Usar IA como avaliador completo' habilitada."
-                    )
-                    if st.button("🔄 Reprocessar com IA Completa", key="reprocess_full_ai"):
-                        st.session_state['reprocess_with_full_ai'] = True
-                        st.rerun()
-                else:
-                    st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
-                
-                # Extrai nome do banco se disponível (para extratos bancários)
-                extracted_bank_name = summary.get('bank_name', '') if summary else ''
-                
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Processado", summary.get('processed', len(processed_data)))
-                with col2:
-                    if import_type == 'transactions':
-                        st.metric("Entradas", summary.get('entradas', 0))
-                    else:
-                        st.metric("Linhas", summary.get('processed', len(processed_data)))
-                with col3:
-                    if import_type == 'transactions':
-                        st.metric("Saídas", summary.get('saidas', 0))
-                    else:
-                        st.metric("Válidas", summary.get('processed', len(processed_data)))
-                with col4:
-                    st.metric("Erros", summary.get('errors', 0))
-                
-                # Alerta se houver diferença significativa entre linhas originais e processadas
-                if rows_diff > 0:
-                    if rows_diff <= 5:
-                        st.info(f"ℹ️ **Atenção:** {rows_diff} linha(s) do arquivo original não foram processadas (podem ser cabeçalhos, rodapés ou linhas inválidas).")
-                    else:
-                        st.warning(f"⚠️ **Atenção:** {rows_diff} linha(s) do arquivo original ({original_rows} total) não foram processadas ({processed_rows} processadas). Verifique se há dados faltando.")
-                elif rows_diff == 0:
-                    st.success(f"✅ Todas as {original_rows} linha(s) do arquivo foram processadas com sucesso!")
-                
-                if low_conf_line_numbers:
-                    preview_lines = ", ".join(str(num) for num in low_conf_line_numbers[:10])
-                    extra = ""
-                    if len(low_conf_line_numbers) > 10:
-                        extra = f" (total de {len(low_conf_line_numbers)} linhas)"
-                    st.warning(
-                        f"⚠️ {len(low_conf_line_numbers)} linha(s) com confiança abaixo de "
-                        f"{int(CLASSIFICATION_CONFIDENCE_THRESHOLD * 100)}%: {preview_lines}{extra}. "
-                        "Revise a classificação antes de importar."
-                    )
-                
-                # Mostra problemas se houver
-                issues = result.get('issues', [])
-                if issues:
-                    with st.expander("⚠️ Problemas Encontrados"):
-                        for issue in issues:
-                            st.warning(issue)
-                
-                st.markdown("---")
-                st.subheader("5️⃣ Preview Completo dos Dados Processados")
-                
-                # Prepara dados para preview (cria uma cópia para não modificar os originais)
-                preview_data = [dict(record) for record in processed_data]  # Cópia profunda
-                
-                # Remove colunas internas se existirem (apenas para exibição)
-                for record in preview_data:
-                    record.pop('original_row', None)
-                    _ensure_classification_confidence(record)
-                
-                # Converte para DataFrame para preview
-                preview_df = pd.DataFrame(preview_data)
-                
-                # Exibe preview completo de todos os dados
-                st.markdown("**Visualize todos os dados que foram processados pela IA:**")
-                st.dataframe(preview_df, use_container_width=True, height=400)
-                st.caption(f"Total de {len(preview_df)} registro(s) processado(s)")
-                
-                st.markdown("---")
-                st.subheader("6️⃣ Configurações e Revisão")
-                
-                # Exibe e permite editar nome do banco se aplicável
-                if import_type == 'bank_statements':
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        if extracted_bank_name:
-                            st.info(f"🏦 **Nome do banco identificado automaticamente:** {extracted_bank_name}")
-                        else:
-                            st.info("🏦 Nome do banco não foi identificado automaticamente")
-                    
-                    with col2:
-                        # Armazena o nome do banco no session state para uso posterior
-                        if 'bank_name_override' not in st.session_state:
-                            st.session_state.bank_name_override = extracted_bank_name if extracted_bank_name else ""
-                        
-                        edited_bank_name = st.text_input(
-                            "Editar nome do banco:",
-                            value=st.session_state.bank_name_override if st.session_state.bank_name_override else extracted_bank_name if extracted_bank_name else "Banco",
-                            key="bank_name_input"
-                        )
-                        
-                        # Atualiza o session state
-                        st.session_state.bank_name_override = edited_bank_name
-                        
-                        # Botão para aplicar o nome do banco a todos os registros
-                        if st.button("🔄 Aplicar a Todos os Registros", use_container_width=True, key="apply_bank_name"):
-                            if 'processed_data' in st.session_state:
-                                for record in st.session_state.processed_data:
-                                    record['bank_name'] = edited_bank_name
-                                st.success(f"✅ Nome do banco '{edited_bank_name}' aplicado a todos os registros!")
-                                st.rerun()
-                        
-                        st.caption("💡 Clique no botão acima para aplicar o nome a todos os registros, ou edite individualmente na tabela abaixo.")
-                
-                st.markdown("---")
-                st.subheader("7️⃣ Edição e Seleção de Dados para Importação")
-                
-                # Prepara dados processados (cria uma cópia para não modificar os originais)
-                working_data = [dict(record) for record in processed_data]  # Cópia profunda
-                
-                # Remove colunas internas se existirem
-                for record in working_data:
-                    record.pop('original_row', None)
-                    _ensure_classification_confidence(record)
-                
-                # Aplica nome do banco extraído/editado aos dados se aplicável
-                if import_type == 'bank_statements':
-                    # Determina qual nome do banco usar (extraído ou editado)
-                    bank_name_to_apply = None
-                    if 'bank_name_override' in st.session_state and st.session_state.bank_name_override:
-                        bank_name_to_apply = st.session_state.bank_name_override
-                    elif extracted_bank_name:
-                        bank_name_to_apply = extracted_bank_name
-                    
-                    if bank_name_to_apply:
-                        # Aplica o nome do banco a todos os registros que não têm bank_name definido
-                        for record in working_data:
-                            if 'bank_name' not in record or not record.get('bank_name') or (isinstance(record.get('bank_name'), float) and pd.isna(record.get('bank_name'))):
-                                record['bank_name'] = bank_name_to_apply
-                
-                # Converte para DataFrame APENAS após todas as transformações
-                processed_df = pd.DataFrame(working_data)
-                
-                # Inicializa seleção de linhas
-                # Usa working_data (lista de dicts) diretamente, não o DataFrame
-                file_hash = f"{uploaded_file.name}_{len(working_data)}_{import_type}"
-                if 'last_file_hash' not in st.session_state or st.session_state.last_file_hash != file_hash:
-                    # Cria cópia profunda para o session state
-                    st.session_state.processed_data = [dict(record) for record in working_data]
-                    st.session_state.selected_rows = set(range(len(working_data)))
-                    st.session_state.last_file_hash = file_hash
-                elif 'processed_data' not in st.session_state:
-                    # Cria cópia profunda para o session state
-                    st.session_state.processed_data = [dict(record) for record in working_data]
-                    st.session_state.selected_rows = set(range(len(working_data)))
-                
-                # Controles de seleção
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    if st.button("✅ Selecionar Todas", use_container_width=True):
-                        st.session_state.selected_rows = set(range(len(processed_df)))
-                        st.rerun()
-                
-                with col2:
-                    if st.button("❌ Desselecionar Todas", use_container_width=True):
-                        st.session_state.selected_rows = set()
-                        st.rerun()
-                
-                with col3:
-                    if st.button("🗑️ Remover Selecionadas", use_container_width=True):
-                        # Remove linhas selecionadas
-                        selected_indices = sorted(list(st.session_state.selected_rows), reverse=True)
-                        current_data = st.session_state.processed_data.copy()
-                        for idx in selected_indices:
-                            if 0 <= idx < len(current_data):
-                                current_data.pop(idx)
-                        st.session_state.processed_data = current_data
-                        st.session_state.selected_rows = set(range(len(current_data)))
-                        st.rerun()
-                
-                with col4:
-                    total_selected = len(st.session_state.selected_rows)
-                    st.metric("Linhas Selecionadas", f"{total_selected} / {len(st.session_state.processed_data)}")
-                
-                # Tabela editável
-                st.markdown("**Revise e edite os dados processados:**")
-                if low_conf_line_numbers:
-                    st.info(
-                        "As linhas com confiança baixa permanecem selecionadas; utilize a coluna "
-                        "'Confiança Classificação' para identificar e ajustar grupos/subgrupos."
-                    )
-                
-                # Busca mapeamento de grupos e subgrupos
-                db_edit = SessionLocal()
-                try:
-                    group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_edit, client_id)
-                finally:
-                    db_edit.close()
-                
-                # Prepara dados para edição e adiciona nomes de grupos/subgrupos
-                edit_data = []
-                for idx, row in enumerate(st.session_state.processed_data):
-                    row_copy = row.copy()
-                    row_copy['_select'] = idx in st.session_state.selected_rows
-                    row_copy['_row_num'] = idx + 1
-                    edit_data.append(row_copy)
-                
-                # Adiciona nomes de grupos e subgrupos
-                edit_data = _add_group_subgroup_names_to_data(edit_data, group_mapping, subgroup_mapping)
-                
-                edit_df = pd.DataFrame(edit_data)
-                
-                # Reordena colunas - coloca group_name e subgroup_name antes de group_id e subgroup_id
-                # e oculta group_id e subgroup_id na visualização
-                display_cols = ['_row_num', '_select']
-                other_cols = []
-                hidden_cols = []
-                
-                for col in edit_df.columns:
-                    if col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
-                        other_cols.append(col)
-                    elif col in ['group_id', 'subgroup_id']:
-                        hidden_cols.append(col)
-                
-                # Adiciona group_name e subgroup_name se existirem
-                if 'group_name' in edit_df.columns:
-                    display_cols.append('group_name')
-                if 'subgroup_name' in edit_df.columns:
-                    display_cols.append('subgroup_name')
-                
-                # Adiciona outras colunas
-                display_cols.extend(other_cols)
-                
-                # Adiciona colunas ocultas no final (para manter os dados, mas não exibir)
-                all_cols = display_cols + hidden_cols
-                edit_df = edit_df[[c for c in all_cols if c in edit_df.columns]]
-                
-                # Converte tipos de dados antes de editar
-                # Converte datas de string para datetime se existirem
-                if 'date' in edit_df.columns:
-                    try:
-                        edit_df['date'] = pd.to_datetime(edit_df['date'], errors='coerce')
-                    except:
-                        pass  # Se não conseguir converter, mantém como string
-                
-                # Converte valores numéricos
-                numeric_columns = ['value', 'balance']
-                for col in numeric_columns:
-                    if col in edit_df.columns:
-                        try:
-                            edit_df[col] = pd.to_numeric(edit_df[col], errors='coerce')
-                        except:
-                            pass
-                
-                if 'classification_confidence' in edit_df.columns:
-                    try:
-                        edit_df['classification_confidence'] = pd.to_numeric(
-                            edit_df['classification_confidence'], errors='coerce'
-                        )
-                    except:
-                        pass
-                
-                # Configura colunas editáveis
-                column_config = {
-                    "_row_num": st.column_config.NumberColumn("Linha", width="small", disabled=True),
-                    "_select": st.column_config.CheckboxColumn("Importar", width="small"),
-                }
-                if 'classification_confidence' in edit_df.columns:
-                    column_config["classification_confidence"] = st.column_config.NumberColumn(
-                        "Confiança Classificação", format="%.2f", disabled=True, width="small"
-                    )
-                
-                # Adiciona configuração para campos editáveis baseado no tipo
-                if import_type == 'transactions':
-                    # Verifica se date é datetime ou string
-                    if 'date' in edit_df.columns:
-                        if pd.api.types.is_datetime64_any_dtype(edit_df['date']):
-                            column_config["date"] = st.column_config.DateColumn("Data", format="YYYY-MM-DD")
-                        else:
-                            column_config["date"] = st.column_config.TextColumn("Data (YYYY-MM-DD)")
-                    
-                    column_config.update({
-                        "description": st.column_config.TextColumn("Descrição", width="medium"),
-                        "type": st.column_config.SelectboxColumn("Tipo", options=["entrada", "saida"], width="small"),
-                        "category": st.column_config.TextColumn("Categoria", width="medium"),
-                        "account": st.column_config.TextColumn("Conta", width="small"),
-                    })
-                    
-                    if 'value' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['value']):
-                            column_config["value"] = st.column_config.NumberColumn("Valor", format="%.2f")
-                        else:
-                            column_config["value"] = st.column_config.TextColumn("Valor")
-                            
-                elif import_type == 'bank_statements':
-                    # Verifica se date é datetime ou string
-                    if 'date' in edit_df.columns:
-                        if pd.api.types.is_datetime64_any_dtype(edit_df['date']):
-                            column_config["date"] = st.column_config.DateColumn("Data", format="YYYY-MM-DD", width="small")
-                        else:
-                            column_config["date"] = st.column_config.TextColumn("Data (YYYY-MM-DD)", width="small")
-                    
-                    # Garante que todos os campos sejam editáveis
-                    column_config.update({
-                        "description": st.column_config.TextColumn("Descrição", width="medium"),
-                        "bank_name": st.column_config.TextColumn("Banco", width="medium"),
-                        "account": st.column_config.TextColumn("Conta", width="small"),
-                    })
-                    
-                    if 'value' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['value']):
-                            column_config["value"] = st.column_config.NumberColumn("Valor", format="%.2f", width="small")
-                        else:
-                            column_config["value"] = st.column_config.TextColumn("Valor", width="small")
-                    
-                    if 'balance' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['balance']):
-                            column_config["balance"] = st.column_config.NumberColumn("Saldo", format="%.2f", width="small")
-                        else:
-                            column_config["balance"] = st.column_config.TextColumn("Saldo", width="small")
-                
-                # Adiciona configuração para group_name e subgroup_name
-                if 'group_name' in edit_df.columns:
-                    column_config['group_name'] = st.column_config.TextColumn("Grupo", width="medium", disabled=True)
-                if 'subgroup_name' in edit_df.columns:
-                    column_config['subgroup_name'] = st.column_config.TextColumn("Subgrupo", width="medium", disabled=True)
-                
-                # Oculta group_id e subgroup_id na visualização
-                if 'group_id' in edit_df.columns:
-                    column_config['group_id'] = st.column_config.NumberColumn("group_id", width=0, disabled=True)
-                if 'subgroup_id' in edit_df.columns:
-                    column_config['subgroup_id'] = st.column_config.NumberColumn("subgroup_id", width=0, disabled=True)
-                
-                # Adiciona configuração para outros campos que possam existir (genérico)
-                # Importa função de tradução
-                from utils.translations import translate_column_name
-                
-                for col in edit_df.columns:
-                    if col not in column_config and col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
-                        # Traduz nome da coluna para português
-                        translated_col_name = translate_column_name(col)
-                        
-                        # Tenta inferir o tipo
-                        if pd.api.types.is_bool_dtype(edit_df[col]):
-                            # Colunas booleanas devem usar CheckboxColumn
-                            column_config[col] = st.column_config.CheckboxColumn(translated_col_name, width="small")
-                        elif pd.api.types.is_datetime64_any_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.DateColumn(translated_col_name, format="YYYY-MM-DD", width="small")
-                        elif pd.api.types.is_numeric_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.NumberColumn(translated_col_name, width="small")
-                        else:
-                            column_config[col] = st.column_config.TextColumn(translated_col_name, width="medium")
-                
-                # Exibe tabela editável (com colunas traduzidas)
-                edited_df = st.data_editor(
-                    edit_df,
-                    column_config=column_config,
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="fixed",
-                    height=min(500, max(300, len(edit_df) * 35))
-                )
-                
-                # Atualiza seleção e dados
-                new_selection = set()
-                updated_data = []
-                
-                for idx, row in edited_df.iterrows():
-                    row_num = int(row.get('_row_num', idx + 1)) - 1
-                    if row.get('_select', False):
-                        new_selection.add(row_num)
-                    
-                    # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
-                    row_dict = row.to_dict()
-                    row_dict.pop('_row_num', None)
-                    row_dict.pop('_select', None)
-                    row_dict.pop('group_name', None)  # Remove nome, mantém apenas ID
-                    row_dict.pop('subgroup_name', None)  # Remove nome, mantém apenas ID
-                    
-                    # Converte datas de datetime para string YYYY-MM-DD
-                    if 'date' in row_dict and pd.notna(row_dict.get('date')):
-                        if isinstance(row_dict['date'], pd.Timestamp):
-                            row_dict['date'] = row_dict['date'].strftime('%Y-%m-%d')
-                        elif isinstance(row_dict['date'], str):
-                            # Tenta converter e formatar
-                            try:
-                                dt = pd.to_datetime(row_dict['date'])
-                                row_dict['date'] = dt.strftime('%Y-%m-%d')
-                            except:
-                                pass  # Mantém como está
-                    
-                    # Converte valores numéricos para float
-                    for col in ['value', 'balance']:
-                        if col in row_dict and pd.notna(row_dict.get(col)):
-                            try:
-                                row_dict[col] = float(row_dict[col])
-                            except:
-                                pass
-                    
-                    updated_data.append(row_dict)
-                
-                st.session_state.selected_rows = new_selection
-                st.session_state.processed_data = updated_data
-                
-                # Preview das linhas selecionadas
-                st.markdown("---")
-                st.subheader("8️⃣ Preview das Linhas Selecionadas para Importação")
-                
-                if st.session_state.selected_rows:
-                    selected_indices = sorted(list(st.session_state.selected_rows))
-                    selected_data = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
-                    
-                    # Adiciona nomes de grupos e subgrupos ao preview
-                    db_preview = SessionLocal()
-                    try:
-                        group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_preview, client_id)
-                        selected_data = _add_group_subgroup_names_to_data(selected_data, group_mapping, subgroup_mapping)
-                    finally:
-                        db_preview.close()
-                    
-                    selected_df = pd.DataFrame(selected_data)
-                    
-                    # Reordena colunas para mostrar nomes antes de IDs e ocultar IDs
-                    preview_cols = []
-                    for col in selected_df.columns:
-                        if col not in ['group_id', 'subgroup_id']:
-                            preview_cols.append(col)
-                    
-                    # Coloca group_name e subgroup_name antes de outras colunas (se existirem)
-                    if 'group_name' in preview_cols:
-                        preview_cols.remove('group_name')
-                        preview_cols.insert(0, 'group_name')
-                    if 'subgroup_name' in preview_cols:
-                        preview_cols.remove('subgroup_name')
-                        if 'group_name' in preview_cols:
-                            preview_cols.insert(preview_cols.index('group_name') + 1, 'subgroup_name')
-                        else:
-                            preview_cols.insert(0, 'subgroup_name')
-                    
-                    selected_df = selected_df[preview_cols]
-                    
-                    st.dataframe(selected_df, use_container_width=True, height=300)
-                    st.success(f"✅ {len(selected_indices)} linha(s) selecionada(s) para importação")
-                else:
-                    st.warning("⚠️ Nenhuma linha selecionada. Selecione pelo menos uma linha para importar.")
-                
-                st.markdown("---")
-                st.subheader("9️⃣ Importação Final")
-                
-                # A IA já classificou cada linha individualmente com grupo/subgrupo
-                # Não há necessidade de seleção manual, pois cada transação pode ser entrada, saída, resgate, etc.
-                group_id = None
-                subgroup_id = None
-                bank_name = "Banco"
-                
-                st.info("💡 **Classificação Automática:** A IA já classificou cada linha individualmente com grupo e subgrupo baseado no contexto (entrada, saída, resgate, etc.). Você pode editar a classificação na tabela de revisão acima se necessário.")
-                
-                # Configurações específicas por tipo
-                if import_type == 'bank_statements':
-                    # Usa nome do banco do session state (que pode ter sido editado)
-                    bank_name = st.session_state.get('bank_name_override', extracted_bank_name if extracted_bank_name else "Banco")
-                    st.info(f"🏦 Nome do banco que será usado na importação: **{bank_name}**")
-                    st.caption("💡 Você pode alterar o nome do banco na seção de configurações acima, ou editar individualmente na tabela de revisão.")
-                    st.info("ℹ️ **Importante:** Os extratos serão salvos na tabela de extratos bancários E automaticamente convertidos em transações para aparecer nos relatórios DRE/DFC.")
-                
-                # Botão de importar
-                import_btn = st.button(
-                    "📥 Importar Dados Selecionados",
-                    use_container_width=True,
-                    disabled=len(st.session_state.selected_rows) == 0,
-                    type="primary"
-                )
-                
-                if import_btn and len(st.session_state.selected_rows) > 0:
-                    # Filtra apenas linhas selecionadas
-                    selected_indices = sorted(list(st.session_state.selected_rows))
-                    data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
-                    import_df = pd.DataFrame(data_to_import)
-                    
-                    # Container para mostrar progresso de importação
-                    import_progress_container = st.empty()
-                    
-                    def update_import_progress(message):
-                        import_progress_container.info(f"💾 **Importando:** {message}")
-                    
-                    # Importa dados com feedback de progresso
-                    with st.spinner("💾 Preparando importação..."):
-                        imported_count = 0
-                        import_result = None  # Para armazenar resultado de bank_statements
-                        
-                        # A IA já classificou cada linha com group_id e subgroup_id
-                        # Passamos None para group_id e subgroup_id para forçar uso da classificação por linha
-                        if import_type == 'transactions':
-                            imported_count = ImportService.import_transactions(
-                                db, client_id, import_df, 'imported', uploaded_file.name,
-                                None, None, progress_callback=update_import_progress
-                            )
-                        
-                        elif import_type == 'bank_statements':
-                            import_result = ImportService.import_bank_statements(
-                                db, client_id, import_df, bank_name, uploaded_file.name,
-                                None, None, progress_callback=update_import_progress
-                            )
-                            imported_count = import_result.get('statements', 0)
-                            transactions_created = import_result.get('transactions', 0)
-                            if imported_count > 0:
-                                st.success(f"✅ {imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s) automaticamente!")
-                        
-                        elif import_type == 'contracts':
-                            imported_count = ImportService.import_contracts(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        
-                        elif import_type == 'accounts_payable':
-                            imported_count = ImportService.import_accounts_payable(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        
-                        elif import_type == 'accounts_receivable':
-                            imported_count = ImportService.import_accounts_receivable(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        elif import_type == 'financial_investments':
-                            imported_count = ImportService.import_financial_investments(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        elif import_type == 'credit_card_invoices':
-                            imported_count = ImportService.import_credit_card_invoices(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        elif import_type == 'card_machine_statements':
-                            imported_count = ImportService.import_card_machine_statements(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                        elif import_type == 'inventory':
-                            imported_count = ImportService.import_inventory(
-                                db, client_id, import_df, None, None,
-                                progress_callback=update_import_progress
-                            )
-                    
-                    # Limpa o container de progresso após importação
-                    import_progress_container.empty()
-                    
-                    # Armazena resultado da importação no session_state para notificações
-                    from datetime import datetime
-                    if import_type == 'bank_statements' and imported_count > 0:
-                        transactions_created = import_result.get('transactions', 0)
-                        st.session_state.import_result = {
-                            'status': 'success',
-                            'import_type': import_type,
-                            'count': imported_count,
-                            'transactions_created': transactions_created,
-                            'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s) automaticamente!",
-                            'timestamp': datetime.now().isoformat()
-                        }
-                        # Mensagem já foi exibida acima
-                    elif import_type != 'bank_statements' and imported_count > 0:
-                        st.session_state.import_result = {
-                            'status': 'success',
-                            'import_type': import_type,
-                            'count': imported_count,
-                            'message': f"{imported_count} registro(s) importado(s) com sucesso!",
-                            'timestamp': datetime.now().isoformat()
-                        }
-                        st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
-                        st.balloons()
-                    elif imported_count == 0:
-                        st.session_state.import_result = {
-                            'status': 'warning',
-                            'import_type': import_type,
-                            'count': 0,
-                            'message': "⚠️ Nenhum registro foi importado. Verifique os dados.",
-                            'timestamp': datetime.now().isoformat()
-                        }
-                        st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
-                    
-                    # Limpa estado após importação bem-sucedida
-                    if (import_type == 'bank_statements' and imported_count > 0) or (import_type != 'bank_statements' and imported_count > 0):
-                        if 'processed_data' in st.session_state:
-                            del st.session_state.processed_data
-                        if 'selected_rows' in st.session_state:
-                            del st.session_state.selected_rows
-                        if 'last_file_hash' in st.session_state:
-                            del st.session_state.last_file_hash
-                        if 'bank_name_override' in st.session_state:
-                            del st.session_state.bank_name_override
-            
             finally:
                 db.close()
-        
-        else:
-            st.error("❌ Não foi possível ler o arquivo. Verifique o formato.")
     
-    except Exception as e:
-        st.error(f"❌ Erro ao processar arquivo: {str(e)}")
-        st.exception(e)
+    # Dados processados
+    processed_data = st.session_state.get('processed_data', [])
+    summary = st.session_state.get('processed_summary', {})
+    detected_type = st.session_state.get('detected_type', 'transactions')
+    
+    if not processed_data:
+        st.warning("⚠️ Nenhum dado foi extraído do arquivo.")
+        st.stop()
+    
+    # Exibe estatísticas
+    st.success(f"✅ Processamento concluído! {len(processed_data)} registro(s) extraído(s).")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total de Registros", len(processed_data))
+    with col2:
+        type_names = {
+            'transactions': '💳 Transações',
+            'bank_statements': '🏦 Extratos',
+            'contracts': '📝 Contratos',
+            'accounts_payable': '💸 Contas a Pagar',
+            'accounts_receivable': '💰 Contas a Receber',
+            'financial_investments': '📈 Investimentos',
+            'credit_card_invoices': '💳 Faturas',
+            'card_machine_statements': '🏪 Máquina Cartão',
+            'inventory': '📦 Estoque'
+        }
+        st.metric("Tipo Detectado", type_names.get(detected_type, detected_type))
+    with col3:
+        if 'bank_name' in summary:
+            st.metric("Banco", summary.get('bank_name', '-'))
+    
+    # Normaliza dados
+    processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+    
+    # Inicializa seleção
+    if 'selected_rows' not in st.session_state:
+        st.session_state.selected_rows = set(range(len(processed_data)))
+    
+    st.markdown("---")
+    st.subheader("3️⃣ Revisão e Edição dos Dados")
+    
+    # Controles de seleção
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("✅ Selecionar Todas", use_container_width=True):
+            st.session_state.selected_rows = set(range(len(processed_data)))
+            st.rerun()
+    
+    with col2:
+        if st.button("❌ Desselecionar Todas", use_container_width=True):
+            st.session_state.selected_rows = set()
+            st.rerun()
+        
+    with col3:
+        total_selected = len(st.session_state.selected_rows)
+        st.metric("Selecionadas", f"{total_selected} / {len(processed_data)}")
+    
+    with col4:
+        if st.button("🔄 Reprocessar", use_container_width=True):
+            del st.session_state.processed_file_hash
+            st.rerun()
+    
+    # Prepara dados para edição
+    db_edit = SessionLocal()
+    try:
+        group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_edit, client_id)
+    finally:
+        db_edit.close()
+    
+    edit_data = []
+    for idx, row in enumerate(processed_data):
+        row_copy = row.copy()
+        row_copy['_select'] = idx in st.session_state.selected_rows
+        row_copy['_row_num'] = idx + 1
+        edit_data.append(row_copy)
+    
+    # Adiciona nomes de grupos e subgrupos
+    edit_data = _add_group_subgroup_names_to_data(edit_data, group_mapping, subgroup_mapping)
+    edit_df = pd.DataFrame(edit_data)
+    
+    # Configura colunas para edição
+    display_cols = ['_row_num', '_select']
+    if 'group_name' in edit_df.columns:
+        display_cols.append('group_name')
+    if 'subgroup_name' in edit_df.columns:
+        display_cols.append('subgroup_name')
+    
+    # Adiciona outras colunas
+    for col in edit_df.columns:
+        if col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
+            display_cols.append(col)
+    
+    # Adiciona colunas ocultas (group_id, subgroup_id)
+    all_cols = display_cols + ['group_id', 'subgroup_id'] if 'group_id' in edit_df.columns else display_cols
+    edit_df = edit_df[[c for c in all_cols if c in edit_df.columns]]
+    
+    # Configura colunas editáveis
+    column_config = {
+        "_row_num": st.column_config.NumberColumn("Linha", width="small", disabled=True),
+        "_select": st.column_config.CheckboxColumn("Importar", width="small"),
+    }
+    
+    if 'group_name' in edit_df.columns:
+        column_config['group_name'] = st.column_config.TextColumn("Grupo", width="medium", disabled=True)
+    if 'subgroup_name' in edit_df.columns:
+        column_config['subgroup_name'] = st.column_config.TextColumn("Subgrupo", width="medium", disabled=True)
+    if 'group_id' in edit_df.columns:
+        column_config['group_id'] = st.column_config.NumberColumn("group_id", width=0, disabled=True)
+    if 'subgroup_id' in edit_df.columns:
+        column_config['subgroup_id'] = st.column_config.NumberColumn("subgroup_id", width=0, disabled=True)
+    
+    # Adiciona configuração para campos comuns
+    if 'date' in edit_df.columns:
+        try:
+            edit_df['date'] = pd.to_datetime(edit_df['date'], errors='coerce')
+            column_config["date"] = st.column_config.DateColumn("Data", format="YYYY-MM-DD")
+        except:
+            column_config["date"] = st.column_config.TextColumn("Data")
+    
+    if 'value' in edit_df.columns:
+        try:
+            edit_df['value'] = pd.to_numeric(edit_df['value'], errors='coerce')
+            column_config["value"] = st.column_config.NumberColumn("Valor", format="%.2f")
+        except:
+            column_config["value"] = st.column_config.TextColumn("Valor")
+    
+    if 'description' in edit_df.columns:
+        column_config["description"] = st.column_config.TextColumn("Descrição", width="large")
+    
+    if 'bank_name' in edit_df.columns:
+        column_config["bank_name"] = st.column_config.TextColumn("Banco", width="medium")
+    
+    # Exibe tabela editável
+    edited_df = st.data_editor(
+        edit_df,
+        column_config=column_config,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        height=min(500, max(300, len(edit_df) * 35))
+    )
+    
+    # Atualiza seleção e dados
+    new_selection = set()
+    updated_data = []
+    
+    for idx, row in edited_df.iterrows():
+        row_num = int(row.get('_row_num', idx + 1)) - 1
+        if row.get('_select', False):
+            new_selection.add(row_num)
+        
+        # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
+        row_dict = row.to_dict()
+        row_dict.pop('_row_num', None)
+        row_dict.pop('_select', None)
+        row_dict.pop('group_name', None)
+        row_dict.pop('subgroup_name', None)
+        
+        # Converte datas
+        if 'date' in row_dict and pd.notna(row_dict.get('date')):
+            if isinstance(row_dict['date'], pd.Timestamp):
+                row_dict['date'] = row_dict['date'].strftime('%Y-%m-%d')
+        
+        # Converte valores
+        for col in ['value', 'balance']:
+            if col in row_dict and pd.notna(row_dict.get(col)):
+                try:
+                    row_dict[col] = float(row_dict[col])
+                except:
+                    pass
+        
+        updated_data.append(row_dict)
+    
+    st.session_state.selected_rows = new_selection
+    st.session_state.processed_data = updated_data
+    
+    st.markdown("---")
+    st.subheader("4️⃣ Importação Final")
+    
+    # Configurações específicas por tipo
+    bank_name = "Banco"
+    if detected_type == 'bank_statements':
+        bank_name = summary.get('bank_name', 'Banco')
+        if 'bank_name_override' not in st.session_state:
+            st.session_state.bank_name_override = bank_name
+        
+        edited_bank_name = st.text_input(
+            "Nome do banco:",
+            value=st.session_state.get('bank_name_override', bank_name),
+            key="bank_name_input"
+        )
+        st.session_state.bank_name_override = edited_bank_name
+        bank_name = edited_bank_name
+    
+    # Botão de importar
+    import_btn = st.button(
+        "📥 Importar Dados Selecionados",
+        use_container_width=True,
+        disabled=len(st.session_state.selected_rows) == 0,
+        type="primary"
+    )
+    
+    if import_btn and len(st.session_state.selected_rows) > 0:
+        # Filtra apenas linhas selecionadas
+        selected_indices = sorted(list(st.session_state.selected_rows))
+        data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
+        import_df = pd.DataFrame(data_to_import)
+        
+        # Container para progresso
+        import_progress_container = st.empty()
+        
+        def update_import_progress(message):
+            import_progress_container.info(f"💾 **Importando:** {message}")
+        
+        # Importa dados
+        db = SessionLocal()
+        try:
+            with st.spinner("💾 Preparando importação..."):
+                imported_count = 0
+                import_result = None
+                
+                if detected_type == 'transactions':
+                    imported_count = ImportService.import_transactions(
+                        db, client_id, import_df, 'imported', uploaded_file.name,
+                        None, None, progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'bank_statements':
+                    import_result = ImportService.import_bank_statements(
+                        db, client_id, import_df, bank_name, uploaded_file.name,
+                        None, None, progress_callback=update_import_progress
+                    )
+                    imported_count = import_result.get('statements', 0)
+                    transactions_created = import_result.get('transactions', 0)
+                
+                elif detected_type == 'contracts':
+                    imported_count = ImportService.import_contracts(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'accounts_payable':
+                    imported_count = ImportService.import_accounts_payable(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'accounts_receivable':
+                    imported_count = ImportService.import_accounts_receivable(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'financial_investments':
+                    imported_count = ImportService.import_financial_investments(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'credit_card_invoices':
+                    imported_count = ImportService.import_credit_card_invoices(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'card_machine_statements':
+                    imported_count = ImportService.import_card_machine_statements(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+                
+                elif detected_type == 'inventory':
+                    imported_count = ImportService.import_inventory(
+                        db, client_id, import_df, None, None,
+                        progress_callback=update_import_progress
+                    )
+            
+            import_progress_container.empty()
+            
+            # Armazena resultado
+            from datetime import datetime
+            if detected_type == 'bank_statements' and imported_count > 0:
+                transactions_created = import_result.get('transactions', 0)
+                st.session_state.import_result = {
+                    'status': 'success',
+                    'import_type': detected_type,
+                    'count': imported_count,
+                    'transactions_created': transactions_created,
+                    'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!",
+                    'timestamp': datetime.now().isoformat()
+                }
+                st.success(f"✅ {imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!")
+            elif imported_count > 0:
+                st.session_state.import_result = {
+                    'status': 'success',
+                    'import_type': detected_type,
+                    'count': imported_count,
+                    'message': f"{imported_count} registro(s) importado(s) com sucesso!",
+                    'timestamp': datetime.now().isoformat()
+                }
+                st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
+                st.balloons()
+            else:
+                st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
+            
+            # Limpa estado após importação
+            if imported_count > 0:
+                if 'processed_data' in st.session_state:
+                    del st.session_state.processed_data
+                if 'selected_rows' in st.session_state:
+                    del st.session_state.selected_rows
+                if 'processed_file_hash' in st.session_state:
+                    del st.session_state.processed_file_hash
+                if 'bank_name_override' in st.session_state:
+                    del st.session_state.bank_name_override
+                st.rerun()
+            
+        except Exception as e:
+            st.error(f"❌ Erro ao importar: {str(e)}")
+            st.exception(e)
+        finally:
+            db.close()
 
 else:
     st.info("ℹ️ Faça upload de um arquivo para começar.")
 
+# Informações sobre formatos
+with st.expander("ℹ️ Informações sobre Formatos"):
+    st.markdown("""
+    ### Formatos Suportados
+    
+    **CSV, Excel, PDF, OFX, Imagens**
+    - Todos os formatos são processados automaticamente usando IA Vision
+    - O sistema detecta e extrai dados de qualquer tipo de arquivo
+    - Não é necessário configurar encoding, delimitadores ou outras opções
+    
+    **Processamento Automático**
+    - Upload → Processamento com IA → Edição → Importação
+    - Detecção automática do tipo de dado
+    - Classificação automática por grupos e subgrupos
+    """)
+
+with st.expander("✏️ Edição de Dados Importados"):
+    st.markdown("""
+    ### Como Editar Dados Importados
+    
+    Após importar seus dados, você pode editá-los nas páginas específicas:
+    
+    - **💳 Transações** → Edite, exclua ou adicione transações manualmente
+    - **📝 Contratos** → Gerencie contratos importados ou manuais
+    - **💰 Contas** → Edite contas a pagar e receber
+    
+    **Dica:** Todos os dados importados podem ser editados ou excluídos individualmente!
+    """)
 # Informações sobre formatos
 with st.expander("ℹ️ Informações sobre Formatos"):
     st.markdown("""
@@ -1319,4 +634,11 @@ with st.expander("✏️ Edição de Dados Importados"):
     
     **Dica:** Todos os dados importados podem ser editados ou excluídos individualmente!
     """)
+
+
+
+
+
+
+
 

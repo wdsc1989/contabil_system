@@ -927,3 +927,7 @@ class ParserService:
             raise Exception(f"Erro ao processar imagem: {str(e)}")
 
 
+
+
+
+

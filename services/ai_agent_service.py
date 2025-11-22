@@ -836,3 +836,7 @@ Retorne a resposta formatada em markdown, focando em texto bem formatado e legí
             return f"## Resultado\n\nDados disponíveis: {query_type}"
 
 
+
+
+
+

@@ -18,10 +18,16 @@ PyPDF2>=3.0.0
 pdfplumber>=0.10.0
 ofxparse>=0.21
 
-# OCR (Optical Character Recognition)
-pytesseract>=0.3.10  # OCR engine wrapper
-pdf2image>=1.16.3  # Converter PDF para imagens
-easyocr>=1.7.0  # OCR alternativo (mais robusto, opcional)
+# PDF to Image Conversion (para Vision API)
+PyMuPDF>=1.23.0  # Principal: funciona no Linux sem poppler, recomendado para produção
+pdf2image>=1.16.3  # Fallback: requer poppler-utils (instalado pelo setup_vps_hostinger.sh)
+
+# OCR (Optical Character Recognition) - Opcional (para fallback se necessário)
+pytesseract>=0.3.10  # OCR engine wrapper (opcional)
+easyocr>=1.7.0  # OCR alternativo (opcional, para fallback)
+
+# Image Processing
+Pillow>=10.0.0  # Necessário para processamento de imagens
 
 # Visualization
 plotly>=5.18.0
@@ -29,7 +35,6 @@ altair>=5.2.0
 
 # Export/Reporting
 reportlab>=4.0.0
-Pillow>=10.0.0
 
 # Security
 bcrypt>=4.1.0
@@ -40,12 +45,12 @@ python-dateutil>=2.8.0
 validators>=0.22.0
 python-dotenv>=1.0.0  # Para carregar variáveis de ambiente do .env
 
-# AI/ML (Opcional - instale apenas o que for usar)
-openai>=1.0.0  # Para OpenAI e Ollama
-google-generativeai>=0.3.0  # Para Google Gemini
-groq>=0.4.0  # Para Groq
+# AI/ML - Vision API e outros provedores
+openai>=1.0.0  # OBRIGATÓRIO: Para OpenAI GPT-4o Vision API
+google-generativeai>=0.3.0  # Para Google Gemini (opcional)
+groq>=0.4.0  # Para Groq (opcional)
 
-# Development
+# Development (opcional, pode remover em produção)
 pytest>=7.4.0
 faker>=21.0.0
 

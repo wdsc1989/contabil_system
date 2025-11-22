@@ -189,3 +189,4 @@ class ReportConfigService:
             result[config.report_type][config.data_type] = config.enabled
         
         return result
+

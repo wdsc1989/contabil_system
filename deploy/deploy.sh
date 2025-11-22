@@ -74,10 +74,16 @@ else
 fi
 
 # Ativa ambiente virtual e instala/atualiza dependências
-echo -e "${YELLOW}📚 Instalando dependências...${NC}"
+echo -e "${YELLOW}📚 Instalando dependências Python...${NC}"
 source "${VENV_DIR}/bin/activate"
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# Verifica se dependências do sistema estão instaladas (para PDFs)
+if ! command -v pdftoppm &> /dev/null; then
+    echo -e "${YELLOW}⚠️  poppler-utils não encontrado. Instalando...${NC}"
+    sudo apt-get update && sudo apt-get install -y poppler-utils || echo -e "${YELLOW}⚠️  Não foi possível instalar poppler-utils (pode não ser necessário se PyMuPDF funcionar)${NC}"
+fi
 
 echo -e "${GREEN}✅ Dependências instaladas${NC}"
 

@@ -287,3 +287,7 @@ class GroupTemplateService:
             "subgroups_created": created_subgroups,
         }
 
+
+
+
+

@@ -38,7 +38,25 @@ apt install -y \
     ufw \
     fail2ban \
     unattended-upgrades \
-    software-properties-common
+    software-properties-common \
+    build-essential \
+    libpq-dev
+
+# Instala dependências para processamento de PDFs e imagens
+echo -e "${YELLOW}📄 Instalando dependências para PDFs e imagens...${NC}"
+apt install -y \
+    poppler-utils \
+    libpoppler-cpp-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    liblcms2-dev \
+    libwebp-dev \
+    tcl8.6-dev \
+    tk8.6-dev \
+    python3-tk
 
 # Instala Python 3.12 e pip
 echo -e "${YELLOW}🐍 Instalando Python 3.12...${NC}"
@@ -200,6 +218,8 @@ echo "   Database: $DB_NAME"
 echo "   User: $DB_USER"
 echo "   Password: $DB_PASSWORD"
 echo ""
+
+
 
 
 

@@ -603,3 +603,7 @@ Retorne o relatório formatado em markdown, pronto para exibição."""
         # Não criamos gráficos complexos - o relatório é focado em texto bem formatado
         return []
 
+
+
+
+
