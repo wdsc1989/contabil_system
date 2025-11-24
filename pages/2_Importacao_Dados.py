@@ -204,14 +204,23 @@ if uploaded_file:
     # Processamento direto com Vision API
     st.markdown("---")
     
+    # Lê o arquivo UMA VEZ e armazena
     file_content = uploaded_file.read()
+    
+    # Verifica se o arquivo está vazio
+    if not file_content or len(file_content) == 0:
+        st.error("❌ **Erro:** Arquivo vazio. Verifique se o arquivo foi carregado corretamente.")
+        st.stop()
     
     # Verifica se já foi processado
     file_hash = f"{uploaded_file.name}_{len(file_content)}"
     if 'processed_file_hash' not in st.session_state or st.session_state.processed_file_hash != file_hash:
-        # Detecta tipo de arquivo pela extensão
+        # Detecta tipo de arquivo pela extensão E pelo conteúdo
         file_extension = uploaded_file.name.split('.')[-1].lower() if '.' in uploaded_file.name else ''
         is_image_file = file_extension in ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp']
+        
+        # Detecta tipo real do arquivo pelo conteúdo (magic bytes)
+        detected_content_type = ParserService.detect_file_type(file_content, uploaded_file.name)
         
         file_type_map = {
             'csv': 'CSV',
@@ -222,8 +231,19 @@ if uploaded_file:
             'ofx': 'OFX'
         }
         
+        # Usa extensão primeiro, mas valida com conteúdo
         file_type = file_type_map.get(file_extension, 'CSV' if not is_image_file else 'Image')
         
+        # Se a extensão diz PDF mas o conteúdo não é PDF, ajusta
+        if file_type == 'PDF' and detected_content_type != 'PDF':
+            if detected_content_type == 'EXCEL':
+                file_type = 'Excel'
+                st.warning(f"⚠️ Arquivo tem extensão .pdf mas é realmente um Excel. Processando como Excel...")
+            elif detected_content_type == 'IMAGE':
+                file_type = 'Image'
+                st.warning(f"⚠️ Arquivo tem extensão .pdf mas é realmente uma imagem. Processando como imagem...")
+        
+        # Se a extensão diz CSV mas o conteúdo é outro tipo, mantém CSV (pode ser texto)
         # Processa arquivo
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -240,32 +260,60 @@ if uploaded_file:
         if file_type == 'CSV':
             update_status("Processando arquivo CSV...")
             progress_bar.progress(20)
-            file_content = uploaded_file.read()
+            # file_content já foi lido acima, não precisa ler novamente
             delimiter = ParserService.detect_delimiter(file_content)
             
             # Tenta diferentes encodings automaticamente
             encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
             df = None
+            last_error = None
+            
             for encoding in encodings:
                 try:
                     df = ParserService.parse_csv(file_content, encoding, delimiter)
                     if df is not None and not df.empty:
+                        st.success(f"✅ CSV processado com encoding: {encoding}")
                         break
-                except:
+                except Exception as e:
+                    last_error = str(e)
                     continue
             
             if df is None or df.empty:
                 # Última tentativa com utf-8 e erro ignorado
                 try:
                     df = ParserService.parse_csv(file_content, 'utf-8', delimiter, errors='ignore')
-                except:
-                    st.error("❌ Não foi possível processar o arquivo CSV. Verifique o formato e encoding.")
+                    if df is not None and not df.empty:
+                        st.warning("⚠️ CSV processado com encoding UTF-8 (alguns caracteres podem ter sido ignorados)")
+                except Exception as e:
+                    last_error = str(e)
+                    st.error(f"❌ **Não foi possível processar o arquivo CSV**\n\n")
+                    st.error(f"**Erro:** {last_error}")
+                    
+                    with st.expander("💡 Soluções possíveis", expanded=True):
+                        st.markdown("""
+                        **O arquivo CSV não pôde ser processado. Tente:**
+                        
+                        1. **Verificar o formato**: Certifique-se de que é um CSV válido (valores separados por vírgula, ponto-e-vírgula ou tab)
+                        2. **Verificar encoding**: O arquivo pode estar em um encoding diferente. Tente salvar como UTF-8
+                        3. **Verificar delimitador**: Verifique se o delimitador está correto (vírgula, ponto-e-vírgula, tab)
+                        4. **Verificar estrutura**: Certifique-se de que todas as linhas têm o mesmo número de colunas
+                        5. **Converter para Excel**: Se possível, converta o CSV para Excel (.xlsx) e importe como Excel
+                        """)
+                    
+                    # Mostra preview do conteúdo para debug
+                    try:
+                        preview = file_content[:500].decode('utf-8', errors='ignore')
+                        with st.expander("🔍 Preview do arquivo (primeiros 500 caracteres)", expanded=False):
+                            st.code(preview)
+                    except:
+                        pass
+                    
                     st.stop()
         
         elif file_type == 'Excel':
             update_status("Processando arquivo Excel...")
             progress_bar.progress(20)
-            file_content = uploaded_file.read()
+            # file_content já foi lido acima
             
             # Processa todas as abas automaticamente
             try:
@@ -280,7 +328,7 @@ if uploaded_file:
         elif file_type == 'PDF':
             update_status("Processando arquivo PDF...")
             progress_bar.progress(20)
-            file_content = uploaded_file.read()
+            # file_content já foi lido acima
             
             # Valida PDF antes de processar
             is_valid, validation_error = ParserService.validate_pdf(file_content, uploaded_file.name)

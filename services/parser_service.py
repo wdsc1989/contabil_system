@@ -324,8 +324,15 @@ class ParserService:
         """
         try:
             # Verifica se o arquivo está vazio
-            if not file_content or len(file_content) < 10:
-                return False, "Arquivo vazio ou muito pequeno. Verifique se o arquivo foi carregado corretamente."
+            if not file_content:
+                return False, "Arquivo vazio. Verifique se o arquivo foi carregado corretamente."
+            
+            # Verifica tamanho mínimo (PDF válido deve ter pelo menos alguns bytes)
+            if len(file_content) < 100:
+                # Pode ser um PDF muito pequeno, mas ainda válido
+                # Verifica se pelo menos tem a assinatura
+                if not file_content.lstrip().startswith(b'%PDF'):
+                    return False, f"Arquivo muito pequeno ({len(file_content)} bytes) e não contém assinatura PDF válida."
             
             # Remove BOM e espaços iniciais para verificação
             content = file_content.lstrip()
