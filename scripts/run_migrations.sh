@@ -92,3 +92,7 @@ echo "   2. Verificar logs: sudo journalctl -u contabil.service -f"
 echo "   3. Testar a aplicação no navegador"
 echo ""
 
+
+
+
+

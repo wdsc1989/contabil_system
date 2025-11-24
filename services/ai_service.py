@@ -2026,17 +2026,21 @@ Processe e retorne em JSON com array "processed_data".
         import_type: str,
         pdf_full_data: Optional[Dict[str, Any]] = None,
         groups_subgroups: Optional[List[Dict[str, Any]]] = None,
-        status_callback: Optional[callable] = None
+        status_callback: Optional[callable] = None,
+        file_content: Optional[bytes] = None,
+        filename: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Processa arquivo completo com IA e retorna dados estruturados prontos para importação
         
         Args:
-            df: DataFrame com os dados do arquivo
+            df: DataFrame com os dados do arquivo (pode estar vazio se usar Vision API)
             import_type: Tipo de importação (transactions, bank_statements, etc)
             pdf_full_data: Dados completos do PDF (opcional)
             groups_subgroups: Lista de grupos e subgrupos para classificação automática (opcional)
             status_callback: Função callback(status_message) para atualizar status em tempo real (opcional)
+            file_content: Conteúdo bruto do arquivo em bytes (para Vision API)
+            filename: Nome do arquivo (para Vision API)
         
         Retorna:
         {
@@ -2055,6 +2059,52 @@ Processe e retorne em JSON com array "processed_data".
                 'summary': {},
                 'issues': []
             }
+        
+        # Verifica se Vision API está disponível e se temos file_content
+        provider = self.config.get('provider', '')
+        model = self.config.get('model', '')
+        
+        if file_content and filename and AIConfigManager.supports_vision(provider, model):
+            # Usa Vision API diretamente
+            try:
+                from services.vision_processor import VisionProcessor
+                
+                if status_callback:
+                    status_callback("Processando arquivo com Vision API...")
+                
+                processor = VisionProcessor(self.db)
+                result = processor.process_file(
+                    file_content=file_content,
+                    filename=filename,
+                    import_type=import_type,
+                    groups_subgroups=groups_subgroups
+                )
+                
+                # Ajusta formato de retorno para compatibilidade
+                if result.get('success'):
+                    return {
+                        'success': True,
+                        'processed_data': result.get('processed_data', []),
+                        'summary': result.get('summary', {}),
+                        'issues': result.get('issues', []),
+                        'detected_type': result.get('detected_type', import_type)
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': result.get('error', 'Erro desconhecido no Vision API'),
+                        'processed_data': [],
+                        'summary': {},
+                        'issues': result.get('issues', [])
+                    }
+            except ImportError:
+                # VisionProcessor não disponível, continua com método tradicional
+                pass
+            except Exception as e:
+                # Erro ao usar Vision API, continua com método tradicional
+                if status_callback:
+                    status_callback(f"Aviso: Vision API falhou, usando método tradicional: {str(e)}")
+                pass
         
         try:
             if status_callback:
@@ -2757,6 +2807,10 @@ Processe e retorne em JSON com array "processed_data".
                 return recommendation
         
         return recommendation
+
+
+
+
 
 
 

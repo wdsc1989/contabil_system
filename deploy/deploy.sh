@@ -57,9 +57,21 @@ if [ -d "${APP_DIR}/.git" ]; then
     git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 fi
 
+# Verifica se há mudanças locais que podem causar conflito
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo -e "${YELLOW}⚠️  Mudanças locais detectadas. Fazendo stash...${NC}"
+    git stash push -m "Mudanças locais antes do deploy $(date +%Y-%m-%d_%H:%M:%S)" || true
+fi
+
 git fetch origin
 git checkout "$BRANCH"
-git pull origin "$BRANCH"
+git pull origin "$BRANCH" || {
+    echo -e "${RED}❌ Erro ao fazer pull. Tentando resolver conflitos...${NC}"
+    # Se houver conflito, faz reset para a versão remota (cuidado!)
+    echo -e "${YELLOW}⚠️  Fazendo reset para versão remota...${NC}"
+    git reset --hard origin/"$BRANCH"
+    echo -e "${GREEN}✅ Reset concluído${NC}"
+}
 
 COMMIT_HASH=$(git rev-parse --short HEAD)
 echo -e "${GREEN}✅ Código atualizado (commit: $COMMIT_HASH)${NC}"
@@ -74,10 +86,26 @@ else
 fi
 
 # Ativa ambiente virtual e instala/atualiza dependências
-echo -e "${YELLOW}📚 Instalando dependências...${NC}"
+echo -e "${YELLOW}📚 Instalando dependências Python...${NC}"
 source "${VENV_DIR}/bin/activate"
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# Verifica instalação de PyMuPDF (crítico para Vision API)
+echo -e "${YELLOW}🔍 Verificando PyMuPDF...${NC}"
+if ! python -c "import fitz" 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  PyMuPDF não encontrado. Instalando...${NC}"
+    pip install PyMuPDF>=1.23.0
+    echo -e "${GREEN}✅ PyMuPDF instalado${NC}"
+else
+    echo -e "${GREEN}✅ PyMuPDF OK${NC}"
+fi
+
+# Verifica se dependências do sistema estão instaladas (para PDFs)
+if ! command -v pdftoppm &> /dev/null; then
+    echo -e "${YELLOW}⚠️  poppler-utils não encontrado. Instalando...${NC}"
+    sudo apt-get update && sudo apt-get install -y poppler-utils || echo -e "${YELLOW}⚠️  Não foi possível instalar poppler-utils (pode não ser necessário se PyMuPDF funcionar)${NC}"
+fi
 
 echo -e "${GREEN}✅ Dependências instaladas${NC}"
 

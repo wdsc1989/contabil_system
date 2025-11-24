@@ -43,3 +43,7 @@ class Contract(Base):
 
     def __repr__(self):
         return f"<Contract(contractor='{self.contractor_name}', event_date='{self.event_date}', status='{self.status}')>"
+
+
+
+
