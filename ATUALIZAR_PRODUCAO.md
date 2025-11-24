@@ -1,5 +1,7 @@
 # 🚀 Atualizar em Produção - Guia Rápido
 
+> **📖 Para comandos detalhados, veja:** `COMANDOS_ATUALIZACAO.md`
+
 ## 📋 Passos para Atualizar na VPS
 
 ### 1. Conectar na VPS via SSH
