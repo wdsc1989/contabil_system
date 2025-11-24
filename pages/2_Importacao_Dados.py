@@ -512,6 +512,92 @@ if uploaded_file:
             st.error("❌ **Nenhum dado válido para importar.** Verifique se os registros selecionados contêm dados válidos.")
             st.stop()
         
+        # Prepara dados para importação - garante formato correto
+        # Converte datas para string no formato esperado
+        if 'date' in import_df.columns:
+            def format_date_for_import(val):
+                if pd.isna(val) or val is None:
+                    return None
+                if isinstance(val, pd.Timestamp):
+                    return val.strftime('%Y-%m-%d')
+                if isinstance(val, datetime):
+                    return val.strftime('%Y-%m-%d')
+                if isinstance(val, str):
+                    # Se já é string, tenta converter para garantir formato
+                    try:
+                        val = val.strip()
+                        if not val:
+                            return None
+                        if 'T' in val or ' ' in val:
+                            # Remove hora se houver
+                            val = val.split('T')[0].split(' ')[0]
+                        return val
+                    except:
+                        return str(val) if val else None
+                return str(val) if val else None
+            
+            import_df['date'] = import_df['date'].apply(format_date_for_import)
+        
+        # Garante que valores são numéricos ou strings válidas
+        if 'value' in import_df.columns:
+            def format_value_for_import(val):
+                if pd.isna(val) or val is None:
+                    return None
+                if isinstance(val, (int, float)):
+                    # Converte para string formatada para o parser processar
+                    return str(float(val))
+                if isinstance(val, str):
+                    # Mantém como string para o parser processar
+                    val = val.strip()
+                    return val if val else None
+                return str(val) if val else None
+            
+            import_df['value'] = import_df['value'].apply(format_value_for_import)
+        
+        # Remove linhas que não têm data OU valor (campos obrigatórios)
+        required_cols = []
+        if 'date' in import_df.columns:
+            required_cols.append('date')
+        if 'value' in import_df.columns:
+            required_cols.append('value')
+        
+        if required_cols:
+            # Filtra apenas linhas com todos os campos obrigatórios preenchidos
+            mask = pd.Series([True] * len(import_df))
+            for col in required_cols:
+                mask = mask & import_df[col].notna()
+            
+            rows_before = len(import_df)
+            import_df = import_df[mask].copy()
+            rows_after = len(import_df)
+            
+            if rows_before > rows_after:
+                st.warning(f"⚠️ {rows_before - rows_after} registro(s) foram removidos por falta de dados obrigatórios (data ou valor).")
+            
+            if import_df.empty:
+                st.error("❌ **Nenhum registro válido para importar.** Todos os registros selecionados estão faltando dados obrigatórios (data ou valor).")
+                st.stop()
+        
+        # Debug: mostra informações sobre os dados
+        debug_info = st.expander("🔍 Debug: Informações dos dados selecionados", expanded=False)
+        with debug_info:
+            st.write(f"**Total de registros selecionados:** {len(import_df)}")
+            st.write(f"**Colunas:** {list(import_df.columns)}")
+            if 'date' in import_df.columns:
+                date_valid = import_df['date'].notna().sum()
+                st.write(f"**Datas válidas:** {date_valid}/{len(import_df)}")
+                st.write(f"**Exemplo de datas:** {import_df['date'].head(3).tolist()}")
+            if 'value' in import_df.columns:
+                value_valid = import_df['value'].notna().sum()
+                st.write(f"**Valores válidos:** {value_valid}/{len(import_df)}")
+                st.write(f"**Exemplo de valores:** {import_df['value'].head(3).tolist()}")
+            if 'group_id' in import_df.columns:
+                group_valid = import_df['group_id'].notna().sum()
+                st.write(f"**Group IDs válidos:** {group_valid}/{len(import_df)}")
+            if 'subgroup_id' in import_df.columns:
+                subgroup_valid = import_df['subgroup_id'].notna().sum()
+                st.write(f"**Subgroup IDs válidos:** {subgroup_valid}/{len(import_df)}")
+        
         # Container para progresso
         import_progress_container = st.empty()
         
@@ -608,16 +694,44 @@ if uploaded_file:
                 st.balloons()
             else:
                 st.error("❌ **Nenhum registro foi importado.**")
-                st.info("""
-                **Possíveis causas:**
-                - Nenhum registro foi selecionado para importação
-                - Os dados não atendem aos requisitos do tipo de importação
-                - Erro na validação dos dados (datas, valores, grupos/subgrupos)
-                - Dados duplicados que foram ignorados
                 
+                # Mostra informações de debug
+                with st.expander("🔍 Detalhes do problema", expanded=True):
+                    st.write(f"**Registros selecionados:** {len(st.session_state.selected_rows)}")
+                    st.write(f"**Tipo de importação:** {detected_type}")
+                    
+                    # Verifica problemas comuns
+                    issues = []
+                    if 'date' in import_df.columns:
+                        date_valid = import_df['date'].notna().sum()
+                        if date_valid == 0:
+                            issues.append("❌ Nenhuma data válida encontrada")
+                        elif date_valid < len(import_df):
+                            issues.append(f"⚠️ Apenas {date_valid} de {len(import_df)} registros têm data válida")
+                    
+                    if 'value' in import_df.columns:
+                        value_valid = import_df['value'].notna().sum()
+                        if value_valid == 0:
+                            issues.append("❌ Nenhum valor válido encontrado")
+                        elif value_valid < len(import_df):
+                            issues.append(f"⚠️ Apenas {value_valid} de {len(import_df)} registros têm valor válido")
+                    
+                    if issues:
+                        st.write("**Problemas identificados:**")
+                        for issue in issues:
+                            st.write(f"- {issue}")
+                    else:
+                        st.write("**Possíveis causas:**")
+                        st.write("- Os dados não foram parseados corretamente pelo ImportService")
+                        st.write("- Erro na validação de grupos/subgrupos")
+                        st.write("- Dados duplicados que foram ignorados")
+                        st.write("- Erro silencioso durante o processamento")
+                
+                st.info("""
                 **Soluções:**
-                - Verifique se há registros selecionados (checkboxes marcadas)
-                - Revise os dados na tabela e corrija campos obrigatórios
+                - Verifique os dados na tabela e corrija campos obrigatórios (data e valor)
+                - Certifique-se de que as datas estão no formato correto (DD/MM/YYYY ou YYYY-MM-DD)
+                - Verifique se os valores são números válidos
                 - Verifique se os grupos/subgrupos estão corretos
                 - Tente importar novamente após fazer as correções
                 """)
