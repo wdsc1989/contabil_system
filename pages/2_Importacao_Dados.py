@@ -278,40 +278,89 @@ if uploaded_file:
                 st.stop()
         
         elif file_type == 'PDF':
+            update_status("Processando arquivo PDF...")
+            progress_bar.progress(20)
             file_content = uploaded_file.read()
             
-            # Tenta extrair usando método completo primeiro (com OCR se necessário)
-            pdf_data = None
-            try:
-                pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
-                df = pdf_data.get('dataframe')
+            # Valida PDF antes de processar
+            is_valid, validation_error = ParserService.validate_pdf(file_content)
+            if not is_valid:
+                st.error(f"❌ **PDF Inválido ou Corrompido**\n\n{validation_error}")
                 
-                # Se OCR foi usado, informa ao usuário
-                if pdf_data.get('metadata', {}).get('ocr_used', False):
-                    st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
-            except Exception as e:
-                st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
-                # Fallback para método simples
-                df = ParserService.parse_pdf_to_dataframe(file_content)
-            
-            if df is None or df.empty:
-                # Se não encontrou tabelas, tenta extrair do texto usando regex
-                if pdf_data and pdf_data.get('full_text'):
-                    st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
-                    # Tenta criar DataFrame a partir do texto extraído
-                    df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
-                    if df is None or df.empty:
-                        st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
-                        df = pd.DataFrame()
-                    # Salva dados completos do PDF para referência
-                    st.session_state['pdf_full_data'] = pdf_data
+                with st.expander("💡 Soluções possíveis", expanded=True):
+                    st.markdown("""
+                    **O arquivo PDF não pôde ser processado. Tente uma das seguintes soluções:**
+                    
+                    1. **Verificar o arquivo**: Abra o PDF em um visualizador (Adobe Reader, Chrome, etc.) e verifique se está íntegro
+                    2. **Re-salvar o PDF**: Abra o PDF e salve novamente (isso pode corrigir problemas de estrutura)
+                    3. **Converter para imagens**: Converta o PDF para imagens (JPG/PNG) e importe as imagens
+                    4. **Usar OCR direto**: Se o PDF é baseado em imagens, tente converter para imagens primeiro
+                    """)
+                
+                # Oferece tentar processar com OCR mesmo assim
+                if st.button("🔄 Tentar processar com OCR (pode demorar)", use_container_width=True):
+                    try:
+                        update_status("Tentando processar PDF corrompido com OCR...")
+                        progress_bar.progress(30)
+                        pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                        df = pdf_data.get('dataframe')
+                        st.session_state['pdf_full_data'] = pdf_data
+                        st.success("✅ PDF processado com OCR! Alguns dados podem estar incompletos.")
+                    except Exception as ocr_error:
+                        st.error(f"❌ OCR também falhou: {str(ocr_error)}")
+                        st.stop()
                 else:
-                    st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
                     st.stop()
             else:
-                # Salva dados completos do PDF para referência
-                if pdf_data:
-                    st.session_state['pdf_full_data'] = pdf_data
+                # PDF válido, processa normalmente
+                pdf_data = None
+                try:
+                    pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
+                    df = pdf_data.get('dataframe')
+                    
+                    # Se OCR foi usado, informa ao usuário
+                    if pdf_data.get('metadata', {}).get('ocr_used', False):
+                        st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
+                        st.warning(f"⚠️ PDF pode estar corrompido: {str(e)}")
+                        st.info("🔄 Tentando processar com OCR como alternativa...")
+                        try:
+                            pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                            df = pdf_data.get('dataframe')
+                            st.session_state['pdf_full_data'] = pdf_data
+                            st.success("✅ PDF processado com OCR!")
+                        except Exception as ocr_error:
+                            st.error(f"❌ Não foi possível processar o PDF: {str(ocr_error)}")
+                            st.stop()
+                    else:
+                        st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
+                        # Fallback para método simples
+                        try:
+                            df = ParserService.parse_pdf_to_dataframe(file_content)
+                        except Exception as fallback_error:
+                            st.error(f"❌ Erro ao processar PDF: {str(fallback_error)}")
+                            st.stop()
+                
+                if df is None or df.empty:
+                    # Se não encontrou tabelas, tenta extrair do texto usando regex
+                    if pdf_data and pdf_data.get('full_text'):
+                        st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
+                        # Tenta criar DataFrame a partir do texto extraído
+                        df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
+                        if df is None or df.empty:
+                            st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
+                            df = pd.DataFrame()
+                        # Salva dados completos do PDF para referência
+                        st.session_state['pdf_full_data'] = pdf_data
+                    else:
+                        st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
+                        st.stop()
+                else:
+                    # Salva dados completos do PDF para referência
+                    if pdf_data:
+                        st.session_state['pdf_full_data'] = pdf_data
         
         elif file_type == 'OFX':
             update_status("Processando arquivo OFX...")

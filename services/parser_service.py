@@ -4,7 +4,7 @@ Serviço de parsing de arquivos (CSV, Excel, PDF, OFX)
 import pandas as pd
 import pdfplumber
 from ofxparse import OfxParser
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from io import BytesIO, StringIO
 import re
 
@@ -271,6 +271,36 @@ class ParserService:
         return pd.DataFrame({'text': [line for line in lines if line.strip()]})
     
     @staticmethod
+    def validate_pdf(file_content: bytes) -> Tuple[bool, Optional[str]]:
+        """
+        Valida se o arquivo é um PDF válido antes de tentar processá-lo
+        
+        Returns:
+            (is_valid, error_message)
+        """
+        try:
+            # Verifica se começa com assinatura PDF
+            if not file_content.startswith(b'%PDF'):
+                return False, "Arquivo não é um PDF válido (não contém assinatura PDF)"
+            
+            # Tenta abrir com pdfplumber para validar estrutura
+            try:
+                with pdfplumber.open(BytesIO(file_content)) as pdf:
+                    # Tenta acessar metadados ou páginas para validar
+                    _ = len(pdf.pages)
+                return True, None
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "root" in error_msg or "no /root" in error_msg:
+                    return False, "PDF corrompido ou inválido (sem objeto /Root). O arquivo pode estar danificado."
+                elif "encrypted" in error_msg or "password" in error_msg or "senha" in error_msg:
+                    return False, "PDF protegido por senha. Remova a senha antes de importar."
+                else:
+                    return False, f"PDF inválido ou corrompido: {str(e)}"
+        except Exception as e:
+            return False, f"Erro ao validar PDF: {str(e)}"
+    
+    @staticmethod
     def parse_pdf_complete(file_content: bytes, use_ocr_if_needed: bool = True) -> Dict[str, Any]:
         """
         Extrai informações completas de um PDF incluindo texto, tabelas, metadados e contexto
@@ -284,6 +314,18 @@ class ParserService:
         - metadata: Metadados do PDF
         - headers_footers: Cabeçalhos/rodapés extraídos
         """
+        # Valida PDF antes de processar
+        is_valid, error_msg = ParserService.validate_pdf(file_content)
+        if not is_valid:
+            # Se PDF é inválido mas pode ser convertido para imagem, tenta OCR
+            if use_ocr_if_needed:
+                try:
+                    return ParserService._parse_pdf_with_ocr_fallback(file_content)
+                except Exception as ocr_error:
+                    raise Exception(f"{error_msg}\n\nTentativa de OCR também falhou: {str(ocr_error)}")
+            else:
+                raise Exception(error_msg)
+        
         try:
             # Primeiro, tenta extrair texto normalmente
             pages_info = []
@@ -584,6 +626,76 @@ class ParserService:
         return ''
 
     @staticmethod
+    def _parse_pdf_with_ocr_fallback(file_content: bytes) -> Dict[str, Any]:
+        """
+        Tenta processar PDF corrompido ou inválido convertendo para imagens e usando OCR
+        """
+        try:
+            # Tenta converter PDF para imagens usando PyMuPDF
+            try:
+                import fitz  # PyMuPDF
+                pdf_document = fitz.open(stream=file_content, filetype="pdf")
+                
+                if pdf_document.is_encrypted:
+                    pdf_document.close()
+                    raise Exception("PDF protegido por senha")
+                
+                # Converte cada página para imagem e processa com OCR
+                full_text_parts = []
+                all_tables = []
+                
+                for page_num in range(len(pdf_document)):
+                    page = pdf_document[page_num]
+                    # Renderiza página como imagem
+                    mat = fitz.Matrix(2.0, 2.0)  # 200 DPI
+                    pix = page.get_pixmap(matrix=mat)
+                    
+                    # Converte para PIL Image
+                    from PIL import Image
+                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                    
+                    # Processa com OCR
+                    try:
+                        import pytesseract
+                        page_text = pytesseract.image_to_string(img, lang='por+eng')
+                        if page_text.strip():
+                            full_text_parts.append(page_text)
+                    except ImportError:
+                        # Tenta easyocr como fallback
+                        try:
+                            import easyocr
+                            reader = easyocr.Reader(['pt', 'en'])
+                            result = reader.readtext(img)
+                            page_text = '\n'.join([item[1] for item in result])
+                            if page_text.strip():
+                                full_text_parts.append(page_text)
+                        except ImportError:
+                            raise Exception("Bibliotecas de OCR não instaladas. Instale: pip install pytesseract ou easyocr")
+                
+                pdf_document.close()
+                
+                full_text = '\n\n'.join(full_text_parts)
+                
+                # Tenta criar DataFrame do texto extraído
+                dataframe = ParserService._text_to_dataframe_from_ocr(full_text)
+                
+                return {
+                    'dataframe': dataframe,
+                    'full_text': full_text,
+                    'pages': [{'page_num': i+1, 'text': text, 'tables': []} for i, text in enumerate(full_text_parts)],
+                    'metadata': {
+                        'num_pages': len(full_text_parts),
+                        'ocr_used': True,
+                        'pdf_corrupted': True
+                    },
+                    'headers_footers': {}
+                }
+            except ImportError:
+                raise Exception("PyMuPDF não instalado. Para processar PDFs corrompidos, instale: pip install PyMuPDF")
+        except Exception as e:
+            raise Exception(f"Erro ao processar PDF corrompido com OCR: {str(e)}")
+    
+    @staticmethod
     def parse_pdf_to_dataframe(file_content: bytes) -> Optional[pd.DataFrame]:
         """
         Tenta extrair todas as tabelas de PDF e converter para DataFrame
@@ -592,20 +704,37 @@ class ParserService:
         Agora usa parse_pdf_complete internamente para melhor extração
         """
         try:
-            result = ParserService.parse_pdf_complete(file_content)
+            result = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
             return result.get('dataframe')
         except Exception as e:
-            # Fallback para método antigo se o novo falhar
-            try:
-                result = ParserService.parse_pdf(file_content)
-                
-                if not result['tables']:
-                    return None
-                
-                dataframe = ParserService._tables_to_dataframe(result['tables'])
-                return dataframe
-            except:
-                raise Exception(f"Erro ao extrair tabela do PDF: {str(e)}")
+            error_msg = str(e).lower()
+            # Se o erro indica PDF corrompido, tenta OCR
+            if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
+                try:
+                    result = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                    return result.get('dataframe')
+                except Exception as ocr_error:
+                    raise Exception(
+                        f"PDF corrompido ou inválido e não foi possível processar com OCR.\n"
+                        f"Erro original: {str(e)}\n"
+                        f"Erro OCR: {str(ocr_error)}\n\n"
+                        f"Soluções:\n"
+                        f"1. Verifique se o arquivo PDF está íntegro\n"
+                        f"2. Tente abrir o PDF em um visualizador e salvar novamente\n"
+                        f"3. Converta o PDF para imagens (JPG/PNG) e importe as imagens"
+                    )
+            else:
+                # Fallback para método antigo se o novo falhar
+                try:
+                    result = ParserService.parse_pdf(file_content)
+                    
+                    if not result['tables']:
+                        return None
+                    
+                    dataframe = ParserService._tables_to_dataframe(result['tables'])
+                    return dataframe
+                except:
+                    raise Exception(f"Erro ao extrair tabela do PDF: {str(e)}")
 
     @staticmethod
     def parse_ofx(file_content: bytes) -> Dict[str, Any]:
@@ -1249,6 +1378,7 @@ class ParserService:
                     stats['sheets_processed'] = df['_sheet_name'].nunique()
         
         return stats
+
 
 
 
