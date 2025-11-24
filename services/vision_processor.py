@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import json
 import pandas as pd
 from PIL import Image
+from datetime import datetime
 
 from config.ai_config import AIConfigManager
 
@@ -248,49 +249,108 @@ class VisionProcessor:
                 groups_list.append(f"- {group_name} (ID: {group.get('id')}): {', '.join(subgroup_names) if subgroup_names else 'sem subgrupos'}")
             groups_info = "\n".join(groups_list)
         
-        prompt = f"""Você é um especialista em extração de dados financeiros. Analise este arquivo e extraia todos os dados estruturados.
+        # Define regras claras para cada tipo de dado
+        type_rules = {
+            "transactions": "Transações financeiras gerais (entradas e saídas de dinheiro). Campos obrigatórios: date, description, value, type (entrada/saida).",
+            "bank_statements": "Extratos bancários com movimentações de conta. Campos obrigatórios: date, description, value, balance. Deve incluir bank_name e account se disponíveis.",
+            "contracts": "Contratos e eventos (festas, casamentos, etc.). Campos obrigatórios: contract_start, event_date, service_value, contractor_name.",
+            "accounts_payable": "Contas a pagar. Campos obrigatórios: account_name, due_date, value. Pode incluir cpf_cnpj, monthly_installments.",
+            "accounts_receivable": "Contas a receber. Campos obrigatórios: account_name, due_date, value. Pode incluir cpf_cnpj, contract_value.",
+            "financial_investments": "Investimentos financeiros. Campos obrigatórios: date. Pode incluir applied_value, redeemed_value, yield_value, balance.",
+            "credit_card_invoices": "Faturas de cartão de crédito. Campos obrigatórios: transaction_date, value, description.",
+            "card_machine_statements": "Extratos de máquina de cartão. Campos obrigatórios: date, value, description.",
+            "inventory": "Controle de estoque. Campos obrigatórios: product_name, quantity, value."
+        }
+        
+        prompt = f"""Você é um especialista em extração e classificação de dados financeiros. Sua tarefa é analisar este arquivo e extrair TODOS os dados estruturados com classificação precisa.
 
-Tipo de arquivo detectado: {file_type}
+Tipo de arquivo: {file_type}
 """
         
         if import_type:
-            prompt += f"Tipo de dado esperado: {import_type}\n"
+            prompt += f"""
+TIPO DE DADO ESPERADO: {import_type}
+{type_rules.get(import_type, '')}
+
+Você DEVE classificar todos os registros como {import_type} e usar os campos apropriados para este tipo.
+"""
         else:
-            prompt += "Detecte automaticamente o tipo de dado (transactions, bank_statements, contracts, accounts_payable, accounts_receivable, financial_investments, credit_card_invoices, card_machine_statements, inventory).\n"
+            prompt += """
+DETECÇÃO AUTOMÁTICA DO TIPO DE DADO:
+Analise cuidadosamente o conteúdo e identifique o tipo de dado. Escolha APENAS UM dos seguintes tipos:
+
+"""
+            for dtype, rule in type_rules.items():
+                prompt += f"- {dtype}: {rule}\n"
+            
+            prompt += """
+IMPORTANTE: Você DEVE escolher o tipo mais apropriado baseado no conteúdo real do arquivo.
+"""
         
         if groups_info:
-            prompt += f"\nGrupos e Subgrupos disponíveis para classificação:\n{groups_info}\n"
+            prompt += f"""
+CLASSIFICAÇÃO OBRIGATÓRIA DE GRUPOS E SUBGRUPOS:
+Você DEVE classificar CADA registro com group_id e subgroup_id apropriados baseado na descrição e contexto.
+
+Grupos e Subgrupos disponíveis:
+{groups_info}
+
+REGRAS DE CLASSIFICAÇÃO:
+1. Analise a descrição de cada transação/registro
+2. Identifique a natureza financeira (receita, despesa, investimento, etc.)
+3. Escolha o grupo mais apropriado baseado no contexto
+4. Escolha o subgrupo mais específico dentro do grupo selecionado
+5. Se nenhum grupo/subgrupo se encaixar perfeitamente, escolha o mais próximo possível
+6. NUNCA deixe group_id ou subgroup_id como null - SEMPRE atribua valores válidos
+
+EXEMPLOS DE CLASSIFICAÇÃO:
+- "Pagamento de fornecedor" → grupo de Despesas → subgrupo de Fornecedores
+- "Recebimento de cliente" → grupo de Receitas → subgrupo de Vendas
+- "Taxa bancária" → grupo de Despesas → subgrupo de Taxas/Bancárias
+- "Investimento em aplicação" → grupo de Investimentos → subgrupo apropriado
+"""
+        else:
+            prompt += """
+ATENÇÃO: Nenhum grupo/subgrupo foi fornecido. Use group_id e subgroup_id como null, mas tente inferir quando possível.
+"""
         
         prompt += """
-INSTRUÇÕES:
-1. Extraia TODOS os dados estruturados do arquivo
-2. Identifique o tipo de dado automaticamente se não foi especificado
-3. Para cada registro, classifique com group_id e subgroup_id apropriados baseado no contexto
-4. Normalize datas para formato YYYY-MM-DD
-5. Normalize valores monetários para números (sem símbolos de moeda)
-6. Extraia informações adicionais relevantes (nome do banco, conta, etc.)
+INSTRUÇÕES DETALHADAS:
+1. Extraia TODOS os registros do arquivo - não pule nenhum
+2. Para cada registro:
+   a. Identifique e extraia todos os campos relevantes
+   b. Normalize datas para formato YYYY-MM-DD (obrigatório)
+   c. Normalize valores monetários para números decimais (ex: 1234.56, não "R$ 1.234,56")
+   d. Determine se é entrada (valor positivo) ou saída (valor negativo) para o campo "type"
+   e. Classifique com group_id e subgroup_id apropriados (OBRIGATÓRIO se grupos foram fornecidos)
+   f. Extraia informações adicionais (banco, conta, CPF/CNPJ, etc.) quando disponíveis
 
-FORMATO DE RESPOSTA (JSON válido):
+3. Validação obrigatória:
+   - Todas as datas devem estar no formato YYYY-MM-DD
+   - Todos os valores devem ser números (float)
+   - Todos os registros devem ter group_id e subgroup_id (se grupos foram fornecidos)
+   - Campos obrigatórios não podem estar vazios ou null
+
+FORMATO DE RESPOSTA (JSON válido e completo):
 {
     "detected_type": "bank_statements",
     "records": [
         {
             "date": "2024-01-15",
-            "description": "Descrição da transação",
+            "description": "Descrição completa da transação",
             "value": 1000.00,
-            "type": "entrada" ou "saida",
+            "type": "entrada",
             "group_id": 1,
             "subgroup_id": 2,
-            "bank_name": "Banco do Brasil" (se aplicável),
-            "account": "12345-6" (se aplicável),
-            "balance": 5000.00 (se aplicável),
-            ... (outros campos relevantes)
+            "bank_name": "Banco do Brasil",
+            "account": "12345-6",
+            "balance": 5000.00
         }
     ],
     "summary": {
         "total_records": 50,
-        "bank_name": "Banco do Brasil" (se detectado),
-        "account_info": "12345-6" (se detectado),
+        "bank_name": "Banco do Brasil",
+        "account_info": "12345-6",
         "date_range": {
             "start": "2024-01-01",
             "end": "2024-01-31"
@@ -298,11 +358,14 @@ FORMATO DE RESPOSTA (JSON válido):
     }
 }
 
-IMPORTANTE:
-- Retorne APENAS JSON válido, sem texto adicional antes ou depois
-- Se houver muitos registros, extraia TODOS (não limite)
-- Seja preciso na classificação de grupos/subgrupos
-- Mantenha todas as informações relevantes
+REGRAS CRÍTICAS:
+1. Retorne APENAS JSON válido - sem texto adicional, sem markdown, sem explicações
+2. Extraia TODOS os registros - não limite a quantidade
+3. Classifique CADA registro com group_id e subgroup_id (obrigatório se grupos foram fornecidos)
+4. Seja preciso e consistente na classificação
+5. Mantenha todas as informações relevantes de cada registro
+6. Valide que todos os campos obrigatórios estão presentes
+7. Use valores numéricos reais (não strings) para valores monetários
 """
         
         return prompt
@@ -382,12 +445,17 @@ IMPORTANTE:
                         'issues': ['Resposta da IA não contém JSON válido']
                     }
                 
+                # Valida e corrige dados
+                records = json_data.get('records', [])
+                issues = []
+                validated_records = self._validate_and_fix_records(records, groups_subgroups, issues)
+                
                 return {
                     'success': True,
-                    'processed_data': json_data.get('records', []),
+                    'processed_data': validated_records,
                     'summary': json_data.get('summary', {}),
                     'detected_type': json_data.get('detected_type', import_type),
-                    'issues': []
+                    'issues': issues
                 }
             
             # Para imagens/PDFs: usa Vision API
@@ -443,12 +511,16 @@ IMPORTANTE:
                 combined_summary = self._combine_summaries(all_summaries)
                 combined_summary['total_records'] = len(all_records)
                 
+                # Valida e corrige dados
+                issues = []
+                validated_records = self._validate_and_fix_records(all_records, groups_subgroups, issues)
+                
                 return {
                     'success': True,
-                    'processed_data': all_records,
+                    'processed_data': validated_records,
                     'summary': combined_summary,
                     'detected_type': detected_type or import_type,
-                    'issues': []
+                    'issues': issues
                 }
             else:
                 # Arquivo único (imagem, CSV, Excel)
@@ -482,12 +554,17 @@ IMPORTANTE:
                         'issues': ['Resposta da IA não contém JSON válido']
                     }
                 
+                # Valida e corrige dados
+                records = json_data.get('records', [])
+                issues = []
+                validated_records = self._validate_and_fix_records(records, groups_subgroups, issues)
+                
                 return {
                     'success': True,
-                    'processed_data': json_data.get('records', []),
+                    'processed_data': validated_records,
                     'summary': json_data.get('summary', {}),
                     'detected_type': json_data.get('detected_type', import_type),
-                    'issues': []
+                    'issues': issues
                 }
         
         except Exception as e:
@@ -528,6 +605,130 @@ IMPORTANTE:
             pass
         
         return None
+    
+    def _validate_and_fix_records(self, records: List[Dict], groups_subgroups: Optional[List[Dict]] = None, issues: List[str] = None) -> List[Dict]:
+        """
+        Valida e corrige registros retornados pela IA
+        """
+        if issues is None:
+            issues = []
+        
+        validated = []
+        missing_group_count = 0
+        missing_subgroup_count = 0
+        invalid_date_count = 0
+        invalid_value_count = 0
+        
+        # Cria mapeamento de IDs válidos se grupos foram fornecidos
+        valid_group_ids = set()
+        valid_subgroup_ids = {}
+        if groups_subgroups:
+            for group in groups_subgroups:
+                group_id = group.get('id')
+                if group_id:
+                    valid_group_ids.add(group_id)
+                    subgroups = group.get('subgroups', [])
+                    for sg in subgroups:
+                        sg_id = sg.get('id')
+                        if sg_id:
+                            if group_id not in valid_subgroup_ids:
+                                valid_subgroup_ids[group_id] = set()
+                            valid_subgroup_ids[group_id].add(sg_id)
+        
+        for idx, record in enumerate(records):
+            try:
+                # Valida e corrige data
+                if 'date' in record:
+                    date_val = record['date']
+                    if isinstance(date_val, str):
+                        # Tenta parsear data
+                        from datetime import datetime
+                        try:
+                            # Tenta vários formatos
+                            for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                                try:
+                                    dt = datetime.strptime(date_val.strip(), fmt)
+                                    record['date'] = dt.strftime('%Y-%m-%d')
+                                    break
+                                except:
+                                    continue
+                            else:
+                                invalid_date_count += 1
+                        except:
+                            invalid_date_count += 1
+                    elif isinstance(date_val, (datetime, pd.Timestamp)):
+                        record['date'] = date_val.strftime('%Y-%m-%d')
+                
+                # Valida e corrige valor
+                if 'value' in record:
+                    value_val = record['value']
+                    if isinstance(value_val, str):
+                        # Tenta converter string para float
+                        try:
+                            # Remove símbolos de moeda
+                            clean_val = value_val.replace('R$', '').replace('$', '').strip()
+                            # Trata formato brasileiro
+                            if ',' in clean_val and '.' in clean_val:
+                                if clean_val.rindex(',') > clean_val.rindex('.'):
+                                    clean_val = clean_val.replace('.', '').replace(',', '.')
+                                else:
+                                    clean_val = clean_val.replace(',', '')
+                            elif ',' in clean_val:
+                                clean_val = clean_val.replace(',', '.')
+                            record['value'] = float(clean_val)
+                        except:
+                            invalid_value_count += 1
+                    elif not isinstance(value_val, (int, float)):
+                        try:
+                            record['value'] = float(value_val)
+                        except:
+                            invalid_value_count += 1
+                
+                # Valida group_id e subgroup_id
+                if groups_subgroups and valid_group_ids:
+                    group_id = record.get('group_id')
+                    subgroup_id = record.get('subgroup_id')
+                    
+                    # Se group_id não está presente ou é inválido
+                    if not group_id or group_id not in valid_group_ids:
+                        missing_group_count += 1
+                        # Tenta usar o primeiro grupo disponível como fallback
+                        if valid_group_ids:
+                            record['group_id'] = list(valid_group_ids)[0]
+                            # Se tinha subgroup_id, remove pois pode não pertencer ao novo grupo
+                            if 'subgroup_id' in record:
+                                record['subgroup_id'] = None
+                    
+                    # Se subgroup_id não está presente ou é inválido para o group_id
+                    if group_id and group_id in valid_group_ids:
+                        if not subgroup_id or group_id not in valid_subgroup_ids or subgroup_id not in valid_subgroup_ids.get(group_id, set()):
+                            missing_subgroup_count += 1
+                            # Remove subgroup_id inválido (será None)
+                            record['subgroup_id'] = None
+                
+                # Garante que type está correto
+                if 'value' in record and 'type' not in record:
+                    value = record.get('value', 0)
+                    if isinstance(value, (int, float)):
+                        record['type'] = 'entrada' if value >= 0 else 'saida'
+                
+                validated.append(record)
+                
+            except Exception as e:
+                issues.append(f"Erro ao validar registro {idx + 1}: {str(e)}")
+                continue
+        
+        # Adiciona avisos aos issues
+        if missing_group_count > 0:
+            issues.append(f"{missing_group_count} registro(s) sem group_id válido - foram atribuídos ao primeiro grupo disponível")
+        if missing_subgroup_count > 0:
+            issues.append(f"{missing_subgroup_count} registro(s) sem subgroup_id válido - foram deixados como None")
+        if invalid_date_count > 0:
+            issues.append(f"{invalid_date_count} registro(s) com data inválida")
+        if invalid_value_count > 0:
+            issues.append(f"{invalid_value_count} registro(s) com valor inválido")
+        
+        return validated
     
     def _combine_summaries(self, summaries: List[Dict]) -> Dict:
         """
