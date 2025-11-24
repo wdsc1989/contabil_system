@@ -209,6 +209,21 @@ if uploaded_file:
     # Verifica se já foi processado
     file_hash = f"{uploaded_file.name}_{len(file_content)}"
     if 'processed_file_hash' not in st.session_state or st.session_state.processed_file_hash != file_hash:
+        # Detecta tipo de arquivo pela extensão
+        file_extension = uploaded_file.name.split('.')[-1].lower() if '.' in uploaded_file.name else ''
+        is_image_file = file_extension in ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp']
+        
+        file_type_map = {
+            'csv': 'CSV',
+            'txt': 'CSV',
+            'xlsx': 'Excel',
+            'xls': 'Excel',
+            'pdf': 'PDF',
+            'ofx': 'OFX'
+        }
+        
+        file_type = file_type_map.get(file_extension, 'CSV' if not is_image_file else 'Image')
+        
         # Processa arquivo
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -216,64 +231,51 @@ if uploaded_file:
         def update_status(message):
             status_text.info(f"🤖 {message}")
         
-<<<<<<< HEAD
-        # Permite override manual se necessário
-        file_type = detected_type
-        if 'show_file_type_override' in st.session_state and st.session_state.show_file_type_override:
-            st.markdown("---")
-            st.subheader("✏️ Seleção Manual do Tipo de Arquivo")
-            file_type = st.selectbox(
-                "Tipo de arquivo:",
-                options=['CSV', 'Excel', 'PDF', 'OFX', 'Image'],
-                index=['CSV', 'Excel', 'PDF', 'OFX', 'Image'].index(detected_type) if detected_type in ['CSV', 'Excel', 'PDF', 'OFX', 'Image'] else 0,
-                key="manual_file_type"
-            )
-            if st.button("✅ Confirmar Tipo", use_container_width=True):
-                st.session_state.detected_file_type = file_type
-                st.session_state.show_file_type_override = False
-                st.rerun()
-            
-            if 'detected_file_type' in st.session_state:
-                file_type = st.session_state.detected_file_type
+        update_status(f"Detectando tipo de arquivo: {file_type}...")
+        progress_bar.progress(10)
         
         # Parse do arquivo
         df = None
         
         if file_type == 'CSV':
+            update_status("Processando arquivo CSV...")
+            progress_bar.progress(20)
             file_content = uploaded_file.read()
             delimiter = ParserService.detect_delimiter(file_content)
             
-            col1, col2 = st.columns(2)
-            with col1:
-                encoding = st.selectbox("Encoding:", ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252'])
-            with col2:
-                delimiter = st.selectbox("Delimitador:", [',', ';', '\t', '|'], 
-                                        index=[',', ';', '\t', '|'].index(delimiter))
+            # Tenta diferentes encodings automaticamente
+            encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            df = None
+            for encoding in encodings:
+                try:
+                    df = ParserService.parse_csv(file_content, encoding, delimiter)
+                    if df is not None and not df.empty:
+                        break
+                except:
+                    continue
             
-            df = ParserService.parse_csv(file_content, encoding, delimiter)
+            if df is None or df.empty:
+                # Última tentativa com utf-8 e erro ignorado
+                try:
+                    df = ParserService.parse_csv(file_content, 'utf-8', delimiter, errors='ignore')
+                except:
+                    st.error("❌ Não foi possível processar o arquivo CSV. Verifique o formato e encoding.")
+                    st.stop()
         
         elif file_type == 'Excel':
+            update_status("Processando arquivo Excel...")
+            progress_bar.progress(20)
             file_content = uploaded_file.read()
-            sheets = ParserService.get_excel_sheets(file_content)
             
-            if len(sheets) > 1:
-                col1, col2 = st.columns(2)
-                with col1:
-                    read_all = st.checkbox("📋 Ler todas as abas", value=False, 
-                                          help="Se marcado, combina dados de todas as abas em um único arquivo")
-                with col2:
-                    if not read_all:
-                        selected_sheet = st.selectbox("Selecione a planilha:", sheets)
-                    else:
-                        st.info(f"📊 {len(sheets)} abas serão processadas")
-                
-                if read_all:
-                    df = ParserService.parse_excel(file_content, all_sheets=True)
-                    st.success(f"✅ {len(sheets)} abas processadas e combinadas")
-                else:
-                    df = ParserService.parse_excel(file_content, selected_sheet)
-            else:
-                df = ParserService.parse_excel(file_content)
+            # Processa todas as abas automaticamente
+            try:
+                df = ParserService.parse_excel(file_content, all_sheets=True)
+                if df is None or df.empty:
+                    # Fallback: tenta apenas a primeira aba
+                    df = ParserService.parse_excel(file_content)
+            except Exception as e:
+                st.error(f"❌ Erro ao processar Excel: {str(e)}")
+                st.stop()
         
         elif file_type == 'PDF':
             file_content = uploaded_file.read()
@@ -312,10 +314,10 @@ if uploaded_file:
                     st.session_state['pdf_full_data'] = pdf_data
         
         elif file_type == 'OFX':
+            update_status("Processando arquivo OFX...")
+            progress_bar.progress(20)
             file_content = uploaded_file.read()
             df = ParserService.ofx_to_dataframe(file_content)
-            # OFX é sempre extrato bancário
-            auto_detected_type = 'bank_statements'
         elif file_type == 'Image' or is_image_file:
             file_content = uploaded_file.read()
             file_extension = uploaded_file.name.split('.')[-1].lower()
@@ -372,9 +374,6 @@ if uploaded_file:
                     st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
                 
                 st.stop()
-            auto_detected_type = None
-        else:
-            auto_detected_type = None
         
         # Limpa estado de override após processar
         if 'show_file_type_override' in st.session_state:
@@ -1373,7 +1372,8 @@ if uploaded_file:
     with col1:
         st.metric("📊 Registros", f"{len(processed_data):,}".replace(',', '.'))
     with col2:
-        type_display = type_names.get(detected_type, detected_type)
+        import_type = summary.get('import_type', 'transactions')
+        type_display = type_names.get(import_type, import_type)
         type_short = type_display.split(' ')[-1] if ' ' in type_display else type_display
         st.metric("📋 Tipo", type_short)
     with col3:
@@ -1542,8 +1542,9 @@ if uploaded_file:
     st.subheader("📥 Importação")
     
     # Configurações específicas por tipo (apenas se necessário)
+    import_type = summary.get('import_type', 'transactions')
     bank_name = "Banco"
-    if detected_type == 'bank_statements':
+    if import_type == 'bank_statements':
         bank_name = summary.get('bank_name', 'Banco')
         if 'bank_name_override' not in st.session_state:
             st.session_state.bank_name_override = bank_name
@@ -1677,14 +1678,15 @@ if uploaded_file:
             with st.spinner("💾 Preparando importação..."):
                 imported_count = 0
                 import_result = None
+                import_type = summary.get('import_type', 'transactions')
                 
-                if detected_type == 'transactions':
+                if import_type == 'transactions':
                     imported_count = ImportService.import_transactions(
                         db, client_id, import_df, 'imported', uploaded_file.name,
                         None, None, progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'bank_statements':
+                elif import_type == 'bank_statements':
                     import_result = ImportService.import_bank_statements(
                         db, client_id, import_df, bank_name, uploaded_file.name,
                         None, None, progress_callback=update_import_progress
@@ -1692,43 +1694,43 @@ if uploaded_file:
                     imported_count = import_result.get('statements', 0)
                     transactions_created = import_result.get('transactions', 0)
                 
-                elif detected_type == 'contracts':
+                elif import_type == 'contracts':
                     imported_count = ImportService.import_contracts(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'accounts_payable':
+                elif import_type == 'accounts_payable':
                     imported_count = ImportService.import_accounts_payable(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'accounts_receivable':
+                elif import_type == 'accounts_receivable':
                     imported_count = ImportService.import_accounts_receivable(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'financial_investments':
+                elif import_type == 'financial_investments':
                     imported_count = ImportService.import_financial_investments(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'credit_card_invoices':
+                elif import_type == 'credit_card_invoices':
                     imported_count = ImportService.import_credit_card_invoices(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'card_machine_statements':
+                elif import_type == 'card_machine_statements':
                     imported_count = ImportService.import_card_machine_statements(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
                     )
                 
-                elif detected_type == 'inventory':
+                elif import_type == 'inventory':
                     imported_count = ImportService.import_inventory(
                         db, client_id, import_df, None, None,
                         progress_callback=update_import_progress
@@ -1738,11 +1740,12 @@ if uploaded_file:
             
             # Armazena resultado
             from datetime import datetime
-            if detected_type == 'bank_statements' and imported_count > 0:
+            import_type = summary.get('import_type', 'transactions')
+            if import_type == 'bank_statements' and imported_count > 0:
                 transactions_created = import_result.get('transactions', 0)
                 st.session_state.import_result = {
                     'status': 'success',
-                    'import_type': detected_type,
+                    'import_type': import_type,
                     'count': imported_count,
                     'transactions_created': transactions_created,
                     'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!",
@@ -1752,7 +1755,7 @@ if uploaded_file:
             elif imported_count > 0:
                 st.session_state.import_result = {
                     'status': 'success',
-                    'import_type': detected_type,
+                    'import_type': import_type,
                     'count': imported_count,
                     'message': f"{imported_count} registro(s) importado(s) com sucesso!",
                     'timestamp': datetime.now().isoformat()
@@ -1765,7 +1768,8 @@ if uploaded_file:
                 # Mostra informações de debug
                 with st.expander("🔍 Detalhes do problema", expanded=True):
                     st.write(f"**Registros selecionados:** {len(st.session_state.selected_rows)}")
-                    st.write(f"**Tipo de importação:** {detected_type}")
+                    import_type = summary.get('import_type', 'transactions')
+                    st.write(f"**Tipo de importação:** {import_type}")
                     
                     # Verifica problemas comuns
                     issues = []
