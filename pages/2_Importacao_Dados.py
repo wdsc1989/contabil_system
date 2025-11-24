@@ -283,19 +283,40 @@ if uploaded_file:
             file_content = uploaded_file.read()
             
             # Valida PDF antes de processar
-            is_valid, validation_error = ParserService.validate_pdf(file_content)
+            is_valid, validation_error = ParserService.validate_pdf(file_content, uploaded_file.name)
             if not is_valid:
-                st.error(f"❌ **PDF Inválido ou Corrompido**\n\n{validation_error}")
+                st.error(f"❌ **Erro ao Validar PDF**\n\n{validation_error}")
+                
+                # Detecta tipo real do arquivo para dar sugestões específicas
+                detected_type = ParserService.detect_file_type(file_content, uploaded_file.name)
                 
                 with st.expander("💡 Soluções possíveis", expanded=True):
-                    st.markdown("""
-                    **O arquivo PDF não pôde ser processado. Tente uma das seguintes soluções:**
-                    
-                    1. **Verificar o arquivo**: Abra o PDF em um visualizador (Adobe Reader, Chrome, etc.) e verifique se está íntegro
-                    2. **Re-salvar o PDF**: Abra o PDF e salve novamente (isso pode corrigir problemas de estrutura)
-                    3. **Converter para imagens**: Converta o PDF para imagens (JPG/PNG) e importe as imagens
-                    4. **Usar OCR direto**: Se o PDF é baseado em imagens, tente converter para imagens primeiro
-                    """)
+                    if detected_type == 'EXCEL':
+                        st.markdown("""
+                        **Este arquivo é um Excel, não um PDF:**
+                        
+                        1. **Opção 1**: Selecione o tipo de arquivo correto (Excel) ao fazer upload
+                        2. **Opção 2**: Converta o Excel para PDF usando "Salvar como PDF" no Excel
+                        3. **Opção 3**: Importe diretamente como Excel (o sistema suporta Excel)
+                        """)
+                    elif detected_type == 'IMAGE':
+                        st.markdown("""
+                        **Este arquivo é uma imagem, não um PDF:**
+                        
+                        1. **Opção 1**: Selecione o tipo de arquivo correto (Imagem) ao fazer upload
+                        2. **Opção 2**: Converta a imagem para PDF usando um conversor online ou software
+                        3. **Opção 3**: Importe diretamente como imagem (o sistema suporta imagens)
+                        """)
+                    else:
+                        st.markdown("""
+                        **O arquivo não pôde ser processado como PDF. Tente uma das seguintes soluções:**
+                        
+                        1. **Verificar o arquivo**: Abra o arquivo em um visualizador apropriado e verifique se está íntegro
+                        2. **Re-salvar**: Se for realmente um PDF, abra e salve novamente (pode corrigir problemas de estrutura)
+                        3. **Verificar formato**: Certifique-se de que o arquivo é realmente um PDF e não foi apenas renomeado
+                        4. **Converter**: Se o arquivo é de outro formato (Excel, Word, Imagem), converta para PDF primeiro
+                        5. **Tentar OCR**: Se o PDF é baseado em imagens, tente o botão abaixo para processar com OCR
+                        """)
                 
                 # Oferece tentar processar com OCR mesmo assim
                 if st.button("🔄 Tentar processar com OCR (pode demorar)", use_container_width=True):

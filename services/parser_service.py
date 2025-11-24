@@ -271,7 +271,51 @@ class ParserService:
         return pd.DataFrame({'text': [line for line in lines if line.strip()]})
     
     @staticmethod
-    def validate_pdf(file_content: bytes) -> Tuple[bool, Optional[str]]:
+    def detect_file_type(file_content: bytes, filename: str = "") -> str:
+        """
+        Detecta o tipo real do arquivo baseado no conteúdo (magic bytes)
+        
+        Returns:
+            Tipo do arquivo: 'PDF', 'ZIP', 'EXCEL', 'IMAGE', 'TEXT', 'UNKNOWN'
+        """
+        if not file_content:
+            return 'UNKNOWN'
+        
+        # Remove BOM e espaços iniciais
+        content = file_content.lstrip()
+        
+        # Verifica assinaturas conhecidas (magic bytes)
+        if content.startswith(b'%PDF'):
+            return 'PDF'
+        elif content.startswith(b'PK\x03\x04'):  # ZIP (Excel, Word, etc)
+            # Verifica se é Excel
+            if filename.lower().endswith(('.xlsx', '.xls')):
+                return 'EXCEL'
+            return 'ZIP'
+        elif content.startswith(b'\x89PNG'):
+            return 'IMAGE'
+        elif content.startswith(b'\xff\xd8\xff'):  # JPEG
+            return 'IMAGE'
+        elif content.startswith(b'GIF'):
+            return 'IMAGE'
+        elif content.startswith(b'BM'):  # BMP
+            return 'IMAGE'
+        elif content.startswith(b'RIFF') and b'WEBP' in content[:12]:
+            return 'IMAGE'
+        elif content.startswith(b'OFX'):  # OFX
+            return 'OFX'
+        elif content.startswith(b'<?xml') or content.startswith(b'<'):
+            return 'TEXT'
+        else:
+            # Tenta detectar como texto
+            try:
+                content.decode('utf-8', errors='ignore')[:100]
+                return 'TEXT'
+            except:
+                return 'UNKNOWN'
+    
+    @staticmethod
+    def validate_pdf(file_content: bytes, filename: str = "") -> Tuple[bool, Optional[str]]:
         """
         Valida se o arquivo é um PDF válido antes de tentar processá-lo
         
@@ -279,20 +323,46 @@ class ParserService:
             (is_valid, error_message)
         """
         try:
+            # Verifica se o arquivo está vazio
+            if not file_content or len(file_content) < 10:
+                return False, "Arquivo vazio ou muito pequeno. Verifique se o arquivo foi carregado corretamente."
+            
+            # Remove BOM e espaços iniciais para verificação
+            content = file_content.lstrip()
+            
+            # Detecta tipo real do arquivo
+            file_type = ParserService.detect_file_type(file_content, filename)
+            
             # Verifica se começa com assinatura PDF
-            if not file_content.startswith(b'%PDF'):
-                return False, "Arquivo não é um PDF válido (não contém assinatura PDF)"
+            if not content.startswith(b'%PDF'):
+                # Detecta tipo real e fornece mensagem específica
+                if file_type == 'EXCEL':
+                    return False, "Este arquivo é um Excel (.xlsx/.xls), não um PDF. Por favor, selecione o tipo correto ou converta para PDF."
+                elif file_type == 'IMAGE':
+                    return False, "Este arquivo é uma imagem, não um PDF. Por favor, selecione o tipo 'Imagem' ou converta para PDF."
+                elif file_type == 'ZIP':
+                    return False, "Este arquivo parece ser um arquivo ZIP (pode ser Excel ou Word). Não é um PDF válido."
+                elif file_type == 'TEXT':
+                    return False, "Este arquivo é texto, não um PDF. Verifique se o arquivo foi salvo corretamente como PDF."
+                else:
+                    return False, "Arquivo não é um PDF válido (não contém assinatura PDF). O arquivo pode estar corrompido, ser de outro formato, ou ter sido renomeado incorretamente."
+            
+            # Verifica versão do PDF (deve ter %PDF-1.x ou %PDF-2.x)
+            if len(content) < 8:
+                return False, "Arquivo PDF muito pequeno ou corrompido."
             
             # Tenta abrir com pdfplumber para validar estrutura
             try:
                 with pdfplumber.open(BytesIO(file_content)) as pdf:
                     # Tenta acessar metadados ou páginas para validar
-                    _ = len(pdf.pages)
+                    num_pages = len(pdf.pages)
+                    if num_pages == 0:
+                        return False, "PDF não contém páginas. O arquivo pode estar corrompido."
                 return True, None
             except Exception as e:
                 error_msg = str(e).lower()
                 if "root" in error_msg or "no /root" in error_msg:
-                    return False, "PDF corrompido ou inválido (sem objeto /Root). O arquivo pode estar danificado."
+                    return False, "PDF corrompido ou inválido (sem objeto /Root). O arquivo pode estar danificado. Tente abrir em um visualizador de PDF e salvar novamente."
                 elif "encrypted" in error_msg or "password" in error_msg or "senha" in error_msg:
                     return False, "PDF protegido por senha. Remova a senha antes de importar."
                 else:
