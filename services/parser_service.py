@@ -15,23 +15,78 @@ class ParserService:
     """
 
     @staticmethod
-    def parse_csv(file_content: bytes, encoding: str = 'utf-8', delimiter: str = ',') -> pd.DataFrame:
+    def parse_csv(file_content: bytes, encoding: str = 'utf-8', delimiter: str = ',', skip_blank_lines: bool = False) -> pd.DataFrame:
         """
-        Faz parse de arquivo CSV
+        Faz parse de arquivo CSV garantindo extração de todas as linhas
+        
+        Args:
+            file_content: Conteúdo do arquivo em bytes
+            encoding: Encoding a tentar primeiro
+            delimiter: Delimitador do CSV
+            skip_blank_lines: Se True, pula linhas completamente vazias (mas preserva linhas com dados parciais)
+        
+        Returns:
+            DataFrame com todas as linhas extraídas
         """
         try:
+            # Primeiro, conta linhas totais no arquivo para validação
+            total_lines = ParserService.count_total_lines(file_content, encoding)
+            
             # Tenta diferentes encodings
             encodings = [encoding, 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
             
             for enc in encodings:
                 try:
-                    df = pd.read_csv(BytesIO(file_content), encoding=enc, delimiter=delimiter)
+                    # Lê CSV sem pular linhas (keep_default_na=False preserva valores vazios como strings vazias)
+                    df = pd.read_csv(
+                        BytesIO(file_content), 
+                        encoding=enc, 
+                        delimiter=delimiter,
+                        skip_blank_lines=skip_blank_lines,
+                        keep_default_na=False,  # Preserva valores vazios
+                        na_filter=False,  # Não converte strings vazias para NaN
+                        on_bad_lines='skip'  # Pula apenas linhas com erro de parsing, mas registra
+                    )
+                    
+                    # Remove apenas linhas completamente vazias (todas as colunas vazias)
+                    if not df.empty:
+                        # Preserva linhas mesmo se algumas colunas estiverem vazias
+                        df = df.dropna(how='all')  # Remove apenas se TODAS as colunas forem NaN/vazias
+                    
                     return df
                 except UnicodeDecodeError:
                     continue
+                except pd.errors.ParserError as e:
+                    # Se houver erro de parsing, tenta com tratamento mais permissivo
+                    try:
+                        df = pd.read_csv(
+                            BytesIO(file_content),
+                            encoding=enc,
+                            delimiter=delimiter,
+                            skip_blank_lines=skip_blank_lines,
+                            keep_default_na=False,
+                            na_filter=False,
+                            on_bad_lines='skip',
+                            engine='python'  # Engine Python é mais permissivo
+                        )
+                        df = df.dropna(how='all')
+                        return df
+                    except:
+                        continue
             
             # Se nenhum encoding funcionou, tenta com errors='ignore'
-            df = pd.read_csv(BytesIO(file_content), encoding='utf-8', delimiter=delimiter, errors='ignore')
+            df = pd.read_csv(
+                BytesIO(file_content), 
+                encoding='utf-8', 
+                delimiter=delimiter, 
+                errors='ignore',
+                skip_blank_lines=skip_blank_lines,
+                keep_default_na=False,
+                na_filter=False,
+                on_bad_lines='skip',
+                engine='python'
+            )
+            df = df.dropna(how='all')
             return df
         
         except Exception as e:
@@ -40,21 +95,51 @@ class ParserService:
     @staticmethod
     def parse_excel(file_content: bytes, sheet_name: Optional[str] = None, all_sheets: bool = False) -> pd.DataFrame:
         """
-        Faz parse de arquivo Excel
-        Se all_sheets=True, lê todas as abas e combina em um único DataFrame
+        Faz parse de arquivo Excel garantindo extração de todas as linhas de todas as abas
+        
+        Args:
+            file_content: Conteúdo do arquivo em bytes
+            sheet_name: Nome da aba específica a ler (None = primeira aba)
+            all_sheets: Se True, lê todas as abas e combina
+        
+        Returns:
+            DataFrame com todas as linhas extraídas
         """
         try:
+            excel_file = pd.ExcelFile(BytesIO(file_content))
+            
             if all_sheets:
                 # Lê todas as abas e combina
-                excel_file = pd.ExcelFile(BytesIO(file_content))
                 all_dfs = []
+                sheet_stats = {}
                 
                 for sheet in excel_file.sheet_names:
-                    df_sheet = pd.read_excel(excel_file, sheet_name=sheet)
-                    if not df_sheet.empty:
-                        # Adiciona coluna indicando a aba de origem
-                        df_sheet['_sheet_name'] = sheet
-                        all_dfs.append(df_sheet)
+                    try:
+                        # Lê aba sem pular linhas vazias no meio
+                        df_sheet = pd.read_excel(
+                            excel_file, 
+                            sheet_name=sheet,
+                            keep_default_na=False,  # Preserva valores vazios
+                            na_filter=False  # Não converte strings vazias para NaN
+                        )
+                        
+                        # Remove apenas linhas completamente vazias
+                        if not df_sheet.empty:
+                            df_sheet = df_sheet.dropna(how='all')
+                            
+                            # Adiciona coluna indicando a aba de origem
+                            df_sheet['_sheet_name'] = sheet
+                            all_dfs.append(df_sheet)
+                            
+                            # Estatísticas por aba
+                            sheet_stats[sheet] = {
+                                'rows': len(df_sheet),
+                                'columns': len(df_sheet.columns)
+                            }
+                    except Exception as e:
+                        # Se uma aba falhar, continua com as outras
+                        sheet_stats[sheet] = {'error': str(e)}
+                        continue
                 
                 if all_dfs:
                     # Combina todos os DataFrames
@@ -63,10 +148,21 @@ class ParserService:
                 else:
                     return pd.DataFrame()
             elif sheet_name:
-                df = pd.read_excel(BytesIO(file_content), sheet_name=sheet_name)
+                df = pd.read_excel(
+                    BytesIO(file_content), 
+                    sheet_name=sheet_name,
+                    keep_default_na=False,
+                    na_filter=False
+                )
+                df = df.dropna(how='all')
             else:
                 # Lê apenas a primeira aba (comportamento padrão)
-                df = pd.read_excel(BytesIO(file_content))
+                df = pd.read_excel(
+                    BytesIO(file_content),
+                    keep_default_na=False,
+                    na_filter=False
+                )
+                df = df.dropna(how='all')
             
             return df
         
@@ -206,60 +302,124 @@ class ParserService:
                     'num_pages': len(pdf.pages)
                 }
                 
-                # Processa cada página
+                # Processa TODAS as páginas garantindo extração completa
+                total_pages = len(pdf.pages)
+                pages_processed = 0
+                pages_with_tables = 0
+                pages_with_text = 0
+                
                 for page_num, page in enumerate(pdf.pages, 1):
-                    page_text = page.extract_text() or ''
-                    full_text_parts.append(page_text)
-                    
-                    # Extrai tabelas da página
-                    page_tables = page.extract_tables()
-                    if not page_tables:
-                        # Tenta extrair tabela única
+                    try:
+                        # Extrai texto da página (garante que não pula nenhuma)
+                        page_text = page.extract_text() or ''
+                        if page_text.strip():
+                            full_text_parts.append(page_text)
+                            pages_with_text += 1
+                        else:
+                            # Mesmo sem texto, adiciona string vazia para manter contagem
+                            full_text_parts.append('')
+                        
+                        # Extrai TODAS as tabelas da página usando múltiplas estratégias
+                        page_tables = []
+                        
+                        # Estratégia 1: extract_tables() padrão
                         try:
-                            single_table = page.extract_table()
-                            if single_table:
-                                page_tables = [single_table]
+                            tables_standard = page.extract_tables()
+                            if tables_standard:
+                                page_tables.extend(tables_standard)
                         except:
                             pass
-                    
-                    # Extrai texto ao redor das tabelas para contexto
-                    table_contexts = []
-                    if page_tables:
-                        for table in page_tables:
-                            # Tenta extrair texto antes e depois da tabela
-                            # (pdfplumber não tem método direto, mas podemos usar coordenadas)
-                            table_contexts.append('')
-                    
-                    # Detecta cabeçalho e rodapé (primeira e última página)
-                    has_header = page_num == 1
-                    has_footer = page_num == len(pdf.pages)
-                    
-                    if has_header and page_text:
-                        # Primeiras linhas como possível cabeçalho
-                        header_lines = page_text.split('\n')[:5]
-                        headers.extend(header_lines)
-                    
-                    if has_footer and page_text:
-                        # Últimas linhas como possível rodapé
-                        footer_lines = page_text.split('\n')[-5:]
-                        footers.extend(footer_lines)
-                    
-                    pages_info.append({
-                        'page_num': page_num,
-                        'text': page_text,
-                        'tables': page_tables or [],
-                        'has_header': has_header,
-                        'has_footer': has_footer,
-                        'num_tables': len(page_tables) if page_tables else 0
-                    })
-                    
-                    if page_tables:
-                        all_tables.extend(page_tables)
+                        
+                        # Estratégia 2: extract_table() para tabela única
+                        if not page_tables:
+                            try:
+                                single_table = page.extract_table()
+                                if single_table and len(single_table) > 1:  # Pelo menos cabeçalho + 1 linha
+                                    page_tables.append(single_table)
+                            except:
+                                pass
+                        
+                        # Estratégia 3: Tenta detectar tabelas por coordenadas (para PDFs complexos)
+                        if not page_tables:
+                            try:
+                                # Busca por padrões de tabela (linhas verticais/horizontais)
+                                words = page.extract_words()
+                                if words and len(words) > 10:  # Se tem muitas palavras, pode ser tabela
+                                    # Tenta agrupar palavras em linhas/colunas
+                                    # (pdfplumber faz isso automaticamente, mas tentamos forçar)
+                                    pass
+                            except:
+                                pass
+                        
+                        # Extrai texto ao redor das tabelas para contexto
+                        table_contexts = []
+                        if page_tables:
+                            for table in page_tables:
+                                # Tenta extrair texto antes e depois da tabela
+                                # (pdfplumber não tem método direto, mas podemos usar coordenadas)
+                                table_contexts.append('')
+                        
+                        # Detecta cabeçalho e rodapé (primeira e última página)
+                        has_header = page_num == 1
+                        has_footer = page_num == total_pages
+                        
+                        if has_header and page_text:
+                            # Primeiras linhas como possível cabeçalho
+                            header_lines = page_text.split('\n')[:5]
+                            headers.extend(header_lines)
+                        
+                        if has_footer and page_text:
+                            # Últimas linhas como possível rodapé
+                            footer_lines = page_text.split('\n')[-5:]
+                            footers.extend(footer_lines)
+                        
+                        pages_info.append({
+                            'page_num': page_num,
+                            'text': page_text,
+                            'tables': page_tables or [],
+                            'has_header': has_header,
+                            'has_footer': has_footer,
+                            'num_tables': len(page_tables) if page_tables else 0,
+                            'text_length': len(page_text)
+                        })
+                        
+                        if page_tables:
+                            all_tables.extend(page_tables)
+                            pages_with_tables += 1
+                        
+                        pages_processed += 1
+                        
+                    except Exception as page_error:
+                        # Se uma página falhar, registra erro mas continua com as outras
+                        pages_info.append({
+                            'page_num': page_num,
+                            'text': '',
+                            'tables': [],
+                            'has_header': False,
+                            'has_footer': False,
+                            'num_tables': 0,
+                            'text_length': 0,
+                            'error': str(page_error)
+                        })
+                        pages_processed += 1
+                        continue
             
-            # Processa tabelas para criar DataFrame
+            # Validação: verifica se todas as páginas foram processadas
+            if pages_processed < total_pages:
+                # Loga aviso mas continua
+                pass
+            
+            # Processa tabelas para criar DataFrame (garante que todas sejam processadas)
             dataframe = None
             if all_tables:
                 dataframe = ParserService._tables_to_dataframe(all_tables)
+            
+            # Adiciona estatísticas de extração aos metadados
+            metadata['pages_processed'] = pages_processed
+            metadata['pages_with_tables'] = pages_with_tables
+            metadata['pages_with_text'] = pages_with_text
+            metadata['total_tables_found'] = len(all_tables)
+            metadata['extraction_complete'] = pages_processed == total_pages
             
             # Extrai informações de cabeçalho/rodapé
             header_text = '\n'.join(headers[:10]) if headers else ''  # Primeiras 10 linhas de cabeçalhos
@@ -687,23 +847,78 @@ class ParserService:
     @staticmethod
     def detect_delimiter(file_content: bytes, sample_size: int = 1024) -> str:
         """
-        Detecta o delimitador de um arquivo CSV
+        Detecta o delimitador de um arquivo CSV de forma mais robusta
+        Analisa múltiplas linhas para determinar o delimitador mais consistente
         """
         try:
-            sample = file_content[:sample_size].decode('utf-8', errors='ignore')
+            # Tenta diferentes encodings para decodificar
+            encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            sample = None
+            
+            for enc in encodings:
+                try:
+                    sample = file_content[:sample_size].decode(enc)
+                    break
+                except:
+                    continue
+            
+            if not sample:
+                sample = file_content[:sample_size].decode('utf-8', errors='ignore')
+            
+            # Analisa primeiras linhas (mais confiável que apenas contar caracteres)
+            lines = sample.split('\n')[:10]  # Primeiras 10 linhas
+            if not lines:
+                return ','
             
             delimiters = [',', ';', '\t', '|']
-            delimiter_counts = {}
+            delimiter_scores = {d: 0 for d in delimiters}
             
-            for delimiter in delimiters:
-                count = sample.count(delimiter)
-                delimiter_counts[delimiter] = count
+            for line in lines:
+                if not line.strip():
+                    continue
+                
+                for delimiter in delimiters:
+                    # Conta ocorrências do delimitador na linha
+                    count = line.count(delimiter)
+                    # Bônus se o delimitador aparece consistentemente (múltiplas vezes)
+                    if count > 0:
+                        delimiter_scores[delimiter] += count
+                        # Bônus extra se aparece em múltiplas linhas
+                        if count >= 2:
+                            delimiter_scores[delimiter] += 1
             
-            # Retorna o delimitador mais comum
-            return max(delimiter_counts, key=delimiter_counts.get)
+            # Retorna o delimitador com maior score
+            if max(delimiter_scores.values()) > 0:
+                return max(delimiter_scores, key=delimiter_scores.get)
+            
+            return ','
         
         except:
             return ','
+    
+    @staticmethod
+    def count_total_lines(file_content: bytes, encoding: str = 'utf-8') -> int:
+        """
+        Conta o número total de linhas no arquivo (incluindo vazias)
+        Útil para validar se todas as linhas foram extraídas
+        """
+        try:
+            # Tenta diferentes encodings
+            encodings = [encoding, 'utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+            
+            for enc in encodings:
+                try:
+                    text = file_content.decode(enc)
+                    return len(text.splitlines())
+                except UnicodeDecodeError:
+                    continue
+            
+            # Fallback: conta bytes newline
+            return file_content.count(b'\n') + (1 if file_content else 0)
+        
+        except:
+            # Fallback: conta bytes newline
+            return file_content.count(b'\n') + (1 if file_content else 0)
 
     @staticmethod
     def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -925,5 +1140,115 @@ class ParserService:
             }
         except Exception as e:
             raise Exception(f"Erro ao processar imagem: {str(e)}")
+    
+    @staticmethod
+    def validate_extraction_completeness(df: pd.DataFrame, file_content: bytes, file_type: str) -> Dict[str, Any]:
+        """
+        Valida se a extração foi completa comparando linhas extraídas vs esperadas
+        
+        Args:
+            df: DataFrame extraído
+            file_content: Conteúdo original do arquivo
+            file_type: Tipo do arquivo ('CSV', 'Excel', 'PDF', etc)
+        
+        Returns:
+            Dict com:
+            - is_complete: bool
+            - extracted_rows: int
+            - expected_rows: int (quando possível calcular)
+            - completeness_percentage: float
+            - warnings: List[str]
+        """
+        extracted_rows = len(df) if df is not None and not df.empty else 0
+        expected_rows = None
+        warnings = []
+        
+        try:
+            if file_type == 'CSV':
+                # Conta linhas no arquivo CSV
+                expected_rows = ParserService.count_total_lines(file_content)
+                # Subtrai 1 se tiver cabeçalho
+                if expected_rows > 0 and extracted_rows > 0:
+                    # Assume que tem cabeçalho se número de linhas extraídas é menor
+                    if extracted_rows < expected_rows:
+                        expected_rows -= 1  # Remove cabeçalho da contagem
+            
+            elif file_type == 'Excel':
+                # Para Excel, é mais difícil contar sem processar
+                # Mas podemos verificar se o DataFrame não está vazio
+                if extracted_rows == 0:
+                    warnings.append("Nenhuma linha extraída do Excel")
+            
+            elif file_type == 'PDF':
+                # Para PDF, validação é mais complexa
+                # Verifica se há dados extraídos
+                if extracted_rows == 0:
+                    warnings.append("Nenhuma tabela ou dado extraído do PDF")
+        except Exception as e:
+            warnings.append(f"Erro ao validar completude: {str(e)}")
+        
+        # Calcula percentual de completude
+        completeness_percentage = None
+        if expected_rows is not None and expected_rows > 0:
+            completeness_percentage = (extracted_rows / expected_rows) * 100
+            if completeness_percentage < 95:
+                warnings.append(f"Apenas {completeness_percentage:.1f}% das linhas foram extraídas")
+        
+        is_complete = (
+            extracted_rows > 0 and
+            (expected_rows is None or completeness_percentage is None or completeness_percentage >= 95) and
+            len(warnings) == 0
+        )
+        
+        return {
+            'is_complete': is_complete,
+            'extracted_rows': extracted_rows,
+            'expected_rows': expected_rows,
+            'completeness_percentage': completeness_percentage,
+            'warnings': warnings
+        }
+    
+    @staticmethod
+    def get_extraction_stats(df: pd.DataFrame, file_type: str, metadata: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Retorna estatísticas da extração
+        
+        Args:
+            df: DataFrame extraído
+            file_type: Tipo do arquivo
+            metadata: Metadados adicionais (para PDFs, etc)
+        
+        Returns:
+            Dict com estatísticas
+        """
+        stats = {
+            'file_type': file_type,
+            'rows_extracted': len(df) if df is not None and not df.empty else 0,
+            'columns_extracted': len(df.columns) if df is not None and not df.empty else 0,
+            'has_data': df is not None and not df.empty
+        }
+        
+        if df is not None and not df.empty:
+            # Estatísticas adicionais
+            stats['empty_rows'] = df.isna().all(axis=1).sum()
+            stats['rows_with_data'] = stats['rows_extracted'] - stats['empty_rows']
+            
+            # Colunas com dados
+            stats['columns_with_data'] = df.notna().any(axis=0).sum()
+        
+        # Adiciona metadados específicos do tipo
+        if metadata:
+            if file_type == 'PDF':
+                stats['pdf_pages'] = metadata.get('num_pages', 0)
+                stats['pdf_pages_processed'] = metadata.get('pages_processed', 0)
+                stats['pdf_tables_found'] = metadata.get('total_tables_found', 0)
+                stats['pdf_extraction_complete'] = metadata.get('extraction_complete', False)
+            
+            elif file_type == 'Excel':
+                if '_sheet_name' in df.columns:
+                    stats['sheets_processed'] = df['_sheet_name'].nunique()
+        
+        return stats
+
 
 

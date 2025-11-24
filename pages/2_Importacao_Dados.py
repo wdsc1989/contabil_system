@@ -13,6 +13,7 @@ from services.auth_service import AuthService
 from services.parser_service import ParserService
 from services.import_service import ImportService
 from services.ai_service import AIService
+from services.ai_classifier import AIClassifier
 from services.data_processor import DataProcessor
 from utils.column_mapper import ColumnMapper
 from utils.translations import translate_dataframe
@@ -277,18 +278,21 @@ if uploaded_file:
                 df = ParserService.parse_pdf_to_dataframe(file_content)
             
             if df is None or df.empty:
-                # Se não encontrou tabelas, tenta extrair do texto
+                # Se não encontrou tabelas, tenta extrair do texto usando regex
                 if pdf_data and pdf_data.get('full_text'):
                     st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
-                    # A IA processará o texto completo
-                    # Cria DataFrame vazio para passar o texto completo via session_state
-                    df = pd.DataFrame()
+                    # Tenta criar DataFrame a partir do texto extraído
+                    df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
+                    if df is None or df.empty:
+                        st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
+                        df = pd.DataFrame()
+                    # Salva dados completos do PDF para referência
                     st.session_state['pdf_full_data'] = pdf_data
                 else:
                     st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
                     st.stop()
             else:
-                # Salva dados completos do PDF para uso pela IA
+                # Salva dados completos do PDF para referência
                 if pdf_data:
                     st.session_state['pdf_full_data'] = pdf_data
         
@@ -365,7 +369,50 @@ if uploaded_file:
         
         if df is not None and not df.empty:
             st.markdown("---")
-            st.subheader("2️⃣ Preview dos Dados Originais")
+            st.subheader("2️⃣ Validação da Extração")
+            
+            # Valida completude da extração
+            file_content_for_validation = uploaded_file.read()
+            uploaded_file.seek(0)  # Reset para uso posterior
+            
+            validation_result = ParserService.validate_extraction_completeness(
+                df, file_content_for_validation, file_type
+            )
+            
+            # Exibe resultados da validação
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Linhas Extraídas", f"{validation_result['extracted_rows']:,}".replace(',', '.'))
+            with col2:
+                if validation_result['expected_rows']:
+                    st.metric("Linhas Esperadas", f"{validation_result['expected_rows']:,}".replace(',', '.'))
+                else:
+                    st.metric("Status", "✅ Extraído")
+            with col3:
+                if validation_result['completeness_percentage']:
+                    percentage = validation_result['completeness_percentage']
+                    if percentage >= 95:
+                        st.metric("Completude", f"{percentage:.1f}%", delta="Completo")
+                    else:
+                        st.metric("Completude", f"{percentage:.1f}%", delta="Incompleto", delta_color="inverse")
+                else:
+                    st.metric("Completude", "N/A")
+            
+            # Avisos se houver problemas
+            if validation_result['warnings']:
+                for warning in validation_result['warnings']:
+                    st.warning(f"⚠️ {warning}")
+            
+            if not validation_result['is_complete'] and validation_result['completeness_percentage']:
+                st.error("❌ **Atenção:** A extração pode estar incompleta. Algumas linhas podem não ter sido extraídas.")
+                if st.button("🔄 Tentar Reprocessar", use_container_width=True):
+                    # Limpa estado e recarrega
+                    if 'extracted_df' in st.session_state:
+                        del st.session_state.extracted_df
+                    st.rerun()
+            
+            st.markdown("---")
+            st.subheader("3️⃣ Preview dos Dados Extraídos")
             
             # Remove linhas completamente vazias para melhor visualização
             df_preview = df.dropna(how='all').copy()
@@ -373,7 +420,7 @@ if uploaded_file:
             # Opção para ver preview completo ou limitado
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.success(f"✅ Arquivo carregado com sucesso: **{len(df)} linhas** e **{len(df.columns)} colunas**")
+                st.success(f"✅ **{len(df)} linhas** e **{len(df.columns)} colunas** extraídas com sucesso")
             with col2:
                 show_full_preview = st.checkbox("📋 Ver todos os dados", value=False, 
                                                 help="Mostra todos os dados com barra de rolagem")
@@ -386,6 +433,18 @@ if uploaded_file:
             else:
                 st.dataframe(df_preview_translated.head(10), use_container_width=True)
                 st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview_translated)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
+            
+            # Salva DataFrame extraído no session state
+            st.session_state['extracted_df'] = df
+            
+            # Prepara metadados para estatísticas
+            metadata = None
+            if file_type == 'PDF' and 'pdf_full_data' in st.session_state:
+                metadata = st.session_state['pdf_full_data'].get('metadata')
+            
+            st.session_state['extraction_stats'] = ParserService.get_extraction_stats(
+                df, file_type, metadata
+            )
             
             # Detecção automática do tipo de dado
             st.markdown("---")
@@ -556,34 +615,7 @@ if uploaded_file:
                     st.stop()
                 
                 st.markdown("---")
-                st.subheader("4️⃣ Processamento Automático com IA")
-                
-                if not ai_service.is_available():
-                    st.error("❌ IA não configurada. Configure a IA na página de Administração antes de importar.")
-                    st.stop()
-                
-                # Detecta se é recomendado usar IA
-                is_image = st.session_state.get('is_image_file', False)
-                pdf_full_data = st.session_state.get('pdf_full_data')
-                ai_recommendation = AIService.should_use_ai_for_file(df, file_type, pdf_full_data, is_image)
-                
-                # Exibe recomendação se houver
-                if ai_recommendation.get('recommended', False):
-                    priority = ai_recommendation.get('priority', 'low')
-                    reason = ai_recommendation.get('reason', '')
-                    
-                    if priority == 'high':
-                        st.warning(f"🤖 **Recomendação:** {reason}")
-                    else:
-                        st.info(f"💡 **Recomendação:** {reason}")
-                
-                # Opção para usar IA como avaliador completo
-                default_use_full_ai = ai_recommendation.get('recommended', False) and ai_recommendation.get('priority') == 'high'
-                use_ai_as_full_evaluator = st.checkbox(
-                    "🤖 Usar IA como avaliador completo do arquivo",
-                    value=default_use_full_ai,
-                    help="Quando habilitado, força processamento completo de TODAS as linhas e validação rigorosa. Recomendado para arquivos grandes ou complexos."
-                )
+                st.subheader("4️⃣ Classificação com IA (Opcional)")
                 
                 # Busca grupos e subgrupos do cliente
                 db = SessionLocal()
@@ -608,58 +640,119 @@ if uploaded_file:
                 finally:
                     db.close()
                 
-                # Container para status em tempo real
-                status_container = st.empty()
-                status_messages = []  # Lista para armazenar mensagens de status
+                # Verifica se há grupos para classificação
+                use_ai_classification = False
+                if groups_subgroups:
+                    use_ai_classification = st.checkbox(
+                        "🤖 Usar IA para classificar por grupos/subgrupos",
+                        value=True,
+                        help="Classifica automaticamente cada registro com group_id e subgroup_id baseado na descrição e valor"
+                    )
                 
-                def update_status(message):
-                    status_messages.append(message)
-                    # Atualiza o container com a última mensagem
-                    status_container.info(f"🤖 **Status:** {message}")
+                processed_data = []
+                classification_result = None
                 
-                # Processa automaticamente
-                with st.spinner("🤖 Processando arquivo com IA (isso pode levar alguns segundos)..."):
-                    # Passa dados completos do PDF/imagem se disponível
-                    pdf_full_data = st.session_state.get('pdf_full_data')
-                    is_image = st.session_state.get('is_image_file', False)
+                if use_ai_classification:
+                    # Inicializa classificador
+                    classifier = AIClassifier(db)
                     
-                    # Se for imagem, trata como PDF para processamento
-                    if is_image and pdf_full_data:
-                        # Marca como PDF para processamento (a IA processará o texto extraído)
-                        result = ai_service.process_and_structure_data(
-                            df, 
-                            import_type,
-                            pdf_full_data=pdf_full_data,
-                            groups_subgroups=groups_subgroups if groups_subgroups else None,
-                            status_callback=update_status
-                        )
+                    if not classifier.is_available():
+                        st.error("❌ IA não configurada. Configure a IA na página de Administração antes de usar classificação automática.")
+                        use_ai_classification = False
                     else:
-                        result = ai_service.process_and_structure_data(
-                            df, 
-                            import_type,
-                            pdf_full_data=pdf_full_data,
-                            groups_subgroups=groups_subgroups if groups_subgroups else None,
-                            status_callback=update_status
-                        )
-                    
-                    # Limpa dados do PDF da session state após processar
-                    if 'pdf_full_data' in st.session_state:
-                        del st.session_state['pdf_full_data']
-                    
-                    # Limpa o container de status após processar
-                    status_container.empty()
+                        # Container para status em tempo real
+                        status_container = st.empty()
+                        status_messages = []
+                        
+                        def update_status(message):
+                            status_messages.append(message)
+                            status_container.info(f"🤖 **Classificando:** {message}")
+                        
+                        # Classifica dados extraídos
+                        with st.spinner(f"🤖 Classificando {len(df)} registros com IA..."):
+                            classification_result = classifier.classify_dataframe(
+                                df,
+                                groups_subgroups=groups_subgroups,
+                                import_type=import_type,
+                                status_callback=update_status
+                            )
+                            
+                            status_container.empty()
+                        
+                        if classification_result.get('success'):
+                            processed_data = classification_result.get('classified_data', [])
+                            # Se tipo foi detectado, atualiza
+                            if classification_result.get('detected_type'):
+                                import_type = classification_result.get('detected_type')
+                            
+                            # Mostra estatísticas de classificação
+                            classified_count = sum(1 for r in processed_data if r.get('group_id') is not None)
+                            high_conf_count = sum(1 for r in processed_data if r.get('classification_confidence', 0) >= CLASSIFICATION_CONFIDENCE_THRESHOLD)
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Registros Classificados", f"{classified_count}/{len(processed_data)}")
+                            with col2:
+                                st.metric("Alta Confiança", f"{high_conf_count}/{len(processed_data)}")
+                            with col3:
+                                issues_count = len(classification_result.get('issues', []))
+                                st.metric("Avisos", issues_count)
+                            
+                            if classification_result.get('issues'):
+                                with st.expander("⚠️ Avisos da Classificação"):
+                                    for issue in classification_result.get('issues', []):
+                                        st.warning(issue)
+                        else:
+                            st.error(f"❌ Erro na classificação: {classification_result.get('error', 'Erro desconhecido')}")
+                            # Continua sem classificação
+                            processed_data = df.to_dict('records')
+                            for record in processed_data:
+                                record['group_id'] = None
+                                record['subgroup_id'] = None
+                                record['classification_confidence'] = 0.0
                 
-                if not result.get('success'):
-                    st.error(f"❌ Erro no processamento: {result.get('error', 'Erro desconhecido')}")
-                    if 'raw_response' in result:
-                        with st.expander("🔍 Ver resposta da IA"):
-                            st.code(result['raw_response'], language='text')
+                # Se não usou IA, converte DataFrame para lista de dicionários
+                if not processed_data:
+                    processed_data = df.to_dict('records')
+                    # Adiciona campos de classificação vazios
+                    for record in processed_data:
+                        record['group_id'] = None
+                        record['subgroup_id'] = None
+                        record['classification_confidence'] = 1.0  # Sem classificação = confiança máxima (dados já extraídos)
+                
+                # Normaliza dados
+                processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+                
+                # Cria summary para compatibilidade
+                summary = {
+                    'processed': len(processed_data),
+                    'original_rows': len(df),
+                    'processed_rows': len(processed_data),
+                    'import_type': import_type
+                }
+                
+                # Limpa dados do PDF da session state após processar
+                if 'pdf_full_data' in st.session_state:
+                    del st.session_state['pdf_full_data']
+                
+                if not processed_data:
+                    st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
                     st.stop()
                 
-                # Exibe estatísticas
-                summary = result.get('summary', {})
-                processed_data = result.get('processed_data', [])
-                processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+                # Validação: verifica se todas as linhas foram processadas
+                original_rows = len(df)
+                processed_rows = len(processed_data)
+                rows_diff = original_rows - processed_rows
+                
+                if rows_diff > 0:
+                    st.warning(
+                        f"⚠️ **ATENÇÃO:** {rows_diff} linha(s) não foram processadas. "
+                        f"Esperado: {original_rows}, Processado: {processed_rows}."
+                    )
+                else:
+                    st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
+                
+                # Identifica registros com baixa confiança de classificação
                 low_conf_indexes = [
                     idx for idx, record in enumerate(processed_data)
                     if record.get('classification_confidence', 1) is not None
@@ -667,57 +760,18 @@ if uploaded_file:
                 ]
                 low_conf_line_numbers = [idx + 1 for idx in low_conf_indexes]
                 
-                if not processed_data:
-                    st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
-                    st.stop()
-                
-                # Compara quantidade de linhas originais vs processadas
-                original_rows = summary.get('original_rows', len(df))
-                processed_rows = summary.get('processed_rows', len(processed_data))
-                rows_diff = original_rows - processed_rows
-                
-                # Validação: verifica se todas as linhas foram processadas
-                validation_warning = result.get('validation_warning', False)
-                
-                if validation_warning or rows_diff > 0:
-                    st.warning(
-                        f"⚠️ **ATENÇÃO:** {rows_diff} linha(s) não foram processadas. "
-                        f"Esperado: {original_rows}, Processado: {processed_rows}. "
-                        f"Recomendamos reprocessar o arquivo com a opção 'Usar IA como avaliador completo' habilitada."
-                    )
-                    if st.button("🔄 Reprocessar com IA Completa", key="reprocess_full_ai"):
-                        st.session_state['reprocess_with_full_ai'] = True
-                        st.rerun()
-                else:
-                    st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
-                
-                # Extrai nome do banco se disponível (para extratos bancários)
-                extracted_bank_name = summary.get('bank_name', '') if summary else ''
-                
+                # Exibe estatísticas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Total Processado", summary.get('processed', len(processed_data)))
+                    st.metric("Total Processado", processed_rows)
                 with col2:
-                    if import_type == 'transactions':
-                        st.metric("Entradas", summary.get('entradas', 0))
-                    else:
-                        st.metric("Linhas", summary.get('processed', len(processed_data)))
+                    classified_count = sum(1 for r in processed_data if r.get('group_id') is not None)
+                    st.metric("Classificados", f"{classified_count}/{processed_rows}")
                 with col3:
-                    if import_type == 'transactions':
-                        st.metric("Saídas", summary.get('saidas', 0))
-                    else:
-                        st.metric("Válidas", summary.get('processed', len(processed_data)))
+                    high_conf_count = sum(1 for r in processed_data if r.get('classification_confidence', 0) >= CLASSIFICATION_CONFIDENCE_THRESHOLD)
+                    st.metric("Alta Confiança", f"{high_conf_count}/{processed_rows}")
                 with col4:
-                    st.metric("Erros", summary.get('errors', 0))
-                
-                # Alerta se houver diferença significativa entre linhas originais e processadas
-                if rows_diff > 0:
-                    if rows_diff <= 5:
-                        st.info(f"ℹ️ **Atenção:** {rows_diff} linha(s) do arquivo original não foram processadas (podem ser cabeçalhos, rodapés ou linhas inválidas).")
-                    else:
-                        st.warning(f"⚠️ **Atenção:** {rows_diff} linha(s) do arquivo original ({original_rows} total) não foram processadas ({processed_rows} processadas). Verifique se há dados faltando.")
-                elif rows_diff == 0:
-                    st.success(f"✅ Todas as {original_rows} linha(s) do arquivo foram processadas com sucesso!")
+                    st.metric("Baixa Confiança", len(low_conf_indexes))
                 
                 if low_conf_line_numbers:
                     preview_lines = ", ".join(str(num) for num in low_conf_line_numbers[:10])
@@ -730,11 +784,10 @@ if uploaded_file:
                         "Revise a classificação antes de importar."
                     )
                 
-                # Mostra problemas se houver
-                issues = result.get('issues', [])
-                if issues:
-                    with st.expander("⚠️ Problemas Encontrados"):
-                        for issue in issues:
+                # Mostra problemas se houver (da classificação)
+                if classification_result and classification_result.get('issues'):
+                    with st.expander("⚠️ Problemas Encontrados na Classificação"):
+                        for issue in classification_result.get('issues', []):
                             st.warning(issue)
                 
                 st.markdown("---")
@@ -761,10 +814,17 @@ if uploaded_file:
                 
                 # Exibe e permite editar nome do banco se aplicável
                 if import_type == 'bank_statements':
+                    # Tenta extrair nome do banco dos dados
+                    extracted_bank_name = None
+                    for record in processed_data:
+                        if record.get('bank_name'):
+                            extracted_bank_name = record.get('bank_name')
+                            break
+                    
                     col1, col2 = st.columns([2, 1])
                     with col1:
                         if extracted_bank_name:
-                            st.info(f"🏦 **Nome do banco identificado automaticamente:** {extracted_bank_name}")
+                            st.info(f"🏦 **Nome do banco identificado:** {extracted_bank_name}")
                         else:
                             st.info("🏦 Nome do banco não foi identificado automaticamente")
                     
