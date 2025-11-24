@@ -642,7 +642,6 @@ REGRAS CRÍTICAS:
                     date_val = record['date']
                     if isinstance(date_val, str):
                         # Tenta parsear data
-                        from datetime import datetime
                         try:
                             # Tenta vários formatos
                             for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
