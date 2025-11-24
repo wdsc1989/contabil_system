@@ -787,23 +787,3 @@ try:
 finally:
     db.close()
 
-                    if submit_config:
-                        # Validação: não permitir desabilitar todos os tipos
-                        if not any(dre_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DRE.")
-                        elif not any(dfc_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para DFC.")
-                        elif not any(sazonalidade_enabled.values()):
-                            st.error("❌ Pelo menos um tipo de dado deve estar habilitado para Sazonalidade.")
-                        else:
-                            # Atualiza configurações
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dre', dre_enabled)
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'dfc', dfc_enabled)
-                            ReportConfigService.update_client_report_config(db, selected_config_client_id, 'sazonalidade', sazonalidade_enabled)
-                            
-                            st.success("✅ Configurações de relatórios atualizadas com sucesso!")
-                            st.rerun()
-
-finally:
-    db.close()
-

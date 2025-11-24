@@ -290,6 +290,17 @@ if uploaded_file:
         'inventory': '📦 Controle de Estoque'
     }
     
+    # Normaliza dados
+    processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+    
+    # Inicializa seleção
+    if 'selected_rows' not in st.session_state:
+        st.session_state.selected_rows = set(range(len(processed_data)))
+    
+    # Calcula valor total apenas dos registros selecionados
+    selected_data = [processed_data[i] for i in st.session_state.selected_rows if 0 <= i < len(processed_data)]
+    total_value_selected = sum(float(r.get('value', 0)) for r in selected_data if r.get('value') and pd.notna(r.get('value')))
+    
     # Métricas em cards mais limpos
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -304,19 +315,11 @@ if uploaded_file:
         else:
             st.metric("✓ Status", "Pronto")
     with col4:
-        total_value = sum(float(r.get('value', 0)) for r in processed_data if r.get('value') and pd.notna(r.get('value')))
-        if total_value != 0:
+        if total_value_selected != 0:
             from utils.formatters import format_currency
-            st.metric("💰 Valor Total", format_currency(total_value))
+            st.metric("💰 Valor Total (Selecionados)", format_currency(total_value_selected))
         else:
             st.metric("✓ Classificado", "Sim")
-    
-    # Normaliza dados
-    processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
-    
-    # Inicializa seleção
-    if 'selected_rows' not in st.session_state:
-        st.session_state.selected_rows = set(range(len(processed_data)))
     
     st.markdown("---")
     st.subheader("✏️ Revisão e Edição")
@@ -459,6 +462,15 @@ if uploaded_file:
     st.session_state.selected_rows = new_selection
     st.session_state.processed_data = updated_data
     
+    # Recalcula valor total dos selecionados após edição e mostra atualização
+    if new_selection != st.session_state.get('last_selection', set()):
+        selected_data_updated = [updated_data[i] for i in new_selection if 0 <= i < len(updated_data)]
+        total_value_selected_updated = sum(float(r.get('value', 0)) for r in selected_data_updated if r.get('value') and pd.notna(r.get('value')))
+        if total_value_selected_updated != 0:
+            from utils.formatters import format_currency
+            st.info(f"💰 **Valor total atualizado:** {format_currency(total_value_selected_updated)} ({len(new_selection)} registro(s) selecionado(s))")
+        st.session_state.last_selection = new_selection
+    
     st.markdown("---")
     st.subheader("📥 Importação")
     
@@ -494,6 +506,11 @@ if uploaded_file:
         selected_indices = sorted(list(st.session_state.selected_rows))
         data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
         import_df = pd.DataFrame(data_to_import)
+        
+        # Valida se há dados para importar
+        if import_df.empty:
+            st.error("❌ **Nenhum dado válido para importar.** Verifique se os registros selecionados contêm dados válidos.")
+            st.stop()
         
         # Container para progresso
         import_progress_container = st.empty()
@@ -590,7 +607,20 @@ if uploaded_file:
                 st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
                 st.balloons()
             else:
-                st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
+                st.error("❌ **Nenhum registro foi importado.**")
+                st.info("""
+                **Possíveis causas:**
+                - Nenhum registro foi selecionado para importação
+                - Os dados não atendem aos requisitos do tipo de importação
+                - Erro na validação dos dados (datas, valores, grupos/subgrupos)
+                - Dados duplicados que foram ignorados
+                
+                **Soluções:**
+                - Verifique se há registros selecionados (checkboxes marcadas)
+                - Revise os dados na tabela e corrija campos obrigatórios
+                - Verifique se os grupos/subgrupos estão corretos
+                - Tente importar novamente após fazer as correções
+                """)
             
             # Limpa estado após importação
             if imported_count > 0:
