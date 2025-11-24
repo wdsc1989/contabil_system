@@ -66,6 +66,17 @@ class VisionProcessor:
         try:
             import fitz  # PyMuPDF
             pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+            
+            # Verifica se o PDF está protegido por senha
+            if pdf_document.is_encrypted:
+                pdf_document.close()
+                raise Exception(
+                    "PDF protegido por senha. O sistema não pode processar PDFs com senha.\n\n"
+                    "Soluções:\n"
+                    "1. Remova a senha do PDF usando um editor de PDF\n"
+                    "2. Ou converta o PDF para imagens (JPG/PNG) e importe as imagens"
+                )
+            
             image_bytes_list = []
             
             for page_num in range(len(pdf_document)):
@@ -83,6 +94,15 @@ class VisionProcessor:
             # PyMuPDF não instalado, tenta pdf2image
             pass
         except Exception as e:
+            error_msg = str(e).lower()
+            # Detecta erro de senha
+            if "password" in error_msg or "encrypted" in error_msg or "senha" in error_msg:
+                raise Exception(
+                    "PDF protegido por senha. O sistema não pode processar PDFs com senha.\n\n"
+                    "Soluções:\n"
+                    "1. Remova a senha do PDF usando um editor de PDF\n"
+                    "2. Ou converta o PDF para imagens (JPG/PNG) e importe as imagens"
+                )
             error_msg = str(e).lower()
             import platform
             
@@ -132,7 +152,15 @@ class VisionProcessor:
                     buf.seek(0)
                     image_bytes_list.append(buf.read())
                 return image_bytes_list
-            except:
+            except Exception as pdf2img_error:
+                error_msg_pdf2img = str(pdf2img_error).lower()
+                if "password" in error_msg_pdf2img or "encrypted" in error_msg_pdf2img or "senha" in error_msg_pdf2img:
+                    raise Exception(
+                        "PDF protegido por senha. O sistema não pode processar PDFs com senha.\n\n"
+                        "Soluções:\n"
+                        "1. Remova a senha do PDF usando um editor de PDF\n"
+                        "2. Ou converta o PDF para imagens (JPG/PNG) e importe as imagens"
+                    )
                 raise Exception(f"Erro ao converter PDF para imagens: {str(e)}")
         
         # Se PyMuPDF não foi instalado, tenta pdf2image
@@ -155,6 +183,13 @@ class VisionProcessor:
             )
         except Exception as e:
             error_msg = str(e).lower()
+            if "password" in error_msg or "encrypted" in error_msg or "senha" in error_msg:
+                raise Exception(
+                    "PDF protegido por senha. O sistema não pode processar PDFs com senha.\n\n"
+                    "Soluções:\n"
+                    "1. Remova a senha do PDF usando um editor de PDF\n"
+                    "2. Ou converta o PDF para imagens (JPG/PNG) e importe as imagens"
+                )
             if "poppler" in error_msg:
                 raise Exception(
                     f"pdf2image precisa de poppler instalado.\n"
@@ -428,21 +463,38 @@ REGRAS CRÍTICAS:
                 response = client.chat.completions.create(
                     model=self.config.get('model', 'gpt-4o'),
                     messages=messages,
-                    max_tokens=8000,  # Mais tokens para arquivos grandes
+                    max_tokens=16000,  # Mais tokens para arquivos grandes (Excel pode ter muitos dados)
                     temperature=0.1
                 )
                 
                 content = response.choices[0].message.content
+                
+                # Debug: verifica se há resposta
+                if not content:
+                    return {
+                        'success': False,
+                        'error': 'A IA não retornou nenhuma resposta',
+                        'processed_data': [],
+                        'summary': {},
+                        'detected_type': import_type,
+                        'issues': ['Resposta vazia da IA']
+                    }
+                
                 json_data = self._extract_json_from_response(content)
                 
                 if not json_data:
+                    # Tenta mostrar parte da resposta para debug
+                    preview = content[:500] if len(content) > 500 else content
                     return {
                         'success': False,
                         'error': 'Não foi possível extrair dados estruturados da resposta da IA',
                         'processed_data': [],
                         'summary': {},
                         'detected_type': import_type,
-                        'issues': ['Resposta da IA não contém JSON válido']
+                        'issues': [
+                            'Resposta da IA não contém JSON válido',
+                            f'Preview da resposta (primeiros 500 chars): {preview}...'
+                        ]
                     }
                 
                 # Valida e corrige dados
@@ -579,30 +631,62 @@ REGRAS CRÍTICAS:
     
     def _extract_json_from_response(self, content: str) -> Optional[Dict]:
         """
-        Extrai JSON da resposta da IA
+        Extrai JSON da resposta da IA com múltiplas estratégias
         """
-        # Tenta encontrar JSON no conteúdo
-        # Procura por { ... } ou [ ... ]
         import re
+        
+        if not content or not isinstance(content, str):
+            return None
         
         # Remove markdown code blocks se existirem
         content = re.sub(r'```json\s*', '', content)
         content = re.sub(r'```\s*', '', content)
         content = content.strip()
         
-        # Procura por JSON válido
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        # Estratégia 1: Procura por JSON completo entre chaves
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', content, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(0))
             except json.JSONDecodeError:
                 pass
         
-        # Tenta parse direto
+        # Estratégia 2: Procura por JSON que começa com { e tenta encontrar o fechamento
+        start_idx = content.find('{')
+        if start_idx >= 0:
+            # Tenta encontrar o fechamento balanceado
+            brace_count = 0
+            end_idx = start_idx
+            for i in range(start_idx, len(content)):
+                if content[i] == '{':
+                    brace_count += 1
+                elif content[i] == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+            
+            if end_idx > start_idx:
+                try:
+                    json_str = content[start_idx:end_idx]
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+        
+        # Estratégia 3: Tenta parse direto
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             pass
+        
+        # Estratégia 4: Tenta encontrar JSON após texto explicativo
+        # Remove texto antes do primeiro {
+        first_brace = content.find('{')
+        if first_brace > 0:
+            try:
+                return json.loads(content[first_brace:])
+            except json.JSONDecodeError:
+                pass
         
         return None
     
@@ -666,16 +750,27 @@ REGRAS CRÍTICAS:
                         try:
                             # Remove símbolos de moeda
                             clean_val = value_val.replace('R$', '').replace('$', '').strip()
+                            
+                            # Valida se não está vazio
+                            if not clean_val or clean_val == '':
+                                invalid_value_count += 1
+                                continue
+                            
                             # Trata formato brasileiro
                             if ',' in clean_val and '.' in clean_val:
-                                if clean_val.rindex(',') > clean_val.rindex('.'):
-                                    clean_val = clean_val.replace('.', '').replace(',', '.')
-                                else:
-                                    clean_val = clean_val.replace(',', '')
+                                try:
+                                    if clean_val.rindex(',') > clean_val.rindex('.'):
+                                        clean_val = clean_val.replace('.', '').replace(',', '.')
+                                    else:
+                                        clean_val = clean_val.replace(',', '')
+                                except ValueError:
+                                    # Se rindex falhar, tenta substituir vírgula
+                                    clean_val = clean_val.replace(',', '.')
                             elif ',' in clean_val:
                                 clean_val = clean_val.replace(',', '.')
+                            
                             record['value'] = float(clean_val)
-                        except:
+                        except (ValueError, TypeError):
                             invalid_value_count += 1
                     elif not isinstance(value_val, (int, float)):
                         try:
