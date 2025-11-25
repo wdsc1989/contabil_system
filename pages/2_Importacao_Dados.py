@@ -324,10 +324,10 @@ if uploaded_file:
             
             # Processa todas as abas automaticamente
             try:
-                    df = ParserService.parse_excel(file_content, all_sheets=True)
+                df = ParserService.parse_excel(file_content, all_sheets=True)
                 if df is None or df.empty:
                     # Fallback: tenta apenas a primeira aba
-                df = ParserService.parse_excel(file_content)
+                    df = ParserService.parse_excel(file_content)
             except Exception as e:
                 st.error(f"❌ Erro ao processar Excel: {str(e)}")
                 st.stop()
