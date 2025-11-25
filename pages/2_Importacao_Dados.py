@@ -866,79 +866,135 @@ if uploaded_file:
                         ai_service = AIService(db)
                         
                         if ai_service.is_available():
-                            # Prepara dados para normalização
-                            sample_data = json.dumps(processed_data[:min(20, len(processed_data))], ensure_ascii=False, indent=2, default=str)
-                            
-                            # Cria mapeamento básico (colunas do DataFrame para colunas da tabela)
-                            mapping = {}
-                            target_columns = ai_service.get_target_columns(import_type)
-                            
-                            # Tenta mapear automaticamente baseado em nomes similares
-                            df_columns = list(df.columns) if not df.empty else []
-                            for df_col in df_columns:
-                                df_col_lower = str(df_col).lower().strip()
-                                for target_col in target_columns:
-                                    target_col_lower = str(target_col).lower().strip()
-                                    # Mapeia se o nome for similar ou contém palavras-chave
-                                    if (df_col_lower == target_col_lower or 
-                                        df_col_lower in target_col_lower or 
-                                        target_col_lower in df_col_lower):
-                                        mapping[df_col] = target_col
-                                        break
-                            
-                            # Se não há mapeamento suficiente, usa IA para mapear
-                            if len(mapping) < len(target_columns) * 0.5:  # Menos de 50% mapeado
-                                with st.spinner("🤖 Estruturando dados para a tabela destino..."):
-                                    try:
-                                        # Usa normalize_data para estruturar os dados
-                                        normalization_result = ai_service.normalize_data(
-                                            df,
-                                            import_type,
-                                            mapping,
-                                            structural_analysis=None
-                                        )
+                            # SEMPRE usa IA para estruturar os dados (não apenas quando mapeamento é baixo)
+                            # A IA deve entender a estrutura origem e mapear para a estrutura destino
+                            with st.spinner("🤖 Analisando estrutura origem e estruturando para tabela destino..."):
+                                try:
+                                    # Prepara análise estrutural do DataFrame
+                                    structural_analysis = f"""
+Estrutura do arquivo origem:
+- Colunas encontradas: {', '.join(df.columns.tolist()) if not df.empty else 'Nenhuma'}
+- Número de linhas: {len(df)}
+- Tipos de dados detectados:
+"""
+                                    if not df.empty:
+                                        for col in df.columns:
+                                            dtype = str(df[col].dtype)
+                                            sample_values = df[col].dropna().head(3).tolist()
+                                            structural_analysis += f"  - {col}: {dtype} (exemplos: {sample_values})\n"
+                                    
+                                    # Prepara dados completos para análise (não apenas amostra)
+                                    # Usa todas as linhas para garantir estruturação completa
+                                    file_data = json.dumps(processed_data, ensure_ascii=False, indent=2, default=str)
+                                    
+                                    # Cria mapeamento inicial vazio - IA deve fazer o mapeamento completo
+                                    mapping = {}
+                                    
+                                    # SEMPRE usa normalize_data para estruturar (IA entende estrutura origem e destino)
+                                    normalization_result = ai_service.normalize_data(
+                                        df,
+                                        import_type,
+                                        mapping,
+                                        structural_analysis=structural_analysis
+                                    )
+                                    
+                                    if normalization_result and 'normalized_data' in normalization_result:
+                                        normalized_records = normalization_result['normalized_data']
                                         
-                                        if normalization_result and 'normalized_data' in normalization_result:
-                                            normalized_records = normalization_result['normalized_data']
+                                        # Se normalizou apenas uma amostra, aplica padrões ao resto
+                                        if len(normalized_records) < len(processed_data):
+                                            # Para o resto, mantém estrutura original mas garante colunas corretas
+                                            remaining = processed_data[len(normalized_records):]
+                                            target_columns = ai_service.get_target_columns(import_type)
                                             
-                                            # Se normalizou apenas uma amostra, aplica padrões ao resto
-                                            if len(normalized_records) < len(processed_data):
-                                                # Mantém os normalizados e normaliza o resto
-                                                remaining = processed_data[len(normalized_records):]
-                                                # Para o resto, mantém estrutura original mas garante colunas corretas
+                                            # Tenta aplicar o mesmo padrão de mapeamento aos registros restantes
+                                            # Usa o primeiro registro normalizado como referência
+                                            if normalized_records:
+                                                reference_record = normalized_records[0]
+                                                # Para cada registro restante, tenta mapear baseado na estrutura do primeiro
                                                 for record in remaining:
-                                                    # Garante que tem todas as colunas da tabela destino
+                                                    new_record = {}
+                                                    # Copia estrutura do registro de referência
                                                     for target_col in target_columns:
-                                                        if target_col not in record:
-                                                            record[target_col] = None
-                                                processed_data = normalized_records + remaining
-                                            else:
-                                                processed_data = normalized_records
+                                                        # Tenta encontrar valor correspondente no registro original
+                                                        found = False
+                                                        for orig_key, orig_value in record.items():
+                                                            # Se a chave original mapeia para esta coluna destino
+                                                            if target_col in reference_record:
+                                                                # Usa o valor original se existir, senão usa None
+                                                                if orig_key in record:
+                                                                    new_record[target_col] = record[orig_key]
+                                                                    found = True
+                                                                    break
+                                                        if not found:
+                                                            new_record[target_col] = None
+                                                    record.clear()
+                                                    record.update(new_record)
                                             
-                                            st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
-                                    except Exception as e:
-                                        st.warning(f"⚠️ Não foi possível normalizar automaticamente: {str(e)}")
-                                        # Continua com dados originais
-                                        pass
-                            else:
-                                # Aplica mapeamento manual
-                                for record in processed_data:
-                                    # Renomeia colunas conforme mapeamento
-                                    new_record = {}
-                                    for df_col, target_col in mapping.items():
-                                        if df_col in record:
-                                            new_record[target_col] = record[df_col]
-                                    # Mantém outras colunas que não foram mapeadas
-                                    for key, value in record.items():
-                                        if key not in mapping:
-                                            new_record[key] = value
-                                    # Garante que tem todas as colunas da tabela destino
-                                    for target_col in target_columns:
-                                        if target_col not in new_record:
-                                            new_record[target_col] = None
-                                    # Atualiza record
-                                    record.clear()
-                                    record.update(new_record)
+                                            processed_data = normalized_records + remaining
+                                        else:
+                                            processed_data = normalized_records
+                                        
+                                        st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
+                                        
+                                        # Mostra resumo do mapeamento se disponível
+                                        if normalization_result.get('summary', {}).get('mapping_applied'):
+                                            mapping_applied = normalization_result['summary']['mapping_applied']
+                                            if mapping_applied:
+                                                with st.expander("ℹ️ Mapeamento aplicado pela IA", expanded=False):
+                                                    for orig_col, dest_col in mapping_applied.items():
+                                                        st.write(f"`{orig_col}` → `{dest_col}`")
+                                    else:
+                                        # Se normalização falhou, mostra opção manual
+                                        st.warning("⚠️ IA não conseguiu estruturar automaticamente. Use a opção manual abaixo.")
+                                        raise Exception("Normalização não retornou dados")
+                                        
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    st.warning(f"⚠️ Não foi possível estruturar automaticamente: {error_msg}")
+                                    
+                                    # Opção para estruturação manual
+                                    st.markdown("---")
+                                    st.subheader("✏️ Estruturação Manual (se necessário)")
+                                    st.info("💡 Se a IA não conseguiu estruturar automaticamente, você pode mapear manualmente as colunas:")
+                                    
+                                    # Mostra colunas origem e destino
+                                    target_columns = ai_service.get_target_columns(import_type)
+                                    df_columns = list(df.columns) if not df.empty else []
+                                    
+                                    if df_columns and target_columns:
+                                        st.markdown("**Colunas do arquivo origem:**")
+                                        st.write(", ".join(df_columns))
+                                        
+                                        st.markdown("**Colunas da tabela destino:**")
+                                        st.write(", ".join(target_columns))
+                                        
+                                        # Permite mapeamento manual (simplificado por enquanto)
+                                        st.info("💡 O sistema tentará mapear automaticamente baseado nos nomes. Se necessário, edite os dados na tabela de revisão abaixo.")
+                                        
+                                        # Continua com dados originais mas garante colunas destino
+                                        for record in processed_data:
+                                            new_record = {}
+                                            # Tenta mapear automaticamente
+                                            for df_col in df_columns:
+                                                df_col_lower = str(df_col).lower().strip()
+                                                for target_col in target_columns:
+                                                    target_col_lower = str(target_col).lower().strip()
+                                                    if (df_col_lower == target_col_lower or 
+                                                        df_col_lower in target_col_lower or 
+                                                        target_col_lower in df_col_lower):
+                                                        if df_col in record:
+                                                            new_record[target_col] = record[df_col]
+                                                        break
+                                            # Garante todas as colunas destino
+                                            for target_col in target_columns:
+                                                if target_col not in new_record:
+                                                    new_record[target_col] = None
+                                            record.clear()
+                                            record.update(new_record)
+                                    else:
+                                        st.error("❌ Não foi possível identificar colunas origem ou destino.")
+                                        st.stop()
                     except Exception as e:
                         st.warning(f"⚠️ Erro ao estruturar dados: {str(e)}")
                         # Continua com dados originais
@@ -1085,6 +1141,10 @@ if uploaded_file:
                 
                 st.markdown("---")
                 st.subheader("6️⃣ Importação")
+                
+                # Garante que selected_rows está inicializado
+                if 'selected_rows' not in st.session_state:
+                    st.session_state.selected_rows = set(range(len(st.session_state.processed_data))) if 'processed_data' in st.session_state else set()
                 
                 # A IA já classificou cada linha individualmente com grupo/subgrupo
                 # Não há necessidade de seleção manual, pois cada transação pode ser entrada, saída, resgate, etc.
