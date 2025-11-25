@@ -1053,49 +1053,49 @@ Estrutura do arquivo origem:
                     except Exception as e:
                         error_msg = str(e)
                         st.warning(f"⚠️ Não foi possível estruturar automaticamente: {error_msg}")
-                                    
-                                    # Opção para estruturação manual
-                                    st.markdown("---")
-                                    st.subheader("✏️ Estruturação Manual (se necessário)")
-                                    st.info("💡 Se a IA não conseguiu estruturar automaticamente, você pode mapear manualmente as colunas:")
-                                    
-                                    # Mostra colunas origem e destino
-                                    target_columns = ai_service.get_target_columns(import_type)
-                                    df_columns = list(df.columns) if not df.empty else []
-                                    
-                                    if df_columns and target_columns:
-                                        st.markdown("**Colunas do arquivo origem:**")
-                                        st.write(", ".join(df_columns))
-                                        
-                                        st.markdown("**Colunas da tabela destino:**")
-                                        st.write(", ".join(target_columns))
-                                        
-                                        # Permite mapeamento manual (simplificado por enquanto)
-                                        st.info("💡 O sistema tentará mapear automaticamente baseado nos nomes. Se necessário, edite os dados na tabela de revisão abaixo.")
-                                        
-                                        # Continua com dados originais mas garante colunas destino
-                                        for record in processed_data:
-                                            new_record = {}
-                                            # Tenta mapear automaticamente
-                                            for df_col in df_columns:
-                                                df_col_lower = str(df_col).lower().strip()
-                                                for target_col in target_columns:
-                                                    target_col_lower = str(target_col).lower().strip()
-                                                    if (df_col_lower == target_col_lower or 
-                                                        df_col_lower in target_col_lower or 
-                                                        target_col_lower in df_col_lower):
-                                                        if df_col in record:
-                                                            new_record[target_col] = record[df_col]
-                                                        break
-                                            # Garante todas as colunas destino
-                                            for target_col in target_columns:
-                                                if target_col not in new_record:
-                                                    new_record[target_col] = None
-                                            record.clear()
-                                            record.update(new_record)
-                                    else:
-                                        st.error("❌ Não foi possível identificar colunas origem ou destino.")
-                                        st.stop()
+                        
+                        # Opção para estruturação manual
+                        st.markdown("---")
+                        st.subheader("✏️ Estruturação Manual (se necessário)")
+                        st.info("💡 Se a IA não conseguiu estruturar automaticamente, você pode mapear manualmente as colunas:")
+                        
+                        # Mostra colunas origem e destino
+                        target_columns = ai_service.get_target_columns(import_type)
+                        df_columns = list(df.columns) if not df.empty else []
+                        
+                        if df_columns and target_columns:
+                            st.markdown("**Colunas do arquivo origem:**")
+                            st.write(", ".join(df_columns))
+                            
+                            st.markdown("**Colunas da tabela destino:**")
+                            st.write(", ".join(target_columns))
+                            
+                            # Permite mapeamento manual (simplificado por enquanto)
+                            st.info("💡 O sistema tentará mapear automaticamente baseado nos nomes. Se necessário, edite os dados na tabela de revisão abaixo.")
+                            
+                            # Continua com dados originais mas garante colunas destino
+                            for record in processed_data:
+                                new_record = {}
+                                # Tenta mapear automaticamente
+                                for df_col in df_columns:
+                                    df_col_lower = str(df_col).lower().strip()
+                                    for target_col in target_columns:
+                                        target_col_lower = str(target_col).lower().strip()
+                                        if (df_col_lower == target_col_lower or 
+                                            df_col_lower in target_col_lower or 
+                                            target_col_lower in df_col_lower):
+                                            if df_col in record:
+                                                new_record[target_col] = record[df_col]
+                                            break
+                                # Garante todas as colunas destino
+                                for target_col in target_columns:
+                                    if target_col not in new_record:
+                                        new_record[target_col] = None
+                                record.clear()
+                                record.update(new_record)
+                        else:
+                            st.error("❌ Não foi possível identificar colunas origem ou destino.")
+                            st.stop()
                     except Exception as e:
                         st.warning(f"⚠️ Erro ao estruturar dados: {str(e)}")
                         # Continua com dados originais
