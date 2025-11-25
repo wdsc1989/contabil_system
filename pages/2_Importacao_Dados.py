@@ -1227,8 +1227,8 @@ if uploaded_file:
                         edit_df['classification_confidence'] = pd.to_numeric(
                             edit_df['classification_confidence'], errors='coerce'
                         )
-                        except:
-                            pass
+                    except:
+                        pass
                 
                 # Configura colunas editáveis
                 column_config = {
@@ -2112,6 +2112,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
