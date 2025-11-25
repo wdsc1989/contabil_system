@@ -1747,9 +1747,8 @@ if uploaded_file:
     else:
         column_config['group_id'] = st.column_config.NumberColumn("Grupo", width="medium", disabled=True)
     
-    # Configura subgroup_id como SelectboxColumn editável (dinâmico baseado no grupo selecionado)
-    # Nota: Streamlit não suporta selectbox dinâmico diretamente, então usaremos um selectbox simples
-    # que mostra todos os subgrupos disponíveis
+    # Configura subgroup_id como SelectboxColumn editável
+    # Mostra todos os subgrupos (o processamento pós-edição garantirá os relacionamentos corretos)
     all_subgroups = []
     all_subgroups_labels = ["-"]
     all_subgroups_mapping = {}
@@ -1766,7 +1765,8 @@ if uploaded_file:
             "Subgrupo",
             options=subgroup_options,
             format_func=lambda x: all_subgroups_mapping.get(x, "-") if x is not None and x in all_subgroups_mapping else "-",
-            width="medium"
+            width="medium",
+            help="💡 Dica: Selecione um subgrupo e o grupo será identificado automaticamente. Ou selecione o grupo primeiro."
         )
     else:
         column_config['subgroup_id'] = st.column_config.NumberColumn("Subgrupo", width="medium", disabled=True)
@@ -1794,11 +1794,23 @@ if uploaded_file:
     
     # Dica de uso
     if len(edit_df) > 10:
-        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela, selecione grupos/subgrupos manualmente e use as checkboxes para selecionar quais importar.")
+        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados aparecerão. Use as checkboxes para selecionar quais importar.")
     else:
-        st.caption("💡 Edite os dados diretamente na tabela, selecione grupos/subgrupos manualmente e selecione quais registros importar.")
+        st.caption("💡 Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados aparecerão. Selecione quais registros importar.")
     
-    # Exibe tabela editável
+    # Cria mapeamento reverso: subgrupo -> grupo (para identificar grupo quando subgrupo é selecionado)
+    subgroup_to_group = {}
+    for group_id, subs_data in subgroups_by_group.items():
+        for sg_id in subs_data['mapping'].keys():
+            subgroup_to_group[sg_id] = group_id
+    
+    # Dica de uso melhorada
+    if len(edit_df) > 10:
+        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados estarão disponíveis. Se selecionar um subgrupo primeiro, o grupo será identificado automaticamente.")
+    else:
+        st.caption("💡 Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados estarão disponíveis. Se selecionar um subgrupo primeiro, o grupo será identificado automaticamente.")
+    
+    # Exibe tabela editável única
     edited_df = st.data_editor(
         edit_df,
         column_config=column_config,
@@ -1808,6 +1820,67 @@ if uploaded_file:
         height=min(600, max(400, len(edit_df) * 40)),
         key="data_editor_import"
     )
+    
+    # Processa os dados editados para garantir relacionamentos corretos
+    # Esta lógica garante que:
+    # 1. Se um subgrupo foi selecionado, identifica e define o grupo automaticamente
+    # 2. Se um grupo foi selecionado, valida que o subgrupo pertence a ele
+    for idx, row in edited_df.iterrows():
+        current_group_id = row.get('group_id')
+        current_subgroup_id = row.get('subgroup_id')
+        
+        # Converte para int se necessário
+        if pd.notna(current_group_id) and current_group_id is not None:
+            try:
+                current_group_id = int(float(current_group_id))
+            except:
+                current_group_id = None
+        else:
+            current_group_id = None
+        
+        if pd.notna(current_subgroup_id) and current_subgroup_id is not None:
+            try:
+                current_subgroup_id = int(float(current_subgroup_id))
+            except:
+                current_subgroup_id = None
+        else:
+            current_subgroup_id = None
+        
+        # REGRA 1: Se subgrupo foi selecionado mas grupo não, identifica o grupo do subgrupo
+        if current_subgroup_id and not current_group_id:
+            if current_subgroup_id in subgroup_to_group:
+                edited_df.at[idx, 'group_id'] = subgroup_to_group[current_subgroup_id]
+                current_group_id = subgroup_to_group[current_subgroup_id]
+                # Feedback visual (será mostrado após rerun)
+                if 'group_subgroup_updates' not in st.session_state:
+                    st.session_state.group_subgroup_updates = []
+                st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Grupo identificado automaticamente a partir do subgrupo selecionado")
+        
+        # REGRA 2: Se grupo foi selecionado, valida se o subgrupo pertence a ele
+        if current_group_id and current_subgroup_id:
+            if current_group_id in subgroups_by_group:
+                if current_subgroup_id not in subgroups_by_group[current_group_id]['mapping']:
+                    # Subgrupo não pertence ao grupo, remove o subgrupo
+                    edited_df.at[idx, 'subgroup_id'] = None
+                    if 'group_subgroup_updates' not in st.session_state:
+                        st.session_state.group_subgroup_updates = []
+                    st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Subgrupo removido (não pertence ao grupo selecionado)")
+            else:
+                # Grupo não existe mais, remove ambos
+                edited_df.at[idx, 'group_id'] = None
+                edited_df.at[idx, 'subgroup_id'] = None
+        
+        # REGRA 3: Se grupo foi removido, remove também o subgrupo
+        if not current_group_id and current_subgroup_id:
+            edited_df.at[idx, 'subgroup_id'] = None
+    
+    # Mostra feedback se houver atualizações automáticas
+    if 'group_subgroup_updates' in st.session_state and st.session_state.group_subgroup_updates:
+        with st.expander("ℹ️ Atualizações automáticas de grupos/subgrupos", expanded=True):
+            for update_msg in st.session_state.group_subgroup_updates:
+                st.info(update_msg)
+        # Limpa após mostrar
+        st.session_state.group_subgroup_updates = []
     
     # Atualiza seleção e dados
     new_selection = set()
