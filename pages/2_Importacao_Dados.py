@@ -1752,6 +1752,27 @@ if uploaded_file:
         row_dict.pop('group_name', None)
         row_dict.pop('subgroup_name', None)
         
+        # PRESERVA group_id e subgroup_id (converte NaN para None)
+        if 'group_id' in row_dict:
+            group_id_val = row_dict.get('group_id')
+            if pd.isna(group_id_val) or group_id_val is None:
+                row_dict['group_id'] = None
+            else:
+                try:
+                    row_dict['group_id'] = int(float(group_id_val)) if group_id_val else None
+                except (ValueError, TypeError):
+                    row_dict['group_id'] = None
+        
+        if 'subgroup_id' in row_dict:
+            subgroup_id_val = row_dict.get('subgroup_id')
+            if pd.isna(subgroup_id_val) or subgroup_id_val is None:
+                row_dict['subgroup_id'] = None
+            else:
+                try:
+                    row_dict['subgroup_id'] = int(float(subgroup_id_val)) if subgroup_id_val else None
+                except (ValueError, TypeError):
+                    row_dict['subgroup_id'] = None
+        
         # Converte datas
         if 'date' in row_dict and pd.notna(row_dict.get('date')):
             if isinstance(row_dict['date'], pd.Timestamp):
