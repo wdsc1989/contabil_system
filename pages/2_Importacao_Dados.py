@@ -943,114 +943,116 @@ Estrutura do arquivo origem:
                                     normalization_result = None
                                 
                                 if normalization_result and 'normalized_data' in normalization_result:
-                                        normalized_records = normalization_result['normalized_data']
+                                    normalized_records = normalization_result['normalized_data']
                                         
-                                        # VALIDA E CORRIGE VALORES MONETÁRIOS (importante para strings complexas)
-                                        from utils.validators import parse_currency
-                                        
-                                        # Identifica colunas de valor baseado no tipo de importação
-                                        value_columns = []
-                                        if import_type in ['transactions', 'bank_statements', 'accounts_payable', 'accounts_receivable']:
-                                            value_columns = ['value']
-                                        elif import_type == 'contracts':
-                                            value_columns = ['service_value', 'displacement_value']
-                                        elif import_type == 'financial_investments':
-                                            value_columns = ['applied_value', 'redeemed_value', 'yield_value', 'balance']
-                                        elif import_type == 'credit_card_invoices':
-                                            value_columns = ['value']
-                                        elif import_type == 'card_machine_statements':
-                                            value_columns = ['gross_value', 'fee', 'net_value']
-                                        elif import_type == 'inventory':
-                                            value_columns = ['unit_value']
-                                        
-                                        # Valida e corrige valores em todos os registros normalizados
-                                        for record in normalized_records:
-                                            for value_col in value_columns:
-                                                if value_col in record:
-                                                    value = record[value_col]
-                                                    if isinstance(value, str):
-                                                        # Tenta extrair valor usando função robusta
-                                                        parsed = parse_currency(value)
-                                                        if parsed is not None:
-                                                            record[value_col] = parsed
-                                                        else:
-                                                            # Se não conseguiu extrair, tenta converter diretamente
-                                                            try:
-                                                                record[value_col] = float(value)
-                                                            except:
-                                                                record[value_col] = None
-                                                    elif value is not None and not isinstance(value, (int, float)):
+                                    # VALIDA E CORRIGE VALORES MONETÁRIOS (importante para strings complexas)
+                                    from utils.validators import parse_currency
+                                    
+                                    # Identifica colunas de valor baseado no tipo de importação
+                                    value_columns = []
+                                    if import_type in ['transactions', 'bank_statements', 'accounts_payable', 'accounts_receivable']:
+                                        value_columns = ['value']
+                                    elif import_type == 'contracts':
+                                        value_columns = ['service_value', 'displacement_value']
+                                    elif import_type == 'financial_investments':
+                                        value_columns = ['applied_value', 'redeemed_value', 'yield_value', 'balance']
+                                    elif import_type == 'credit_card_invoices':
+                                        value_columns = ['value']
+                                    elif import_type == 'card_machine_statements':
+                                        value_columns = ['gross_value', 'fee', 'net_value']
+                                    elif import_type == 'inventory':
+                                        value_columns = ['unit_value']
+                                    
+                                    # Valida e corrige valores em todos os registros normalizados
+                                    for record in normalized_records:
+                                        for value_col in value_columns:
+                                            if value_col in record:
+                                                value = record[value_col]
+                                                if isinstance(value, str):
+                                                    # Tenta extrair valor usando função robusta
+                                                    parsed = parse_currency(value)
+                                                    if parsed is not None:
+                                                        record[value_col] = parsed
+                                                    else:
+                                                        # Se não conseguiu extrair, tenta converter diretamente
                                                         try:
                                                             record[value_col] = float(value)
                                                         except:
                                                             record[value_col] = None
+                                                elif value is not None and not isinstance(value, (int, float)):
+                                                    try:
+                                                        record[value_col] = float(value)
+                                                    except:
+                                                        record[value_col] = None
+                                    
+                                    # Se normalizou apenas uma amostra, aplica padrões ao resto
+                                    if len(normalized_records) < len(processed_data):
+                                        # Para o resto, mantém estrutura original mas garante colunas corretas
+                                        remaining = processed_data[len(normalized_records):]
+                                        target_columns = ai_service.get_target_columns(import_type)
                                         
-                                        # Se normalizou apenas uma amostra, aplica padrões ao resto
-                                        if len(normalized_records) < len(processed_data):
-                                            # Para o resto, mantém estrutura original mas garante colunas corretas
-                                            remaining = processed_data[len(normalized_records):]
-                                            target_columns = ai_service.get_target_columns(import_type)
-                                            
-                                            # Tenta aplicar o mesmo padrão de mapeamento aos registros restantes
-                                            # Usa o primeiro registro normalizado como referência
-                                            if normalized_records:
-                                                reference_record = normalized_records[0]
-                                                # Para cada registro restante, tenta mapear baseado na estrutura do primeiro
-                                                for record in remaining:
-                                                    new_record = {}
-                                                    # Copia estrutura do registro de referência
-                                                    for target_col in target_columns:
-                                                        # Tenta encontrar valor correspondente no registro original
-                                                        found = False
-                                                        for orig_key, orig_value in record.items():
-                                                            # Se a chave original mapeia para esta coluna destino
-                                                            if target_col in reference_record:
-                                                                # Usa o valor original se existir, senão usa None
-                                                                if orig_key in record:
-                                                                    new_record[target_col] = record[orig_key]
-                                                                    found = True
-                                                                    break
-                                                        if not found:
-                                                            new_record[target_col] = None
-                                                    
-                                                    # Valida valores monetários no registro restante também
-                                                    for value_col in value_columns:
-                                                        if value_col in new_record:
-                                                            value = new_record[value_col]
-                                                            if isinstance(value, str):
-                                                                parsed = parse_currency(value)
-                                                                if parsed is not None:
-                                                                    new_record[value_col] = parsed
-                                                                else:
-                                                                    try:
-                                                                        new_record[value_col] = float(value)
-                                                                    except:
-                                                                        new_record[value_col] = None
-                                                    
-                                                    record.clear()
-                                                    record.update(new_record)
-                                            
-                                            processed_data = normalized_records + remaining
-                                        else:
-                                            processed_data = normalized_records
+                                        # Tenta aplicar o mesmo padrão de mapeamento aos registros restantes
+                                        # Usa o primeiro registro normalizado como referência
+                                        if normalized_records:
+                                            reference_record = normalized_records[0]
+                                            # Para cada registro restante, tenta mapear baseado na estrutura do primeiro
+                                            for record in remaining:
+                                                new_record = {}
+                                                # Copia estrutura do registro de referência
+                                                for target_col in target_columns:
+                                                    # Tenta encontrar valor correspondente no registro original
+                                                    found = False
+                                                    for orig_key, orig_value in record.items():
+                                                        # Se a chave original mapeia para esta coluna destino
+                                                        if target_col in reference_record:
+                                                            # Usa o valor original se existir, senão usa None
+                                                            if orig_key in record:
+                                                                new_record[target_col] = record[orig_key]
+                                                                found = True
+                                                                break
+                                                    if not found:
+                                                        new_record[target_col] = None
+                                                
+                                                # Valida valores monetários no registro restante também
+                                                for value_col in value_columns:
+                                                    if value_col in new_record:
+                                                        value = new_record[value_col]
+                                                        if isinstance(value, str):
+                                                            parsed = parse_currency(value)
+                                                            if parsed is not None:
+                                                                new_record[value_col] = parsed
+                                                            else:
+                                                                try:
+                                                                    new_record[value_col] = float(value)
+                                                                except:
+                                                                    new_record[value_col] = None
+                                                
+                                                record.clear()
+                                                record.update(new_record)
                                         
-                                        st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
-                                        
-                                        # Mostra resumo do mapeamento se disponível
-                                        if normalization_result.get('summary', {}).get('mapping_applied'):
-                                            mapping_applied = normalization_result['summary']['mapping_applied']
-                                            if mapping_applied:
-                                                with st.expander("ℹ️ Mapeamento aplicado pela IA", expanded=False):
-                                                    for orig_col, dest_col in mapping_applied.items():
-                                                        st.write(f"`{orig_col}` → `{dest_col}`")
+                                        processed_data = normalized_records + remaining
                                     else:
-                                        # Se normalização falhou, mostra opção manual
-                                        st.warning("⚠️ IA não conseguiu estruturar automaticamente. Use a opção manual abaixo.")
-                                        raise Exception("Normalização não retornou dados")
-                                        
-                                except Exception as e:
-                                    error_msg = str(e)
-                                    st.warning(f"⚠️ Não foi possível estruturar automaticamente: {error_msg}")
+                                        processed_data = normalized_records
+                                    
+                                    st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
+                                    
+                                    # Mostra resumo do mapeamento se disponível
+                                    if normalization_result.get('summary', {}).get('mapping_applied'):
+                                        mapping_applied = normalization_result['summary']['mapping_applied']
+                                        if mapping_applied:
+                                            with st.expander("ℹ️ Mapeamento aplicado pela IA", expanded=False):
+                                                for orig_col, dest_col in mapping_applied.items():
+                                                    st.write(f"`{orig_col}` → `{dest_col}`")
+                                else:
+                                    # Se normalização falhou, mostra opção manual
+                                    st.warning("⚠️ IA não conseguiu estruturar automaticamente. Use a opção manual abaixo.")
+                                    normalization_result = None
+                        else:
+                            # IA não disponível
+                            pass
+                    except Exception as e:
+                        error_msg = str(e)
+                        st.warning(f"⚠️ Não foi possível estruturar automaticamente: {error_msg}")
                                     
                                     # Opção para estruturação manual
                                     st.markdown("---")
@@ -2084,6 +2086,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
