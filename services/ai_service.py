@@ -886,81 +886,111 @@ Analise o arquivo fornecido e forneça uma análise estrutural completa.
         """
         Cria prompt para detecção automática do tipo de dado
         """
-        prompt = f"""Você é um especialista em análise de dados financeiros. Identifique o tipo de dado financeiro do arquivo com precisão.
+        prompt = f"""Você é um especialista em análise de dados financeiros. Sua tarefa é identificar com PRECISÃO o tipo de dado financeiro do arquivo.
 
-**TIPOS DISPONÍVEIS E SUAS CARACTERÍSTICAS:**
+**ANÁLISE OBRIGATÓRIA - Siga esta ordem:**
+
+1. **EXAMINE AS COLUNAS:** Analise cada nome de coluna e identifique padrões
+2. **EXAMINE OS DADOS:** Analise o conteúdo real dos dados (não apenas nomes de colunas)
+3. **IDENTIFIQUE INDICADORES:** Procure por palavras-chave, padrões e estruturas específicas
+4. **COMPARE COM TIPOS:** Compare com as características de cada tipo abaixo
+5. **ESCOLHA O MAIS PROVÁVEL:** Seja assertivo - escolha o tipo que melhor se encaixa
+
+**TIPOS DISPONÍVEIS E SUAS CARACTERÍSTICAS DEFINITIVAS:**
 
 1. **transactions** (Transações Financeiras Gerais):
-   - Campos típicos: data, descrição, valor, tipo (entrada/saida), categoria
-   - Características: Movimentações financeiras gerais, não específicas de cartão ou banco
-   - Exemplos: Pagamentos diversos, recebimentos, transferências genéricas
-   - NÃO é: extrato bancário, fatura de cartão, contrato
+   - ✅ DEVE TER: data, descrição, valor
+   - ✅ CARACTERÍSTICAS: Movimentações financeiras gerais, genéricas, sem contexto específico
+   - ✅ EXEMPLOS: "Pix enviado", "Transferência", "Pagamento", "Recebimento", "Depósito"
+   - ❌ NÃO É SE: tiver "saldo", "banco", "conta", "agência" (é bank_statements)
+   - ❌ NÃO É SE: tiver "estabelecimento", "bandeira", "parcela", "cartão" (é credit_card_invoices)
+   - ❌ NÃO É SE: tiver "contratante", "evento", "serviço" (é contracts)
 
 2. **credit_card_invoices** (Faturas de Cartão de Crédito):
-   - Campos típicos: data_transacao, estabelecimento, valor, bandeira, parcela, total_parcelas
-   - Características: SEMPRE relacionado a cartão de crédito, estabelecimentos comerciais, parcelas
-   - Exemplos: Compras em estabelecimentos, faturas de cartão, transações com bandeira (Visa, Mastercard)
-   - Indicadores: "estabelecimento", "bandeira", "parcela", "cartão", "fatura"
+   - ✅ DEVE TER: data_transacao OU data, estabelecimento OU descrição com nome de loja, valor
+   - ✅ CARACTERÍSTICAS: SEMPRE relacionado a cartão de crédito, compras em estabelecimentos
+   - ✅ INDICADORES OBRIGATÓRIOS: "estabelecimento", "bandeira" (Visa, Mastercard, Elo), "parcela", "cartão", "fatura"
+   - ✅ EXEMPLOS: "Compra em SUPERMERCADO ABC", "FATURA CARTÃO", "PARCELA 1/3", "VISA", "MASTERCARD"
+   - ⚠️ ATENÇÃO: Se tiver apenas "descrição" genérica mas SEM indicadores de cartão, pode ser "transactions"
 
 3. **bank_statements** (Extratos Bancários):
-   - Campos típicos: data, histórico/descrição, valor, saldo, banco, conta, agência
-   - Características: Movimentações de conta bancária, saldo após transação
-   - Exemplos: Extratos bancários, movimentações de conta corrente/poupança
-   - Indicadores: "saldo", "banco", "conta", "agência", "extrato"
+   - ✅ DEVE TER: data, descrição/histórico, valor, saldo (OBRIGATÓRIO - diferencia de transactions)
+   - ✅ CARACTERÍSTICAS: Movimentações de conta bancária, SEMPRE tem saldo após transação
+   - ✅ INDICADORES OBRIGATÓRIOS: "saldo", "banco", "conta", "agência", "extrato", "movimentação"
+   - ✅ EXEMPLOS: "SALDO ANTERIOR", "SALDO ATUAL", "EXTRATO", "CONTA CORRENTE", "AG 1234"
+   - ⚠️ ATENÇÃO: Se tiver "Pix", "Transferência" mas SEM saldo, pode ser "transactions"
 
 4. **contracts** (Contratos/Eventos):
-   - Campos típicos: contract_start, event_date, contractor_name, service_value, event_type
-   - Características: Contratos de serviços, eventos, datas de início e evento
-   - Exemplos: Contratos de festas, eventos, serviços prestados
+   - ✅ DEVE TER: contract_start OU data_inicio, event_date OU data_evento, contractor_name OU contratante, service_value OU valor_servico
+   - ✅ CARACTERÍSTICAS: Contratos de serviços, eventos, datas de início e evento distintas
+   - ✅ INDICADORES: "contratante", "evento", "serviço", "festa", "casamento", "aniversário"
+   - ✅ EXEMPLOS: "CONTRATO DE FESTA", "EVENTO", "SERVIÇO PRESTADO", "CONTRATANTE: João Silva"
 
 5. **accounts_payable** (Contas a Pagar):
-   - Campos típicos: account_name (fornecedor), due_date, value, paid, monthly_installments
-   - Características: Contas a pagar, fornecedores, vencimentos, parcelas mensais
-   - Indicadores: "fornecedor", "vencimento", "pago", "parcela"
+   - ✅ DEVE TER: account_name OU fornecedor OU credor, due_date OU vencimento, value
+   - ✅ CARACTERÍSTICAS: Contas a pagar, fornecedores, vencimentos, parcelas mensais
+   - ✅ INDICADORES: "fornecedor", "credor", "vencimento", "pago", "parcela", "a pagar"
+   - ✅ EXEMPLOS: "FORNECEDOR XYZ", "VENCIMENTO 10/02", "CONTA A PAGAR"
 
 6. **accounts_receivable** (Contas a Receber):
-   - Campos típicos: account_name (cliente), due_date, value, received, contract_value
-   - Características: Contas a receber, clientes, recebimentos esperados
-   - Indicadores: "cliente", "receber", "recebido"
+   - ✅ DEVE TER: account_name OU cliente OU devedor, due_date OU vencimento, value
+   - ✅ CARACTERÍSTICAS: Contas a receber, clientes, recebimentos esperados
+   - ✅ INDICADORES: "cliente", "devedor", "receber", "recebido", "a receber"
+   - ✅ EXEMPLOS: "CLIENTE ABC", "CONTA A RECEBER", "RECEBIMENTO"
 
 7. **financial_investments** (Investimentos Financeiros):
-   - Campos típicos: date, investment_type, applied_value, redeemed_value, yield_value
-   - Características: Aplicações financeiras, investimentos, resgates
-   - Indicadores: "aplicação", "investimento", "resgate", "rendimento"
+   - ✅ DEVE TER: date, investment_type OU tipo_investimento, applied_value OU redeemed_value
+   - ✅ CARACTERÍSTICAS: Aplicações financeiras, investimentos, resgates
+   - ✅ INDICADORES: "aplicação", "investimento", "resgate", "rendimento", "CDB", "LCI", "LCA"
+   - ✅ EXEMPLOS: "APLICAÇÃO CDB", "RESGATE LCI", "RENDIMENTO"
 
 8. **card_machine_statements** (Extratos de Máquina de Cartão):
-   - Campos típicos: date, gross_value, fee, net_value, card_brand, transaction_type
-   - Características: Vendas em máquina de cartão, valores brutos e líquidos, taxas
-   - Indicadores: "valor bruto", "taxa", "valor líquido", "máquina"
+   - ✅ DEVE TER: date, gross_value OU valor_bruto, net_value OU valor_liquido, fee OU taxa
+   - ✅ CARACTERÍSTICAS: Vendas em máquina de cartão, valores brutos e líquidos, taxas
+   - ✅ INDICADORES: "valor bruto", "taxa", "valor líquido", "máquina", "maquininha"
+   - ✅ EXEMPLOS: "VALOR BRUTO", "TAXA DE ANTECIPAÇÃO", "VALOR LÍQUIDO"
 
 9. **inventory** (Controle de Estoque):
-   - Campos típicos: product_name, quantity, unit_value, movement_date, movement_type
-   - Características: Produtos, quantidades, movimentações de estoque
-   - Indicadores: "produto", "quantidade", "estoque", "movimento"
+   - ✅ DEVE TER: product_name OU produto, quantity OU quantidade, unit_value OU valor_unitario
+   - ✅ CARACTERÍSTICAS: Produtos, quantidades, movimentações de estoque
+   - ✅ INDICADORES: "produto", "quantidade", "estoque", "movimento", "entrada", "saída"
+   - ✅ EXEMPLOS: "PRODUTO XYZ", "QUANTIDADE", "ESTOQUE"
 
-**DIFERENÇA CRÍTICA: transactions vs credit_card_invoices:**
-- **transactions**: Movimentações financeiras gerais, sem foco em cartão de crédito
-- **credit_card_invoices**: SEMPRE relacionado a cartão de crédito, com estabelecimentos, bandeiras, parcelas
+**REGRAS CRÍTICAS DE DIFERENCIAÇÃO:**
 
+- **transactions vs bank_statements:**
+  - Se tiver coluna "saldo" OU dados mostram saldo após cada transação → bank_statements
+  - Se NÃO tiver saldo → transactions
+
+- **transactions vs credit_card_invoices:**
+  - Se tiver "estabelecimento", "bandeira", "parcela", "cartão" → credit_card_invoices
+  - Se NÃO tiver esses indicadores → transactions
+
+- **bank_statements vs transactions:**
+  - Se descrição contém "EXTRATO", "SALDO", "CONTA", "AGÊNCIA" → bank_statements
+  - Se descrição é genérica ("Pix", "Transferência") sem saldo → transactions
+
+**DADOS PARA ANÁLISE:**
 **COLUNAS DO ARQUIVO:** {', '.join(columns)}
-**AMOSTRA DE DADOS (primeiras 10 linhas):** {data_sample}
+**AMOSTRA DE DADOS (primeiras 15 linhas):** {data_sample}
 
-**TAREFA:**
-1. Analise as colunas e os dados da amostra
-2. Identifique o tipo mais provável baseado nas características
-3. Diferencie cuidadosamente entre "transactions" e "credit_card_invoices"
-4. Liste tipos alternativos com suas confianças
-5. Identifique indicadores-chave que levaram à conclusão
+**TAREFA OBRIGATÓRIA:**
+1. Analise CADA coluna e seu conteúdo
+2. Identifique TODOS os indicadores presentes
+3. Compare com as características de CADA tipo
+4. Escolha o tipo mais provável com alta confiança (>= 0.7) ou baixa (< 0.7)
+5. Liste tipos alternativos com suas confianças e razões
+6. Liste indicadores-chave encontrados
 
-**Responda APENAS em JSON válido:**
+**Responda APENAS em JSON válido (sem markdown, sem texto adicional):**
 {{
     "suggested_type": "tipo_identificado",
     "confidence": 0.0-1.0,
-    "reasoning": "explicação detalhada do motivo da escolha, destacando diferenças com tipos similares",
+    "reasoning": "explicação detalhada do motivo da escolha, listando indicadores encontrados e comparando com tipos similares",
     "alternative_types": [
-        {{"type": "tipo_alternativo", "confidence": 0.0, "reason": "por que foi considerado"}}
+        {{"type": "tipo_alternativo", "confidence": 0.0, "reason": "por que foi considerado mas rejeitado"}}
     ],
-    "key_indicators": ["indicador1", "indicador2", "indicador3"]
+    "key_indicators": ["indicador1 encontrado", "indicador2 encontrado", "indicador3 encontrado"]
 }}
 """
         return prompt
@@ -1128,12 +1158,39 @@ Analise os dados extraídos do arquivo e estruture CADA registro para correspond
    - Se uma coluna não está mapeada, tente inferir o mapeamento baseado no nome e conteúdo
    - Garanta que TODAS as colunas obrigatórias da tabela destino sejam preenchidas
 
-3. **FORMATE OS DADOS CORRETAMENTE:**
-   - **Datas**: Converta QUALQUER formato (DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY, etc) para YYYY-MM-DD
-   - **Valores monetários**: Remova símbolos (R$, BRL, $), pontos de milhar, converta vírgula para ponto. Ex: "R$ 1.234,56" → 1234.56
-   - **Números inteiros**: Apenas números, sem decimais
-   - **Strings**: Limpe espaços extras, normalize caracteres especiais
-   - **Booleanos**: Converta "sim/não", "true/false", "1/0" para true/false
+3. **EXTRAIA E FORMATE OS DADOS CORRETAMENTE (CRÍTICO):**
+   
+   **VALORES MONETÁRIOS (MUITO IMPORTANTE):**
+   - Valores podem vir em strings complexas com texto e números misturados
+   - Exemplos problemáticos: "Pix enviado: R$ 200,00 R$ 6.901,09", "Transferência -R$ 1.500,00"
+   - REGRA: SEMPRE extraia APENAS o valor numérico, removendo TODO o texto
+   - Extraia o valor principal da transação (geralmente o primeiro ou o mais relevante)
+   - Remova símbolos (R$, BRL, $), pontos de milhar, converta vírgula para ponto
+   - Exemplos de conversão:
+     * "Pix enviado: R$ 200,00 R$ 6.901,09" → extraia "200.00" (valor da transação, não o saldo)
+     * "Transferência -R$ 1.500,00" → extraia "-1500.00"
+     * "R$ 1.234,56" → 1234.56
+     * "R$ 6.901,09" → 6901.09
+     * "-R$ 200,00" → -200.00
+   - Se houver múltiplos valores na mesma string, escolha o valor da transação (geralmente o primeiro ou o que está após a descrição)
+   - Valores devem ser números (float), NUNCA strings
+   
+   **DATAS:**
+   - Converta QUALQUER formato (DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY, DD.MM.YYYY, etc) para YYYY-MM-DD
+   - Se data estiver em texto, extraia apenas a parte da data
+   - Exemplos: "15/01/2024" → "2024-01-15", "01-15-2024" → "2024-01-15"
+   
+   **NÚMEROS INTEIROS:**
+   - Apenas números, sem decimais
+   - Remova formatação (pontos, vírgulas, espaços)
+   
+   **STRINGS:**
+   - Limpe espaços extras no início e fim
+   - Normalize caracteres especiais
+   - Mantenha apenas o texto relevante (remova valores monetários e datas se estiverem misturados)
+   
+   **BOOLEANOS:**
+   - Converta "sim/não", "true/false", "1/0", "S/N" para true/false
 
 4. **PREENCHA CAMPOS OBRIGATÓRIOS:**
    - Se um campo obrigatório não está no arquivo, tente inferir do contexto
@@ -1163,12 +1220,32 @@ Analise os dados extraídos do arquivo e estruture CADA registro para correspond
     }}
 }}
 
+**REGRAS CRÍTICAS DE EXTRAÇÃO:**
+
+1. **VALORES MONETÁRIOS:**
+   - Se o valor estiver em uma string complexa (ex: "Pix enviado: R$ 200,00 R$ 6.901,09"):
+     * Identifique qual é o valor da TRANSAÇÃO (geralmente o primeiro valor após a descrição)
+     * IGNORE valores de saldo ou outros valores secundários
+     * Extraia APENAS o número, converta para float
+     * Exemplo: "Pix enviado: R$ 200,00 R$ 6.901,09" → value: 200.00 (NÃO 6901.09)
+   
+2. **DESCRIÇÕES:**
+   - Se a descrição contém valores monetários, remova-os
+   - Mantenha apenas o texto descritivo
+   - Exemplo: "Pix enviado: R$ 200,00" → description: "Pix enviado" (sem o valor)
+
+3. **TIPO DE TRANSAÇÃO (entrada/saida):**
+   - Se valor for negativo OU descrição indicar saída (ex: "Pix enviado", "Pagamento") → "saida"
+   - Se valor for positivo OU descrição indicar entrada (ex: "Pix recebido", "Depósito") → "entrada"
+   - Para bank_statements: valores positivos são créditos, negativos são débitos
+
 **IMPORTANTE:**
-- Retorne APENAS JSON válido, sem texto adicional
+- Retorne APENAS JSON válido, sem texto adicional, sem markdown
 - Cada objeto em normalized_data DEVE ter TODAS as colunas da tabela destino
 - Use null para campos opcionais que não podem ser inferidos
-- Valores numéricos devem ser números (não strings)
+- Valores numéricos (value, balance, etc) devem ser números (float/int), NUNCA strings
 - Datas devem ser strings no formato YYYY-MM-DD
+- Descrições devem ser strings limpas, sem valores monetários ou datas
 """
         return prompt
     

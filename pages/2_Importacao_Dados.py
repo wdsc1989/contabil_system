@@ -901,6 +901,46 @@ Estrutura do arquivo origem:
                                     if normalization_result and 'normalized_data' in normalization_result:
                                         normalized_records = normalization_result['normalized_data']
                                         
+                                        # VALIDA E CORRIGE VALORES MONETÁRIOS (importante para strings complexas)
+                                        from utils.validators import parse_currency
+                                        
+                                        # Identifica colunas de valor baseado no tipo de importação
+                                        value_columns = []
+                                        if import_type in ['transactions', 'bank_statements', 'accounts_payable', 'accounts_receivable']:
+                                            value_columns = ['value']
+                                        elif import_type == 'contracts':
+                                            value_columns = ['service_value', 'displacement_value']
+                                        elif import_type == 'financial_investments':
+                                            value_columns = ['applied_value', 'redeemed_value', 'yield_value', 'balance']
+                                        elif import_type == 'credit_card_invoices':
+                                            value_columns = ['value']
+                                        elif import_type == 'card_machine_statements':
+                                            value_columns = ['gross_value', 'fee', 'net_value']
+                                        elif import_type == 'inventory':
+                                            value_columns = ['unit_value']
+                                        
+                                        # Valida e corrige valores em todos os registros normalizados
+                                        for record in normalized_records:
+                                            for value_col in value_columns:
+                                                if value_col in record:
+                                                    value = record[value_col]
+                                                    if isinstance(value, str):
+                                                        # Tenta extrair valor usando função robusta
+                                                        parsed = parse_currency(value)
+                                                        if parsed is not None:
+                                                            record[value_col] = parsed
+                                                        else:
+                                                            # Se não conseguiu extrair, tenta converter diretamente
+                                                            try:
+                                                                record[value_col] = float(value)
+                                                            except:
+                                                                record[value_col] = None
+                                                    elif value is not None and not isinstance(value, (int, float)):
+                                                        try:
+                                                            record[value_col] = float(value)
+                                                        except:
+                                                            record[value_col] = None
+                                        
                                         # Se normalizou apenas uma amostra, aplica padrões ao resto
                                         if len(normalized_records) < len(processed_data):
                                             # Para o resto, mantém estrutura original mas garante colunas corretas
@@ -928,6 +968,21 @@ Estrutura do arquivo origem:
                                                                     break
                                                         if not found:
                                                             new_record[target_col] = None
+                                                    
+                                                    # Valida valores monetários no registro restante também
+                                                    for value_col in value_columns:
+                                                        if value_col in new_record:
+                                                            value = new_record[value_col]
+                                                            if isinstance(value, str):
+                                                                parsed = parse_currency(value)
+                                                                if parsed is not None:
+                                                                    new_record[value_col] = parsed
+                                                                else:
+                                                                    try:
+                                                                        new_record[value_col] = float(value)
+                                                                    except:
+                                                                        new_record[value_col] = None
+                                                    
                                                     record.clear()
                                                     record.update(new_record)
                                             
@@ -1316,8 +1371,22 @@ Estrutura do arquivo origem:
         st.session_state.selected_rows = set(range(len(processed_data)))
     
     # Calcula valor total apenas dos registros selecionados
+    # Usa função robusta para extrair valores mesmo de strings complexas
+    from utils.validators import parse_currency
+    
     selected_data = [processed_data[i] for i in st.session_state.selected_rows if 0 <= i < len(processed_data)]
-    total_value_selected = sum(float(r.get('value', 0)) for r in selected_data if r.get('value') and pd.notna(r.get('value')))
+    total_value_selected = 0.0
+    for r in selected_data:
+        value = r.get('value')
+        if value is not None and pd.notna(value):
+            # Tenta converter para float diretamente
+            if isinstance(value, (int, float)):
+                total_value_selected += float(value)
+            elif isinstance(value, str):
+                # Usa função robusta para extrair valor de string
+                parsed_value = parse_currency(value)
+                if parsed_value is not None:
+                    total_value_selected += parsed_value
     
     # Métricas em cards mais limpos
     col1, col2, col3, col4 = st.columns(4)

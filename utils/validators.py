@@ -103,30 +103,69 @@ def parse_date(date_str: str) -> Optional[datetime]:
 def parse_currency(value: str) -> Optional[float]:
     """
     Converte string de moeda para float
+    Extrai valores numéricos mesmo de strings complexas com texto e moeda
     """
+    import re
+    
     if isinstance(value, (int, float)):
         return float(value)
     
     if not isinstance(value, str):
         return None
     
+    # Primeiro, tenta extrair valor usando regex (para strings complexas)
+    # Padrão: R$ seguido de número com ou sem separadores
+    # Exemplos: "R$ 200,00", "R$ 6.901,09", "-R$ 200,00", "R$200.00"
+    currency_patterns = [
+        r'R\$\s*-?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)',  # R$ com separadores
+        r'R\$\s*-?\s*(\d+[.,]?\d*)',  # R$ simples
+        r'-?\s*R\$\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)',  # -R$ com separadores
+        r'-?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})?)\s*R\$',  # número antes de R$
+    ]
+    
+    for pattern in currency_patterns:
+        match = re.search(pattern, value, re.IGNORECASE)
+        if match:
+            extracted = match.group(1)
+            # Verifica se é negativo (procura sinal de menos antes do padrão)
+            is_negative = bool(re.search(r'-\s*R\$|R\$\s*-', value, re.IGNORECASE))
+            
+            # Limpa e converte
+            clean_val = extracted.replace('.', '').replace(',', '.')
+            try:
+                result = float(clean_val)
+                return -result if is_negative else result
+            except:
+                continue
+    
+    # Se não encontrou com regex, tenta método tradicional
     # Remove espaços e símbolos de moeda
-    value = value.strip().replace('R$', '').replace('$', '').strip()
+    clean_value = value.strip().replace('R$', '').replace('$', '').strip()
+    
+    # Remove texto antes e depois do número (mantém apenas números, vírgulas e pontos)
+    clean_value = re.sub(r'[^\d.,-]', '', clean_value)
     
     # Trata formato brasileiro (1.234,56)
-    if ',' in value and '.' in value:
-        if value.rindex(',') > value.rindex('.'):
-            # Formato brasileiro
-            value = value.replace('.', '').replace(',', '.')
-        else:
-            # Formato americano
-            value = value.replace(',', '')
-    elif ',' in value:
+    if ',' in clean_value and '.' in clean_value:
+        try:
+            if clean_value.rindex(',') > clean_value.rindex('.'):
+                # Formato brasileiro
+                clean_value = clean_value.replace('.', '').replace(',', '.')
+            else:
+                # Formato americano
+                clean_value = clean_value.replace(',', '')
+        except ValueError:
+            # Se rindex falhar, tenta substituir vírgula
+            clean_value = clean_value.replace(',', '.')
+    elif ',' in clean_value:
         # Assume formato brasileiro se tiver apenas vírgula
-        value = value.replace(',', '.')
+        clean_value = clean_value.replace(',', '.')
+    
+    # Remove caracteres não numéricos exceto ponto e sinal de menos
+    clean_value = re.sub(r'[^\d.-]', '', clean_value)
     
     try:
-        return float(value)
+        return float(clean_value)
     except:
         return None
 
