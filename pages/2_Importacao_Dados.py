@@ -439,104 +439,137 @@ if uploaded_file:
             # file_content já foi lido acima
             file_extension = uploaded_file.name.split('.')[-1].lower()
             
-            # Processa imagem com OCR
+            # Tenta usar Vision API primeiro (não requer OCR local)
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Verifica se Vision API está disponível
+            db = SessionLocal()
+            vision_api_used = False
             try:
-                # Mostra progresso mais detalhado
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                from services.vision_processor import VisionProcessor
+                vision_processor = VisionProcessor(db)
                 
-                status_text.info("🖼️ Iniciando processamento de imagem com OCR...")
-                progress_bar.progress(10)
-                
-                # Processa imagem com timeout implícito (o pytesseract tem timeout de 120s)
-                status_text.info("🖼️ Extraindo texto da imagem (isso pode levar até 2 minutos para imagens grandes)...")
-                progress_bar.progress(30)
-                
-                image_data = ParserService.parse_image(file_content, file_extension)
-                progress_bar.progress(80)
-                
-                df = image_data.get('dataframe')
-                full_text = image_data.get('full_text', '')
-                
-                # Salva dados da imagem para uso pela IA
-                st.session_state['pdf_full_data'] = image_data
-                st.session_state['is_image_file'] = True
-                
-                progress_bar.progress(100)
-                status_text.empty()
-                progress_bar.empty()
-                
-                if df is None or df.empty:
-                    if full_text and len(full_text.strip()) > 10:
-                        st.success(f"✅ Imagem processada! {len(full_text)} caracteres extraídos. A IA processará o texto extraído...")
-                    else:
-                        st.warning("⚠️ Pouco texto extraído da imagem. A IA tentará processar mesmo assim...")
-                    df = pd.DataFrame()
-                else:
-                    st.success(f"✅ Imagem processada! {len(df)} linha(s) extraída(s) com OCR.")
-            except Exception as e:
-                error_msg = str(e)
-                st.error(f"❌ Erro ao processar imagem: {error_msg}")
-                
-                # Mensagens de ajuda específicas
-                if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                    st.warning("⏱️ O processamento demorou muito. Tente:")
-                    st.markdown("- Redimensionar a imagem para um tamanho menor")
-                    st.markdown("- Converter para PDF e tentar novamente")
-                    st.markdown("- Usar uma imagem com melhor qualidade/resolução")
-                elif "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower() or "easyocr" in error_msg.lower():
-                    st.warning("⚠️ **OCR local não está disponível ou configurado.**")
-                    st.info("""
-                    **Soluções:**
+                if vision_processor.is_available():
+                    # Usa Vision API diretamente (melhor opção, não requer OCR local)
+                    status_text.info("🤖 Processando imagem com Vision API (não requer OCR local)...")
+                    progress_bar.progress(20)
                     
-                    **Opção 1 (Recomendada):** Use a Vision API diretamente
-                    - O sistema tentará usar a Vision API da OpenAI/Gemini para processar a imagem
-                    - Não requer instalação de OCR local
-                    - Funciona automaticamente se a IA estiver configurada
-                    
-                    **Opção 2:** Instalar OCR local (Windows)
-                    - **Tesseract OCR:**
-                      1. Baixe de: https://github.com/UB-Mannheim/tesseract/wiki
-                      2. Instale o executável
-                      3. Adicione ao PATH do sistema ou configure a variável de ambiente
-                      4. Instale as bibliotecas Python: `pip install pytesseract Pillow`
-                    
-                    **Opção 3:** Converter para PDF
-                    - Converta a imagem para PDF usando um conversor online
-                    - O sistema processará o PDF com a Vision API
-                    """)
-                else:
-                    st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
-                
-                # Tenta usar Vision API como fallback
-                st.info("🔄 Tentando processar com Vision API como alternativa...")
-                try:
-                    from services.vision_processor import VisionProcessor
-                    from config.database import SessionLocal
-                    
-                    db = SessionLocal()
                     try:
-                        vision_processor = VisionProcessor(db)
-                        if vision_processor.is_available():
-                            with st.spinner("🤖 Processando imagem com Vision API..."):
-                                result = vision_processor.process_file(file_content, uploaded_file.name, import_type="transactions")
-                                if result and result.get('data'):
-                                    st.success("✅ Imagem processada com Vision API!")
-                                    # Converte resultado para DataFrame
-                                    df = pd.DataFrame(result['data'])
-                                    st.session_state['pdf_full_data'] = {'full_text': '', 'dataframe': df}
+                        result = vision_processor.process_file(
+                            file_content=file_content,
+                            filename=uploaded_file.name,
+                            import_type="transactions"
+                        )
+                        
+                        if result and result.get('success') and result.get('processed_data'):
+                            progress_bar.progress(80)
+                            # Converte dados processados para DataFrame
+                            processed_data = result.get('processed_data', [])
+                            if processed_data:
+                                df = pd.DataFrame(processed_data)
+                                st.session_state['pdf_full_data'] = {
+                                    'full_text': '',
+                                    'dataframe': df,
+                                    'metadata': {'ocr_used': False, 'vision_api_used': True}
+                                }
+                                st.session_state['is_image_file'] = True
+                                vision_api_used = True
+                                progress_bar.progress(100)
+                                status_text.empty()
+                                progress_bar.empty()
+                                st.success(f"✅ Imagem processada com Vision API! {len(df)} registro(s) extraído(s).")
+                            else:
+                                # Se não retornou dados estruturados, tenta extrair texto
+                                full_text = result.get('full_text', '')
+                                if full_text:
+                                    df = pd.DataFrame()
+                                    st.session_state['pdf_full_data'] = {
+                                        'full_text': full_text,
+                                        'dataframe': df,
+                                        'metadata': {'ocr_used': False, 'vision_api_used': True}
+                                    }
                                     st.session_state['is_image_file'] = True
+                                    vision_api_used = True
+                                    progress_bar.progress(100)
+                                    status_text.empty()
+                                    progress_bar.empty()
+                                    st.success(f"✅ Imagem processada! {len(full_text)} caracteres extraídos. A IA processará o texto...")
                                 else:
-                                    st.error("❌ Vision API não retornou dados válidos")
-                                    st.stop()
+                                    raise Exception("Vision API não retornou dados ou texto")
                         else:
-                            st.error("❌ Vision API não está disponível. Configure a IA na página de Administração.")
-                            st.stop()
-                    finally:
-                        db.close()
-                except Exception as vision_error:
-                    st.error(f"❌ Vision API também falhou: {str(vision_error)}")
+                            error_msg = result.get('error', 'Erro desconhecido') if result else 'Nenhum resultado retornado'
+                            raise Exception(f"Vision API retornou erro: {error_msg}")
+                    except Exception as vision_error:
+                        # Se Vision API falhar, tenta OCR local como fallback
+                        status_text.warning(f"⚠️ Vision API falhou: {str(vision_error)}. Tentando OCR local...")
+                        progress_bar.progress(30)
+                        raise vision_error  # Re-raise para tentar OCR local
+                else:
+                    # Vision API não disponível, tenta OCR local
+                    status_text.info("🖼️ Vision API não disponível. Tentando OCR local...")
+                    progress_bar.progress(10)
+                    raise Exception("Vision API não disponível")
+            except Exception as vision_error:
+                # Fallback: tenta OCR local
+                try:
+                    status_text.info("🖼️ Processando imagem com OCR local...")
+                    progress_bar.progress(30)
+                    
+                    image_data = ParserService.parse_image(file_content, file_extension)
+                    progress_bar.progress(80)
+                    
+                    df = image_data.get('dataframe')
+                    full_text = image_data.get('full_text', '')
+                    
+                    # Salva dados da imagem para uso pela IA
+                    st.session_state['pdf_full_data'] = image_data
+                    st.session_state['is_image_file'] = True
+                    
+                    progress_bar.progress(100)
+                    status_text.empty()
+                    progress_bar.empty()
+                    
+                    if df is None or df.empty:
+                        if full_text and len(full_text.strip()) > 10:
+                            st.success(f"✅ Imagem processada! {len(full_text)} caracteres extraídos. A IA processará o texto extraído...")
+                        else:
+                            st.warning("⚠️ Pouco texto extraído da imagem. A IA tentará processar mesmo assim...")
+                        df = pd.DataFrame()
+                    else:
+                        st.success(f"✅ Imagem processada! {len(df)} linha(s) extraída(s) com OCR.")
+                except Exception as ocr_error:
+                    error_msg = str(ocr_error)
+                    st.error(f"❌ Erro ao processar imagem: {error_msg}")
+                    
+                    # Mensagens de ajuda específicas
+                    if "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower() or "easyocr" in error_msg.lower():
+                        st.warning("⚠️ **OCR local não está disponível ou configurado.**")
+                        st.info("""
+                        **Soluções:**
+                        
+                        **Opção 1 (Recomendada):** Configure a Vision API
+                        - Acesse a página de Administração
+                        - Configure a IA com OpenAI (gpt-4o ou gpt-4o-mini)
+                        - A Vision API processará imagens sem precisar de OCR local
+                        
+                        **Opção 2:** Instalar OCR local (Windows)
+                        - **Tesseract OCR:**
+                          1. Baixe de: https://github.com/UB-Mannheim/tesseract/wiki
+                          2. Instale o executável
+                          3. Adicione ao PATH do sistema ou configure a variável de ambiente
+                          4. Instale as bibliotecas Python: `pip install pytesseract Pillow`
+                        
+                        **Opção 3:** Converter para PDF
+                        - Converta a imagem para PDF usando um conversor online
+                        - O sistema processará o PDF com a Vision API (se configurada)
+                        """)
+                    else:
+                        st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
+                    
                     st.stop()
+            finally:
+                db.close()
         
         # Limpa estado de override após processar
         if 'show_file_type_override' in st.session_state:
