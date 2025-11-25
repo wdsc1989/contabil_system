@@ -412,9 +412,9 @@ if uploaded_file:
                             st.stop()
                     else:
                         st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
-                # Fallback para método simples
+                        # Fallback para método simples
                         try:
-                df = ParserService.parse_pdf_to_dataframe(file_content)
+                            df = ParserService.parse_pdf_to_dataframe(file_content)
                         except Exception as fallback_error:
                             st.error(f"❌ Erro ao processar PDF: {str(fallback_error)}")
                             st.stop()
