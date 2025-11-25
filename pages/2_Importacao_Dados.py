@@ -15,7 +15,6 @@ from services.auth_service import AuthService
 from services.parser_service import ParserService
 from services.import_service import ImportService
 from services.ai_service import AIService
-from services.ai_classifier import AIClassifier
 from services.data_processor import DataProcessor
 from utils.column_mapper import ColumnMapper
 from utils.translations import translate_dataframe
@@ -23,23 +22,7 @@ from models.client import Client
 from models.group import Group, Subgroup
 from config.ai_config import AIConfigManager
 
-# Constantes
-CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.70  # 70% de confiança mínima para classificação
-
 # Helpers
-def _ensure_classification_confidence(record: dict) -> dict:
-    """
-    Normaliza o campo classification_confidence nos registros retornados pela IA.
-    """
-    if (
-        "classification_confidence" not in record
-        and "confidence" in record
-        and record["confidence"] is not None
-    ):
-        record["classification_confidence"] = record.pop("confidence")
-    else:
-        record.pop("confidence", None)
-    return record
 
 
 def _get_group_subgroup_names_mapping(db, client_id: int) -> tuple:
@@ -783,111 +766,13 @@ if uploaded_file:
                     st.info("ℹ️ Por favor, confirme o tipo de dado detectado acima para continuar com o processamento.")
                     st.stop()
                 
-                st.markdown("---")
-                st.subheader("4️⃣ Classificação com IA (Opcional)")
-                
-                # Busca grupos e subgrupos do cliente
-                db = SessionLocal()
-                try:
-                    groups = db.query(Group).filter(Group.client_id == client_id).all()
-                    groups_subgroups = []
-                    for group in groups:
-                        subgroups = db.query(Subgroup).filter(Subgroup.group_id == group.id).all()
-                        groups_subgroups.append({
-                            'id': group.id,
-                            'name': group.name,
-                            'description': group.description,
-                            'subgroups': [
-                                {
-                                    'id': sg.id,
-                                    'name': sg.name,
-                                    'description': sg.description
-                                }
-                                for sg in subgroups
-                            ]
-                        })
-                finally:
-                    db.close()
-                
-                # Verifica se há grupos para classificação
-                use_ai_classification = False
-                if groups_subgroups:
-                    use_ai_classification = st.checkbox(
-                        "🤖 Usar IA para classificar por grupos/subgrupos",
-                        value=True,
-                        help="Classifica automaticamente cada registro com group_id e subgroup_id baseado na descrição e valor"
-                    )
-                
-                processed_data = []
-                classification_result = None
-                
-                if use_ai_classification:
-                    # Inicializa classificador
-                    classifier = AIClassifier(db)
-                    
-                    if not classifier.is_available():
-                        st.error("❌ IA não configurada. Configure a IA na página de Administração antes de usar classificação automática.")
-                        use_ai_classification = False
-                    else:
-                        # Container para status em tempo real
-                        status_container = st.empty()
-                        status_messages = []
-                        
-                        def update_status(message):
-                            status_messages.append(message)
-                            status_container.info(f"🤖 **Classificando:** {message}")
-                        
-                        # Classifica dados extraídos
-                        with st.spinner(f"🤖 Classificando {len(df)} registros com IA..."):
-                            classification_result = classifier.classify_dataframe(
-                                df,
-                                groups_subgroups=groups_subgroups,
-                                import_type=import_type,
-                                status_callback=update_status
-                            )
-                            
-                            status_container.empty()
-                
-                        if classification_result.get('success'):
-                            processed_data = classification_result.get('classified_data', [])
-                            # Se tipo foi detectado, atualiza
-                            if classification_result.get('detected_type'):
-                                import_type = classification_result.get('detected_type')
-                            
-                            # Mostra estatísticas de classificação
-                            classified_count = sum(1 for r in processed_data if r.get('group_id') is not None)
-                            high_conf_count = sum(1 for r in processed_data if r.get('classification_confidence', 0) >= CLASSIFICATION_CONFIDENCE_THRESHOLD)
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Registros Classificados", f"{classified_count}/{len(processed_data)}")
-                            with col2:
-                                st.metric("Alta Confiança", f"{high_conf_count}/{len(processed_data)}")
-                            with col3:
-                                issues_count = len(classification_result.get('issues', []))
-                                st.metric("Avisos", issues_count)
-                            
-                            if classification_result.get('issues'):
-                                with st.expander("⚠️ Avisos da Classificação"):
-                                    for issue in classification_result.get('issues', []):
-                                        st.warning(issue)
-                        else:
-                            st.error(f"❌ Erro na classificação: {classification_result.get('error', 'Erro desconhecido')}")
-                            # Continua sem classificação
-                            processed_data = df.to_dict('records')
-                            for record in processed_data:
-                                record['group_id'] = None
-                                record['subgroup_id'] = None
-                                record['classification_confidence'] = 0.0
-                
-                # Se não usou IA, converte DataFrame para lista de dicionários
-                if not processed_data:
-                    processed_data = df.to_dict('records')
-                    # Adiciona campos de classificação vazios
-                    for record in processed_data:
-                        record['group_id'] = None
-                        record['subgroup_id'] = None
-                        record['classification_confidence'] = 1.0  # Sem classificação = confiança máxima (dados já extraídos)
+                # Estrutura os dados (sem classificação de grupo/subgrupo)
+                # A IA apenas estrutura/normaliza os dados, não classifica grupos
+                processed_data = df.to_dict('records')
+                for record in processed_data:
+                    # Garante que group_id e subgroup_id não sejam preenchidos
+                    record['group_id'] = None
+                    record['subgroup_id'] = None
                 
                 # NORMALIZAÇÃO: Estrutura dados para as colunas corretas da tabela destino
                 # Após extração, a IA deve entender os dados e mapeá-los para as colunas da tabela
@@ -977,8 +862,10 @@ if uploaded_file:
                 finally:
                     db.close()
                 
-                # Normaliza dados
-                processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+                # Garante que todos os registros têm group_id e subgroup_id como None
+                for record in processed_data:
+                    record['group_id'] = None
+                    record['subgroup_id'] = None
                 
                 # Cria summary para compatibilidade
                 summary = {
@@ -1009,43 +896,12 @@ if uploaded_file:
                 else:
                     st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
                 
-                # Identifica registros com baixa confiança de classificação
-                low_conf_indexes = [
-                    idx for idx, record in enumerate(processed_data)
-                    if record.get('classification_confidence', 1) is not None
-                    and record.get('classification_confidence', 1) < CLASSIFICATION_CONFIDENCE_THRESHOLD
-                ]
-                low_conf_line_numbers = [idx + 1 for idx in low_conf_indexes]
-                
                 # Exibe estatísticas
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Total Processado", processed_rows)
                 with col2:
-                    classified_count = sum(1 for r in processed_data if r.get('group_id') is not None)
-                    st.metric("Classificados", f"{classified_count}/{processed_rows}")
-                with col3:
-                    high_conf_count = sum(1 for r in processed_data if r.get('classification_confidence', 0) >= CLASSIFICATION_CONFIDENCE_THRESHOLD)
-                    st.metric("Alta Confiança", f"{high_conf_count}/{processed_rows}")
-                with col4:
-                    st.metric("Baixa Confiança", len(low_conf_indexes))
-                
-                if low_conf_line_numbers:
-                    preview_lines = ", ".join(str(num) for num in low_conf_line_numbers[:10])
-                    extra = ""
-                    if len(low_conf_line_numbers) > 10:
-                        extra = f" (total de {len(low_conf_line_numbers)} linhas)"
-                    st.warning(
-                        f"⚠️ {len(low_conf_line_numbers)} linha(s) com confiança abaixo de "
-                        f"{int(CLASSIFICATION_CONFIDENCE_THRESHOLD * 100)}%: {preview_lines}{extra}. "
-                        "Revise a classificação antes de importar."
-                    )
-                
-                # Mostra problemas se houver (da classificação)
-                if classification_result and classification_result.get('issues'):
-                    with st.expander("⚠️ Problemas Encontrados na Classificação"):
-                        for issue in classification_result.get('issues', []):
-                            st.warning(issue)
+                    st.metric("Pronto para Edição", "✅")
                 
                 st.markdown("---")
                 st.subheader("5️⃣ Configurações e Edição")
@@ -1096,7 +952,9 @@ if uploaded_file:
                 # Remove colunas internas se existirem
                 for record in working_data:
                     record.pop('original_row', None)
-                    _ensure_classification_confidence(record)
+                    # Garante que group_id e subgroup_id não sejam preenchidos
+                    record['group_id'] = None
+                    record['subgroup_id'] = None
                 
                 # Aplica nome do banco extraído/editado aos dados se aplicável
                 if import_type == 'bank_statements':
@@ -1288,7 +1146,10 @@ if uploaded_file:
     }
     
     # Normaliza dados
-    processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]
+    # Garante que todos os registros têm group_id e subgroup_id como None
+    for record in processed_data:
+        record['group_id'] = None
+        record['subgroup_id'] = None
     
     # Inicializa seleção
     if 'selected_rows' not in st.session_state:
