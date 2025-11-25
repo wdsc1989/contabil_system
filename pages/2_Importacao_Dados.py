@@ -597,6 +597,9 @@ if uploaded_file:
             
             db = SessionLocal()
             try:
+                # Inicializa import_type como None
+                import_type = None
+                
                 # Verifica se o tipo já foi confirmado anteriormente - se sim, pula toda a detecção
                 if st.session_state.get('type_confirmed', False) and 'detected_import_type' in st.session_state:
                     import_type = st.session_state.detected_import_type
@@ -744,11 +747,13 @@ if uploaded_file:
                         st.session_state.show_manual_selection = False
                         st.rerun()
                 
-                # Se ainda não tem tipo definido, para aqui
+                # Se ainda não tem tipo definido, tenta obter do session state ou para
                 if not import_type:
-                    if 'detected_import_type' not in st.session_state:
+                    if 'detected_import_type' in st.session_state:
+                        import_type = st.session_state.detected_import_type
+                    else:
+                        st.warning("⚠️ Tipo de dado não foi definido. Por favor, selecione o tipo de dado acima.")
                         st.stop()
-                    import_type = st.session_state.detected_import_type
                 
                 # Verifica se o tipo foi confirmado pelo usuário antes de processar
                 if not st.session_state.get('type_confirmed', False):
@@ -2093,7 +2098,7 @@ else:
 
     st.markdown("---")
     with st.expander("ℹ️ Sobre o Processamento Automático"):
-    st.markdown("""
+        st.markdown("""
         **Formatos Suportados:**
         - 📄 CSV, Excel, TXT
         - 📑 PDF (incluindo PDFs escaneados/imagens)
@@ -2112,6 +2117,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
