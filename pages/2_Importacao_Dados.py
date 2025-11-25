@@ -373,7 +373,7 @@ if uploaded_file:
                         """)
                 
                 # Oferece tentar processar com OCR mesmo assim
-                if st.button("🔄 Tentar processar com OCR (pode demorar)", use_container_width=True):
+                if st.button("🔄 Tentar processar com OCR (pode demorar)", use_container_width=True, key="try_ocr_pdf_invalid"):
                     try:
                         update_status("Tentando processar PDF corrompido com OCR...")
                         progress_bar.progress(30)
@@ -549,7 +549,7 @@ if uploaded_file:
             
             if not validation_result['is_complete'] and validation_result['completeness_percentage']:
                 st.error("❌ **Atenção:** A extração pode estar incompleta. Algumas linhas podem não ter sido extraídas.")
-                if st.button("🔄 Tentar Reprocessar", use_container_width=True):
+                if st.button("🔄 Tentar Reprocessar", use_container_width=True, key="retry_extraction"):
                     # Limpa estado e recarrega
                     if 'extracted_df' in st.session_state:
                         del st.session_state.extracted_df
@@ -609,12 +609,12 @@ if uploaded_file:
                     if 'type_confirmed' not in st.session_state or not st.session_state.type_confirmed:
                         col1, col2 = st.columns([3, 1])
                         with col1:
-                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
+                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary", key="confirm_ofx_type"):
                                 st.session_state.detected_import_type = import_type
                                 st.session_state.type_confirmed = True
                                 st.rerun()
                         with col2:
-                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True):
+                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True, key="change_ofx_type"):
                                 st.session_state.show_manual_selection = True
                                 st.session_state.type_confirmed = False  # Limpa confirmação anterior
                                 st.rerun()
@@ -667,7 +667,7 @@ if uploaded_file:
                             st.metric("Confiança", f"{confidence_percent}%")
                         
                         with col3:
-                            if st.button("✏️ Alterar", use_container_width=True, help="Selecione manualmente se a detecção estiver incorreta"):
+                            if st.button("✏️ Alterar", use_container_width=True, help="Selecione manualmente se a detecção estiver incorreta", key="change_detected_type"):
                                 st.session_state.show_manual_selection = True
                                 st.session_state.type_confirmed = False
                                 st.rerun()
@@ -687,7 +687,7 @@ if uploaded_file:
                                         st.write(f"- {alt_name} ({alt_confidence}%)")
                         
                         # Botão de confirmação
-                        if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary"):
+                        if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary", key="confirm_ai_detected_type"):
                             import_type = suggested_type
                             st.session_state.detected_import_type = import_type
                             st.session_state.type_confirmed = True
@@ -737,7 +737,7 @@ if uploaded_file:
                         format_func=lambda x: type_names_map[x],
                         key="manual_import_type"
                     )
-                    if st.button("✅ Confirmar Tipo", use_container_width=True):
+                    if st.button("✅ Confirmar Tipo", use_container_width=True, key="confirm_manual_type"):
                         st.session_state.detected_import_type = import_type
                         st.session_state.type_confirmed = True
                         st.session_state.show_manual_selection = False
@@ -1038,17 +1038,17 @@ if uploaded_file:
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    if st.button("✅ Selecionar Todas", use_container_width=True):
+                    if st.button("✅ Selecionar Todas", use_container_width=True, key="select_all_edit"):
                         st.session_state.selected_rows = set(range(len(processed_df)))
                         st.rerun()
                 
                 with col2:
-                    if st.button("❌ Desselecionar Todas", use_container_width=True):
+                    if st.button("❌ Desselecionar Todas", use_container_width=True, key="deselect_all_edit"):
                         st.session_state.selected_rows = set()
                         st.rerun()
                 
                 with col3:
-                    if st.button("🗑️ Remover Selecionadas", use_container_width=True):
+                    if st.button("🗑️ Remover Selecionadas", use_container_width=True, key="remove_selected_edit"):
                         # Remove linhas selecionadas
                         selected_indices = sorted(list(st.session_state.selected_rows), reverse=True)
                         current_data = st.session_state.processed_data.copy()
@@ -1347,6 +1347,7 @@ if uploaded_file:
                 # Botão de importar
                 import_btn = st.button(
                     "📥 Importar Dados Selecionados",
+                    key="import_selected_data",
                     use_container_width=True,
                     disabled=len(st.session_state.selected_rows) == 0,
                     type="primary"
@@ -1525,12 +1526,12 @@ if uploaded_file:
     col1, col2, col3 = st.columns([2, 2, 3])
     
     with col1:
-        if st.button("✅ Selecionar Todas", use_container_width=True):
+        if st.button("✅ Selecionar Todas", use_container_width=True, key="select_all_review"):
             st.session_state.selected_rows = set(range(len(processed_data)))
             st.rerun()
     
     with col2:
-        if st.button("❌ Desselecionar Todas", use_container_width=True):
+        if st.button("❌ Desselecionar Todas", use_container_width=True, key="deselect_all_review"):
             st.session_state.selected_rows = set()
             st.rerun()
         
@@ -1691,6 +1692,7 @@ if uploaded_file:
     with col1:
         import_btn = st.button(
             "📥 **Importar Dados**",
+            key="import_data_final",
             use_container_width=True,
             disabled=len(st.session_state.selected_rows) == 0,
             type="primary"
