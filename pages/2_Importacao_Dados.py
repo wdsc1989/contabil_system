@@ -443,10 +443,10 @@ if uploaded_file:
             progress_bar.progress(20)
             # file_content já foi lido acima
             try:
-            df = ParserService.ofx_to_dataframe(file_content)
+                df = ParserService.ofx_to_dataframe(file_content)
                 if df is not None and not df.empty:
                     st.success("✅ OFX processado com sucesso")
-        else:
+                else:
                     st.error("❌ Não foi possível extrair dados do arquivo OFX.")
                     st.stop()
             except Exception as e:
