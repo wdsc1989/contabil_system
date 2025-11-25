@@ -801,12 +801,12 @@ if uploaded_file:
                         st.error("❌ IA não configurada. Configure a IA na página de Administração antes de usar classificação automática.")
                         use_ai_classification = False
                     else:
-                # Container para status em tempo real
-                status_container = st.empty()
+                        # Container para status em tempo real
+                        status_container = st.empty()
                         status_messages = []
-                
-                def update_status(message):
-                    status_messages.append(message)
+                        
+                        def update_status(message):
+                            status_messages.append(message)
                             status_container.info(f"🤖 **Classificando:** {message}")
                         
                         # Classifica dados extraídos
@@ -815,10 +815,10 @@ if uploaded_file:
                                 df,
                                 groups_subgroups=groups_subgroups,
                                 import_type=import_type,
-                        status_callback=update_status
-                    )
-                    
-                    status_container.empty()
+                                status_callback=update_status
+                            )
+                            
+                            status_container.empty()
                 
                         if classification_result.get('success'):
                             processed_data = classification_result.get('classified_data', [])
