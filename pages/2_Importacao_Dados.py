@@ -484,13 +484,59 @@ if uploaded_file:
                     st.markdown("- Redimensionar a imagem para um tamanho menor")
                     st.markdown("- Converter para PDF e tentar novamente")
                     st.markdown("- Usar uma imagem com melhor qualidade/resolução")
-                elif "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower():
-                    st.info("💡 Certifique-se de que o Tesseract OCR está instalado:")
-                    st.code("sudo apt-get install tesseract-ocr tesseract-ocr-por tesseract-ocr-eng")
+                elif "tesseract" in error_msg.lower() or "pytesseract" in error_msg.lower() or "easyocr" in error_msg.lower():
+                    st.warning("⚠️ **OCR local não está disponível ou configurado.**")
+                    st.info("""
+                    **Soluções:**
+                    
+                    **Opção 1 (Recomendada):** Use a Vision API diretamente
+                    - O sistema tentará usar a Vision API da OpenAI/Gemini para processar a imagem
+                    - Não requer instalação de OCR local
+                    - Funciona automaticamente se a IA estiver configurada
+                    
+                    **Opção 2:** Instalar OCR local (Windows)
+                    - **Tesseract OCR:**
+                      1. Baixe de: https://github.com/UB-Mannheim/tesseract/wiki
+                      2. Instale o executável
+                      3. Adicione ao PATH do sistema ou configure a variável de ambiente
+                      4. Instale as bibliotecas Python: `pip install pytesseract Pillow`
+                    
+                    **Opção 3:** Converter para PDF
+                    - Converta a imagem para PDF usando um conversor online
+                    - O sistema processará o PDF com a Vision API
+                    """)
                 else:
                     st.info("💡 Certifique-se de que as bibliotecas de OCR estão instaladas: pip install pytesseract pdf2image Pillow easyocr")
                 
-                st.stop()
+                # Tenta usar Vision API como fallback
+                st.info("🔄 Tentando processar com Vision API como alternativa...")
+                try:
+                    from services.vision_processor import VisionProcessor
+                    from config.database import SessionLocal
+                    
+                    db = SessionLocal()
+                    try:
+                        vision_processor = VisionProcessor(db)
+                        if vision_processor.is_available():
+                            with st.spinner("🤖 Processando imagem com Vision API..."):
+                                result = vision_processor.process_file(file_content, uploaded_file.name, import_type="transactions")
+                                if result and result.get('data'):
+                                    st.success("✅ Imagem processada com Vision API!")
+                                    # Converte resultado para DataFrame
+                                    df = pd.DataFrame(result['data'])
+                                    st.session_state['pdf_full_data'] = {'full_text': '', 'dataframe': df}
+                                    st.session_state['is_image_file'] = True
+                                else:
+                                    st.error("❌ Vision API não retornou dados válidos")
+                                    st.stop()
+                        else:
+                            st.error("❌ Vision API não está disponível. Configure a IA na página de Administração.")
+                            st.stop()
+                    finally:
+                        db.close()
+                except Exception as vision_error:
+                    st.error(f"❌ Vision API também falhou: {str(vision_error)}")
+                    st.stop()
         
         # Limpa estado de override após processar
         if 'show_file_type_override' in st.session_state:
@@ -1518,6 +1564,10 @@ if uploaded_file:
     
     st.markdown("---")
     st.subheader("📥 Importação")
+    
+    # Garante que selected_rows está inicializado
+    if 'selected_rows' not in st.session_state:
+        st.session_state.selected_rows = set(range(len(processed_data))) if processed_data else set()
     
     # Configurações específicas por tipo (apenas se necessário)
     import_type = summary.get('import_type', 'transactions')
