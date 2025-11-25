@@ -420,15 +420,15 @@ if uploaded_file:
                             st.stop()
             
             if df is None or df.empty:
-                    # Se não encontrou tabelas, tenta extrair do texto usando regex
+                # Se não encontrou tabelas, tenta extrair do texto usando regex
                 if pdf_data and pdf_data.get('full_text'):
                     st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
-                        # Tenta criar DataFrame a partir do texto extraído
-                        df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
-                        if df is None or df.empty:
-                            st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
-                    df = pd.DataFrame()
-                        # Salva dados completos do PDF para referência
+                    # Tenta criar DataFrame a partir do texto extraído
+                    df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
+                    if df is None or df.empty:
+                        st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
+                        df = pd.DataFrame()
+                    # Salva dados completos do PDF para referência
                     st.session_state['pdf_full_data'] = pdf_data
                 else:
                     st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
@@ -2112,6 +2112,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
