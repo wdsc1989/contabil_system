@@ -389,15 +389,15 @@ if uploaded_file:
                     st.stop()
             else:
                 # PDF válido, processa normalmente
-            pdf_data = None
-            try:
+                pdf_data = None
+                try:
                     pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
-                df = pdf_data.get('dataframe')
+                    df = pdf_data.get('dataframe')
                     
                     # Se OCR foi usado, informa ao usuário
                     if pdf_data.get('metadata', {}).get('ocr_used', False):
                         st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
-            except Exception as e:
+                except Exception as e:
                     error_msg = str(e).lower()
                     if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
                         st.warning(f"⚠️ PDF pode estar corrompido: {str(e)}")
@@ -411,7 +411,7 @@ if uploaded_file:
                             st.error(f"❌ Não foi possível processar o PDF: {str(ocr_error)}")
                             st.stop()
                     else:
-                st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
+                        st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
                 # Fallback para método simples
                         try:
                 df = ParserService.parse_pdf_to_dataframe(file_content)
@@ -2112,6 +2112,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
