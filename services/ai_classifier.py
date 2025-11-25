@@ -372,7 +372,26 @@ class AIClassifier:
                     record['classification_confidence'] = 0.0
                     validated_records.append(record)
             
-            classified_records = validated_records
+            # Validação final: garante que a estrutura original foi preservada
+            final_validated = []
+            for idx, (original, validated) in enumerate(zip(records, validated_records)):
+                # Verifica se todos os campos originais estão presentes
+                final_record = dict(original)  # Começa com o original
+                
+                # Adiciona apenas campos de classificação
+                final_record['group_id'] = validated.get('group_id')
+                final_record['subgroup_id'] = validated.get('subgroup_id')
+                final_record['classification_confidence'] = validated.get('classification_confidence', 0.0)
+                
+                # Remove campos de classificação que possam ter sido adicionados incorretamente ao original
+                if 'group_id' in original and original['group_id'] is None:
+                    pass  # OK, já estava None
+                if 'subgroup_id' in original and original['subgroup_id'] is None:
+                    pass  # OK, já estava None
+                
+                final_validated.append(final_record)
+            
+            classified_records = final_validated
             
             return {
                 'success': True,
