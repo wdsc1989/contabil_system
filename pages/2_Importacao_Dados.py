@@ -657,45 +657,68 @@ if uploaded_file:
                         suggested_name = type_names.get(suggested_type, suggested_type)
                         confidence_percent = int(confidence * 100)
                         
-                        # Exibe sugestão de forma mais concisa
-                        col1, col2, col3 = st.columns([2, 1, 1])
+                        # Exibe sugestão com opção de correção sempre visível
+                        st.markdown("### 🤖 Tipo Detectado pela IA")
+                        
+                        col1, col2 = st.columns([3, 1])
                         with col1:
                             if confidence >= 0.7:
-                                st.success(f"🤖 **Tipo detectado:** {suggested_name}")
+                                st.success(f"**{suggested_name}** (Confiança: {confidence_percent}%)")
                             elif confidence >= 0.5:
-                                st.warning(f"🤖 **Tipo detectado:** {suggested_name}")
+                                st.warning(f"**{suggested_name}** (Confiança: {confidence_percent}%)")
                             else:
-                                st.info(f"🤖 **Tipo detectado:** {suggested_name} (baixa confiança)")
+                                st.info(f"**{suggested_name}** (Confiança: {confidence_percent}% - Baixa)")
                         
                         with col2:
                             st.metric("Confiança", f"{confidence_percent}%")
                         
-                        with col3:
-                            if st.button("✏️ Alterar", use_container_width=True, help="Selecione manualmente se a detecção estiver incorreta", key="change_detected_type"):
-                                st.session_state.show_manual_selection = True
-                                st.session_state.type_confirmed = False
-                                st.rerun()
-                        
                         # Detalhes opcionais (colapsados)
                         if reasoning or key_indicators or alternative_types:
-                            with st.expander("ℹ️ Detalhes da detecção"):
+                            with st.expander("ℹ️ Detalhes da detecção", expanded=False):
                                 if reasoning:
                                     st.write(f"**Motivo:** {reasoning}")
                                 if key_indicators:
                                     st.write("**Indicadores:** " + ", ".join(key_indicators))
                                 if alternative_types:
-                                    st.write("**Alternativas:**")
+                                    st.write("**Alternativas sugeridas:**")
                                     for alt in alternative_types[:3]:  # Mostra apenas top 3
                                         alt_name = type_names.get(alt.get('type'), alt.get('type'))
                                         alt_confidence = int(alt.get('confidence', 0) * 100)
                                         st.write(f"- {alt_name} ({alt_confidence}%)")
                         
-                        # Botão de confirmação
-                        if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary", key="confirm_ai_detected_type"):
-                            import_type = suggested_type
-                            st.session_state.detected_import_type = import_type
-                            st.session_state.type_confirmed = True
-                            st.rerun()
+                        # Opção de correção sempre visível
+                        st.markdown("---")
+                        st.markdown("### ✏️ Correção do Tipo (se necessário)")
+                        st.info("💡 Se a detecção estiver incorreta, selecione o tipo correto abaixo:")
+                        
+                        # Selectbox para correção manual
+                        corrected_type = st.selectbox(
+                            "Tipo de dado correto:",
+                            options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
+                                    'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
+                            format_func=lambda x: type_names[x],
+                            index=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
+                                  'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'].index(suggested_type) if suggested_type in ['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable', 'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'] else 0,
+                            key="correct_type_selectbox"
+                        )
+                        
+                        # Botões de ação
+                        col_confirm, col_correct = st.columns(2)
+                        with col_confirm:
+                            if st.button("✅ Confirmar Tipo Detectado", use_container_width=True, type="primary", key="confirm_ai_detected_type"):
+                                import_type = suggested_type
+                                st.session_state.detected_import_type = import_type
+                                st.session_state.type_confirmed = True
+                                st.rerun()
+                        
+                        with col_correct:
+                            if st.button("✏️ Usar Tipo Corrigido", use_container_width=True, key="use_corrected_type"):
+                                import_type = corrected_type
+                                st.session_state.detected_import_type = import_type
+                                st.session_state.type_confirmed = True
+                                if corrected_type != suggested_type:
+                                    st.success(f"✅ Tipo alterado para: {type_names[corrected_type]}")
+                                st.rerun()
                         
                         # Se já foi confirmado anteriormente, usa o tipo confirmado
                         if 'detected_import_type' in st.session_state and st.session_state.get('type_confirmed', False):

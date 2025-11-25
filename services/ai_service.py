@@ -886,29 +886,81 @@ Analise o arquivo fornecido e forneça uma análise estrutural completa.
         """
         Cria prompt para detecção automática do tipo de dado
         """
-        prompt = f"""Identifique o tipo de dado financeiro do arquivo.
+        prompt = f"""Você é um especialista em análise de dados financeiros. Identifique o tipo de dado financeiro do arquivo com precisão.
 
-**Tipos disponíveis:**
-- transactions: data, descrição, valor, tipo (entrada/saida)
-- bank_statements: data, histórico, valor, saldo, banco
-- contracts: data_evento, contratante, valor_servico
-- accounts_payable: fornecedor, vencimento, valor, pago
-- accounts_receivable: cliente, vencimento, valor, recebido
-- financial_investments: data, tipo_aplicacao, valor_aplicado/resgatado
-- credit_card_invoices: data, estabelecimento, valor, bandeira, parcela
-- card_machine_statements: data, valor_bruto, taxa, valor_liquido
-- inventory: produto, quantidade, valor_unitario, tipo_movimento
+**TIPOS DISPONÍVEIS E SUAS CARACTERÍSTICAS:**
 
-**Colunas:** {', '.join(columns)}
-**Amostra (5 linhas):** {data_sample}
+1. **transactions** (Transações Financeiras Gerais):
+   - Campos típicos: data, descrição, valor, tipo (entrada/saida), categoria
+   - Características: Movimentações financeiras gerais, não específicas de cartão ou banco
+   - Exemplos: Pagamentos diversos, recebimentos, transferências genéricas
+   - NÃO é: extrato bancário, fatura de cartão, contrato
 
-**Responda JSON:**
+2. **credit_card_invoices** (Faturas de Cartão de Crédito):
+   - Campos típicos: data_transacao, estabelecimento, valor, bandeira, parcela, total_parcelas
+   - Características: SEMPRE relacionado a cartão de crédito, estabelecimentos comerciais, parcelas
+   - Exemplos: Compras em estabelecimentos, faturas de cartão, transações com bandeira (Visa, Mastercard)
+   - Indicadores: "estabelecimento", "bandeira", "parcela", "cartão", "fatura"
+
+3. **bank_statements** (Extratos Bancários):
+   - Campos típicos: data, histórico/descrição, valor, saldo, banco, conta, agência
+   - Características: Movimentações de conta bancária, saldo após transação
+   - Exemplos: Extratos bancários, movimentações de conta corrente/poupança
+   - Indicadores: "saldo", "banco", "conta", "agência", "extrato"
+
+4. **contracts** (Contratos/Eventos):
+   - Campos típicos: contract_start, event_date, contractor_name, service_value, event_type
+   - Características: Contratos de serviços, eventos, datas de início e evento
+   - Exemplos: Contratos de festas, eventos, serviços prestados
+
+5. **accounts_payable** (Contas a Pagar):
+   - Campos típicos: account_name (fornecedor), due_date, value, paid, monthly_installments
+   - Características: Contas a pagar, fornecedores, vencimentos, parcelas mensais
+   - Indicadores: "fornecedor", "vencimento", "pago", "parcela"
+
+6. **accounts_receivable** (Contas a Receber):
+   - Campos típicos: account_name (cliente), due_date, value, received, contract_value
+   - Características: Contas a receber, clientes, recebimentos esperados
+   - Indicadores: "cliente", "receber", "recebido"
+
+7. **financial_investments** (Investimentos Financeiros):
+   - Campos típicos: date, investment_type, applied_value, redeemed_value, yield_value
+   - Características: Aplicações financeiras, investimentos, resgates
+   - Indicadores: "aplicação", "investimento", "resgate", "rendimento"
+
+8. **card_machine_statements** (Extratos de Máquina de Cartão):
+   - Campos típicos: date, gross_value, fee, net_value, card_brand, transaction_type
+   - Características: Vendas em máquina de cartão, valores brutos e líquidos, taxas
+   - Indicadores: "valor bruto", "taxa", "valor líquido", "máquina"
+
+9. **inventory** (Controle de Estoque):
+   - Campos típicos: product_name, quantity, unit_value, movement_date, movement_type
+   - Características: Produtos, quantidades, movimentações de estoque
+   - Indicadores: "produto", "quantidade", "estoque", "movimento"
+
+**DIFERENÇA CRÍTICA: transactions vs credit_card_invoices:**
+- **transactions**: Movimentações financeiras gerais, sem foco em cartão de crédito
+- **credit_card_invoices**: SEMPRE relacionado a cartão de crédito, com estabelecimentos, bandeiras, parcelas
+
+**COLUNAS DO ARQUIVO:** {', '.join(columns)}
+**AMOSTRA DE DADOS (primeiras 10 linhas):** {data_sample}
+
+**TAREFA:**
+1. Analise as colunas e os dados da amostra
+2. Identifique o tipo mais provável baseado nas características
+3. Diferencie cuidadosamente entre "transactions" e "credit_card_invoices"
+4. Liste tipos alternativos com suas confianças
+5. Identifique indicadores-chave que levaram à conclusão
+
+**Responda APENAS em JSON válido:**
 {{
     "suggested_type": "tipo_identificado",
     "confidence": 0.0-1.0,
-    "reasoning": "breve justificativa",
-    "alternative_types": [{{"type": "tipo", "confidence": 0.0}}],
-    "key_indicators": ["indicador1"]
+    "reasoning": "explicação detalhada do motivo da escolha, destacando diferenças com tipos similares",
+    "alternative_types": [
+        {{"type": "tipo_alternativo", "confidence": 0.0, "reason": "por que foi considerado"}}
+    ],
+    "key_indicators": ["indicador1", "indicador2", "indicador3"]
 }}
 """
         return prompt
@@ -3040,6 +3092,7 @@ Processe e retorne em JSON com array "processed_data".
                 return recommendation
         
         return recommendation
+
 
 
 
