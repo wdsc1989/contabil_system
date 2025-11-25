@@ -1048,26 +1048,7 @@ if uploaded_file:
                             st.warning(issue)
                 
                 st.markdown("---")
-                st.subheader("5️⃣ Preview Completo dos Dados Processados")
-                
-                # Prepara dados para preview (cria uma cópia para não modificar os originais)
-                preview_data = [dict(record) for record in processed_data]  # Cópia profunda
-                
-                # Remove colunas internas se existirem (apenas para exibição)
-                for record in preview_data:
-                    record.pop('original_row', None)
-                    _ensure_classification_confidence(record)
-                
-                # Converte para DataFrame para preview
-                preview_df = pd.DataFrame(preview_data)
-                
-                # Exibe preview completo de todos os dados
-                st.markdown("**Visualize todos os dados que foram processados pela IA:**")
-                st.dataframe(preview_df, use_container_width=True, height=400)
-                st.caption(f"Total de {len(preview_df)} registro(s) processado(s)")
-                
-                st.markdown("---")
-                st.subheader("6️⃣ Configurações e Revisão")
+                st.subheader("5️⃣ Configurações e Edição")
                 
                 # Exibe e permite editar nome do banco se aplicável
                 if import_type == 'bank_statements':
@@ -1109,9 +1090,6 @@ if uploaded_file:
                         
                         st.caption("💡 Clique no botão acima para aplicar o nome a todos os registros, ou edite individualmente na tabela abaixo.")
                 
-                st.markdown("---")
-                st.subheader("7️⃣ Edição e Seleção de Dados para Importação")
-                
                 # Prepara dados processados (cria uma cópia para não modificar os originais)
                 working_data = [dict(record) for record in processed_data]  # Cópia profunda
                 
@@ -1135,11 +1113,7 @@ if uploaded_file:
                             if 'bank_name' not in record or not record.get('bank_name') or (isinstance(record.get('bank_name'), float) and pd.isna(record.get('bank_name'))):
                                 record['bank_name'] = bank_name_to_apply
                 
-                # Converte para DataFrame APENAS após todas as transformações
-                processed_df = pd.DataFrame(working_data)
-                
                 # Inicializa seleção de linhas
-                # Usa working_data (lista de dicts) diretamente, não o DataFrame
                 file_hash = f"{uploaded_file.name}_{len(working_data)}_{import_type}"
                 if 'last_file_hash' not in st.session_state or st.session_state.last_file_hash != file_hash:
                     # Cria cópia profunda para o session state
@@ -1151,320 +1125,8 @@ if uploaded_file:
                     st.session_state.processed_data = [dict(record) for record in working_data]
                     st.session_state.selected_rows = set(range(len(working_data)))
                 
-                # Controles de seleção
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    if st.button("✅ Selecionar Todas", use_container_width=True, key="select_all_edit"):
-                        st.session_state.selected_rows = set(range(len(processed_df)))
-                        st.rerun()
-                
-                with col2:
-                    if st.button("❌ Desselecionar Todas", use_container_width=True, key="deselect_all_edit"):
-                        st.session_state.selected_rows = set()
-                        st.rerun()
-                
-                with col3:
-                    if st.button("🗑️ Remover Selecionadas", use_container_width=True, key="remove_selected_edit"):
-                        # Remove linhas selecionadas
-                        selected_indices = sorted(list(st.session_state.selected_rows), reverse=True)
-                        current_data = st.session_state.processed_data.copy()
-                        for idx in selected_indices:
-                            if 0 <= idx < len(current_data):
-                                current_data.pop(idx)
-                        st.session_state.processed_data = current_data
-                        st.session_state.selected_rows = set(range(len(current_data)))
-                        st.rerun()
-                
-                with col4:
-                    total_selected = len(st.session_state.selected_rows)
-                    st.metric("Linhas Selecionadas", f"{total_selected} / {len(st.session_state.processed_data)}")
-                
-                # Tabela editável
-                st.markdown("**Revise e edite os dados processados:**")
-                if low_conf_line_numbers:
-                    st.info(
-                        "As linhas com confiança baixa permanecem selecionadas; utilize a coluna "
-                        "'Confiança Classificação' para identificar e ajustar grupos/subgrupos."
-                    )
-                
-                # Busca mapeamento de grupos e subgrupos
-                db_edit = SessionLocal()
-                try:
-                    group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_edit, client_id)
-                finally:
-                    db_edit.close()
-                
-                # Prepara dados para edição e adiciona nomes de grupos/subgrupos
-                edit_data = []
-                for idx, row in enumerate(st.session_state.processed_data):
-                    row_copy = row.copy()
-                    row_copy['_select'] = idx in st.session_state.selected_rows
-                    row_copy['_row_num'] = idx + 1
-                    edit_data.append(row_copy)
-                
-                # Adiciona nomes de grupos e subgrupos
-                edit_data = _add_group_subgroup_names_to_data(edit_data, group_mapping, subgroup_mapping)
-                
-                edit_df = pd.DataFrame(edit_data)
-                
-                # Reordena colunas - coloca group_name e subgroup_name antes de group_id e subgroup_id
-                # e oculta group_id e subgroup_id na visualização
-                display_cols = ['_row_num', '_select']
-                other_cols = []
-                hidden_cols = []
-                
-                for col in edit_df.columns:
-                    if col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
-                        other_cols.append(col)
-                    elif col in ['group_id', 'subgroup_id']:
-                        hidden_cols.append(col)
-                
-                # Adiciona group_name e subgroup_name se existirem
-                if 'group_name' in edit_df.columns:
-                    display_cols.append('group_name')
-                if 'subgroup_name' in edit_df.columns:
-                    display_cols.append('subgroup_name')
-                
-                # Adiciona outras colunas
-                display_cols.extend(other_cols)
-                
-                # Adiciona colunas ocultas no final (para manter os dados, mas não exibir)
-                all_cols = display_cols + hidden_cols
-                edit_df = edit_df[[c for c in all_cols if c in edit_df.columns]]
-                
-                # Converte tipos de dados antes de editar
-                # Converte datas de string para datetime se existirem
-                if 'date' in edit_df.columns:
-                    try:
-                        edit_df['date'] = pd.to_datetime(edit_df['date'], errors='coerce')
-                    except:
-                        pass  # Se não conseguir converter, mantém como string
-                
-                # Converte valores numéricos
-                numeric_columns = ['value', 'balance']
-                for col in numeric_columns:
-                    if col in edit_df.columns:
-                        try:
-                            edit_df[col] = pd.to_numeric(edit_df[col], errors='coerce')
-                        except:
-                            pass
-                
-                if 'classification_confidence' in edit_df.columns:
-                    try:
-                        edit_df['classification_confidence'] = pd.to_numeric(
-                            edit_df['classification_confidence'], errors='coerce'
-                        )
-                    except:
-                        pass
-                
-                # Configura colunas editáveis
-                column_config = {
-                    "_row_num": st.column_config.NumberColumn("Linha", width="small", disabled=True),
-                    "_select": st.column_config.CheckboxColumn("Importar", width="small"),
-                }
-                if 'classification_confidence' in edit_df.columns:
-                    column_config["classification_confidence"] = st.column_config.NumberColumn(
-                        "Confiança Classificação", format="%.2f", disabled=True, width="small"
-                    )
-                
-                # Adiciona configuração para campos editáveis baseado no tipo
-                if import_type == 'transactions':
-                    # Verifica se date é datetime ou string
-                    if 'date' in edit_df.columns:
-                        if pd.api.types.is_datetime64_any_dtype(edit_df['date']):
-                            column_config["date"] = st.column_config.DateColumn("Data", format="YYYY-MM-DD")
-                        else:
-                            column_config["date"] = st.column_config.TextColumn("Data (YYYY-MM-DD)")
-                    
-                    column_config.update({
-                        "description": st.column_config.TextColumn("Descrição", width="medium"),
-                        "type": st.column_config.SelectboxColumn("Tipo", options=["entrada", "saida"], width="small"),
-                        "category": st.column_config.TextColumn("Categoria", width="medium"),
-                        "account": st.column_config.TextColumn("Conta", width="small"),
-                    })
-                    
-                    if 'value' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['value']):
-                            column_config["value"] = st.column_config.NumberColumn("Valor", format="%.2f")
-                        else:
-                            column_config["value"] = st.column_config.TextColumn("Valor")
-                            
-                elif import_type == 'bank_statements':
-                    # Verifica se date é datetime ou string
-                    if 'date' in edit_df.columns:
-                        if pd.api.types.is_datetime64_any_dtype(edit_df['date']):
-                            column_config["date"] = st.column_config.DateColumn("Data", format="YYYY-MM-DD", width="small")
-                        else:
-                            column_config["date"] = st.column_config.TextColumn("Data (YYYY-MM-DD)", width="small")
-                    
-                    # Garante que todos os campos sejam editáveis
-                    column_config.update({
-                        "description": st.column_config.TextColumn("Descrição", width="medium"),
-                        "bank_name": st.column_config.TextColumn("Banco", width="medium"),
-                        "account": st.column_config.TextColumn("Conta", width="small"),
-                    })
-                    
-                    if 'value' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['value']):
-                            column_config["value"] = st.column_config.NumberColumn("Valor", format="%.2f", width="small")
-                        else:
-                            column_config["value"] = st.column_config.TextColumn("Valor", width="small")
-                    
-                    if 'balance' in edit_df.columns:
-                        if pd.api.types.is_numeric_dtype(edit_df['balance']):
-                            column_config["balance"] = st.column_config.NumberColumn("Saldo", format="%.2f", width="small")
-                        else:
-                            column_config["balance"] = st.column_config.TextColumn("Saldo", width="small")
-                
-                # Adiciona configuração para group_name e subgroup_name
-                if 'group_name' in edit_df.columns:
-                    column_config['group_name'] = st.column_config.TextColumn("Grupo", width="medium", disabled=True)
-                if 'subgroup_name' in edit_df.columns:
-                    column_config['subgroup_name'] = st.column_config.TextColumn("Subgrupo", width="medium", disabled=True)
-                
-                # Oculta group_id e subgroup_id na visualização
-                if 'group_id' in edit_df.columns:
-                    column_config['group_id'] = st.column_config.NumberColumn("group_id", width=0, disabled=True)
-                if 'subgroup_id' in edit_df.columns:
-                    column_config['subgroup_id'] = st.column_config.NumberColumn("subgroup_id", width=0, disabled=True)
-                
-                # Adiciona configuração para outros campos que possam existir (genérico)
-                # Importa função de tradução
-                from utils.translations import translate_column_name
-                
-                for col in edit_df.columns:
-                    if col not in column_config and col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
-                        # Traduz nome da coluna para português
-                        translated_col_name = translate_column_name(col)
-                        
-                        # Tenta inferir o tipo
-                        if pd.api.types.is_bool_dtype(edit_df[col]):
-                            # Colunas booleanas devem usar CheckboxColumn
-                            column_config[col] = st.column_config.CheckboxColumn(translated_col_name, width="small")
-                        elif pd.api.types.is_datetime64_any_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.DateColumn(translated_col_name, format="YYYY-MM-DD", width="small")
-                        elif pd.api.types.is_numeric_dtype(edit_df[col]):
-                            column_config[col] = st.column_config.NumberColumn(translated_col_name, width="small")
-                        else:
-                            column_config[col] = st.column_config.TextColumn(translated_col_name, width="medium")
-                
-                # Exibe tabela editável (com colunas traduzidas)
-                edited_df = st.data_editor(
-                    edit_df,
-                    column_config=column_config,
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="fixed",
-                    height=min(500, max(300, len(edit_df) * 35))
-                )
-                
-                # Atualiza seleção e dados
-                new_selection = set()
-                updated_data = []
-                
-                for idx, row in edited_df.iterrows():
-                    row_num = int(row.get('_row_num', idx + 1)) - 1
-                    if row.get('_select', False):
-                        new_selection.add(row_num)
-                    
-                    # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
-                    row_dict = row.to_dict()
-                    row_dict.pop('_row_num', None)
-                    row_dict.pop('_select', None)
-                    row_dict.pop('group_name', None)  # Remove nome, mantém apenas ID
-                    row_dict.pop('subgroup_name', None)  # Remove nome, mantém apenas ID
-                    
-                    # PRESERVA group_id e subgroup_id (converte NaN para None)
-                    if 'group_id' in row_dict:
-                        group_id_val = row_dict.get('group_id')
-                        if pd.isna(group_id_val) or group_id_val is None:
-                            row_dict['group_id'] = None
-                        else:
-                            try:
-                                row_dict['group_id'] = int(float(group_id_val)) if group_id_val else None
-                            except (ValueError, TypeError):
-                                row_dict['group_id'] = None
-                    
-                    if 'subgroup_id' in row_dict:
-                        subgroup_id_val = row_dict.get('subgroup_id')
-                        if pd.isna(subgroup_id_val) or subgroup_id_val is None:
-                            row_dict['subgroup_id'] = None
-                        else:
-                            try:
-                                row_dict['subgroup_id'] = int(float(subgroup_id_val)) if subgroup_id_val else None
-                            except (ValueError, TypeError):
-                                row_dict['subgroup_id'] = None
-                    
-                    # Converte datas de datetime para string YYYY-MM-DD
-                    if 'date' in row_dict and pd.notna(row_dict.get('date')):
-                        if isinstance(row_dict['date'], pd.Timestamp):
-                            row_dict['date'] = row_dict['date'].strftime('%Y-%m-%d')
-                        elif isinstance(row_dict['date'], str):
-                            # Tenta converter e formatar
-                            try:
-                                dt = pd.to_datetime(row_dict['date'])
-                                row_dict['date'] = dt.strftime('%Y-%m-%d')
-                            except:
-                                pass  # Mantém como está
-                    
-                    # Converte valores numéricos para float
-                    for col in ['value', 'balance']:
-                        if col in row_dict and pd.notna(row_dict.get(col)):
-                            try:
-                                row_dict[col] = float(row_dict[col])
-                            except:
-                                pass
-                    
-                    updated_data.append(row_dict)
-                
-                st.session_state.selected_rows = new_selection
-                st.session_state.processed_data = updated_data
-                
-                # Preview das linhas selecionadas
                 st.markdown("---")
-                st.subheader("8️⃣ Preview das Linhas Selecionadas para Importação")
-                
-                if st.session_state.selected_rows:
-                    selected_indices = sorted(list(st.session_state.selected_rows))
-                    selected_data = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
-                    
-                    # Adiciona nomes de grupos e subgrupos ao preview
-                    db_preview = SessionLocal()
-                    try:
-                        group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_preview, client_id)
-                        selected_data = _add_group_subgroup_names_to_data(selected_data, group_mapping, subgroup_mapping)
-                    finally:
-                        db_preview.close()
-                    
-                    selected_df = pd.DataFrame(selected_data)
-                    
-                    # Reordena colunas para mostrar nomes antes de IDs e ocultar IDs
-                    preview_cols = []
-                    for col in selected_df.columns:
-                        if col not in ['group_id', 'subgroup_id']:
-                            preview_cols.append(col)
-                    
-                    # Coloca group_name e subgroup_name antes de outras colunas (se existirem)
-                    if 'group_name' in preview_cols:
-                        preview_cols.remove('group_name')
-                        preview_cols.insert(0, 'group_name')
-                    if 'subgroup_name' in preview_cols:
-                        preview_cols.remove('subgroup_name')
-                        if 'group_name' in preview_cols:
-                            preview_cols.insert(preview_cols.index('group_name') + 1, 'subgroup_name')
-                        else:
-                            preview_cols.insert(0, 'subgroup_name')
-                    
-                    selected_df = selected_df[preview_cols]
-                    
-                    st.dataframe(selected_df, use_container_width=True, height=300)
-                    st.success(f"✅ {len(selected_indices)} linha(s) selecionada(s) para importação")
-                else:
-                    st.warning("⚠️ Nenhuma linha selecionada. Selecione pelo menos uma linha para importar.")
-                
-                st.markdown("---")
-                st.subheader("9️⃣ Importação Final")
+                st.subheader("6️⃣ Importação")
                 
                 # A IA já classificou cada linha individualmente com grupo/subgrupo
                 # Não há necessidade de seleção manual, pois cada transação pode ser entrada, saída, resgate, etc.
@@ -1658,7 +1320,7 @@ if uploaded_file:
             st.metric("✓ Classificado", "Sim")
     
     st.markdown("---")
-    st.subheader("✏️ Revisão e Edição")
+    st.subheader("5️⃣ Edição e Seleção de Dados")
     
     # Controles de seleção simplificados
     col1, col2, col3 = st.columns([2, 2, 3])
@@ -2284,6 +1946,8 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
+
 
 
 
