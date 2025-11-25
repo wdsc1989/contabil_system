@@ -157,10 +157,21 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    file_size = len(uploaded_file.read())
-    uploaded_file.seek(0)  # Reset para ler novamente depois
-    file_size_kb = file_size / 1024
-    st.success(f"✅ **{uploaded_file.name}** ({file_size_kb:.1f} KB)")
+    # LÊ O ARQUIVO UMA ÚNICA VEZ NO INÍCIO
+    try:
+        file_content_initial = uploaded_file.read()
+        file_size = len(file_content_initial)
+        file_size_kb = file_size / 1024
+        
+        # Verifica se o arquivo está vazio
+        if not file_content_initial or file_size == 0:
+            st.error("❌ **Erro:** Arquivo vazio. Verifique se o arquivo foi carregado corretamente.")
+            st.stop()
+        
+        st.success(f"✅ **{uploaded_file.name}** ({file_size_kb:.1f} KB)")
+    except Exception as e:
+        st.error(f"❌ **Erro ao ler arquivo:** {str(e)}")
+        st.stop()
     
     # Verifica se Vision API está disponível
     db = SessionLocal()
@@ -204,13 +215,8 @@ if uploaded_file:
     # Processamento direto com Vision API
     st.markdown("---")
     
-    # Lê o arquivo UMA VEZ e armazena
-    file_content = uploaded_file.read()
-    
-    # Verifica se o arquivo está vazio
-    if not file_content or len(file_content) == 0:
-        st.error("❌ **Erro:** Arquivo vazio. Verifique se o arquivo foi carregado corretamente.")
-        st.stop()
+    # Usa o conteúdo já lido acima
+    file_content = file_content_initial
     
     # Verifica se já foi processado
     file_hash = f"{uploaded_file.name}_{len(file_content)}"
@@ -434,10 +440,19 @@ if uploaded_file:
         elif file_type == 'OFX':
             update_status("Processando arquivo OFX...")
             progress_bar.progress(20)
-            file_content = uploaded_file.read()
-            df = ParserService.ofx_to_dataframe(file_content)
+            # file_content já foi lido acima
+            try:
+                df = ParserService.ofx_to_dataframe(file_content)
+                if df is not None and not df.empty:
+                    st.success("✅ OFX processado com sucesso")
+                else:
+                    st.error("❌ Não foi possível extrair dados do arquivo OFX.")
+                    st.stop()
+            except Exception as e:
+                st.error(f"❌ Erro ao processar OFX: {str(e)}")
+                st.stop()
         elif file_type == 'Image' or is_image_file:
-            file_content = uploaded_file.read()
+            # file_content já foi lido acima
             file_extension = uploaded_file.name.split('.')[-1].lower()
             
             # Processa imagem com OCR
@@ -503,12 +518,9 @@ if uploaded_file:
             st.markdown("---")
             st.subheader("2️⃣ Validação da Extração")
             
-            # Valida completude da extração
-            file_content_for_validation = uploaded_file.read()
-            uploaded_file.seek(0)  # Reset para uso posterior
-            
+            # Valida completude da extração (usa o conteúdo já lido)
             validation_result = ParserService.validate_extraction_completeness(
-                df, file_content_for_validation, file_type
+                df, file_content, file_type
             )
             
             # Exibe resultados da validação
