@@ -2082,9 +2082,9 @@ if uploaded_file:
                     del st.session_state.bank_name_override
                 st.rerun()
     
-    except Exception as e:
+        except Exception as e:
             st.error(f"❌ Erro ao importar: {str(e)}")
-        st.exception(e)
+            st.exception(e)
         finally:
             db.close()
 
