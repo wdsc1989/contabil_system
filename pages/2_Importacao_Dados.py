@@ -768,20 +768,25 @@ if uploaded_file:
                 
                 # Estrutura os dados (sem classificação de grupo/subgrupo)
                 # A IA apenas estrutura/normaliza os dados, não classifica grupos
-                processed_data = df.to_dict('records')
-                for record in processed_data:
-                    # Garante que group_id e subgroup_id não sejam preenchidos
-                    record['group_id'] = None
-                    record['subgroup_id'] = None
+                # Verifica se já foi estruturado para evitar reestruturação ao editar grupos/subgrupos
+                structure_hash = f"{uploaded_file.name}_{len(df)}_{import_type}_structured"
                 
-                # NORMALIZAÇÃO: Estrutura dados para as colunas corretas da tabela destino
-                # Após extração, a IA deve entender os dados e mapeá-los para as colunas da tabela
-                db = SessionLocal()
-                try:
-                    from services.ai_service import AIService
-                    ai_service = AIService(db)
+                if 'last_structure_hash' not in st.session_state or st.session_state.last_structure_hash != structure_hash:
+                    # Primeira vez estruturando este arquivo
+                    processed_data = df.to_dict('records')
+                    for record in processed_data:
+                        # Garante que group_id e subgroup_id não sejam preenchidos
+                        record['group_id'] = None
+                        record['subgroup_id'] = None
                     
-                    if ai_service.is_available():
+                    # NORMALIZAÇÃO: Estrutura dados para as colunas corretas da tabela destino
+                    # Após extração, a IA deve entender os dados e mapeá-los para as colunas da tabela
+                    db = SessionLocal()
+                    try:
+                        from services.ai_service import AIService
+                        ai_service = AIService(db)
+                        
+                        if ai_service.is_available():
                         # Prepara dados para normalização
                         sample_data = json.dumps(processed_data[:min(20, len(processed_data))], ensure_ascii=False, indent=2, default=str)
                         
