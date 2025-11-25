@@ -224,11 +224,16 @@ class AIClassifier:
             model = self.config.get('model', '')
             
             if provider == 'openai':
+                # Aumenta max_tokens para lotes maiores
+                estimated_tokens = len(records) * 50  # Estimativa: ~50 tokens por registro
+                max_tokens = max(4000, min(16000, estimated_tokens + 2000))  # Entre 4k e 16k
+                
                 response = client.chat.completions.create(
                     model=model,
                     messages=[{'role': 'user', 'content': prompt}],
                     temperature=0.1,
-                    max_tokens=4000
+                    max_tokens=max_tokens,
+                    response_format={"type": "json_object"} if "gpt-4o" in model.lower() or "gpt-4-turbo" in model.lower() else None
                 )
                 content = response.choices[0].message.content
             elif provider == 'gemini':
@@ -259,27 +264,92 @@ class AIClassifier:
             # Extrai JSON da resposta
             json_data = self._extract_json_from_response(content)
             
-            if not json_data or 'classified_records' not in json_data:
-                return {
-                    'success': False,
-                    'error': 'Resposta da IA não contém dados classificados válidos',
-                    'classified_data': [],
-                    'issues': ['Resposta da IA não contém JSON válido']
-                }
+            if not json_data:
+                # Tenta extrair novamente com método mais agressivo
+                json_data = self._extract_json_from_response_aggressive(content)
+                
+                if not json_data:
+                    # Se ainda não conseguiu, tenta criar classificação básica dos registros originais
+                    return {
+                        'success': False,
+                        'error': 'Resposta da IA não contém dados classificados válidos',
+                        'classified_data': self._create_fallback_classification(records),
+                        'issues': [
+                            'Resposta da IA não contém JSON válido',
+                            f'Resposta recebida (primeiros 500 chars): {content[:500] if content else "vazia"}'
+                        ]
+                    }
+            
+            if 'classified_records' not in json_data:
+                # Tenta encontrar dados classificados com nomes alternativos
+                classified_records = (
+                    json_data.get('classified_records') or
+                    json_data.get('records') or
+                    json_data.get('data') or
+                    json_data.get('results') or
+                    []
+                )
+                
+                if not classified_records:
+                    return {
+                        'success': False,
+                        'error': 'Resposta da IA não contém dados classificados válidos',
+                        'classified_data': self._create_fallback_classification(records),
+                        'issues': [
+                            'Resposta da IA não contém campo "classified_records"',
+                            f'Estrutura recebida: {list(json_data.keys())}',
+                            f'Resposta (primeiros 500 chars): {content[:500] if content else "vazia"}'
+                        ]
+                    }
+                
+                # Se encontrou dados com nome alternativo, normaliza
+                json_data['classified_records'] = classified_records
             
             classified_records = json_data.get('classified_records', [])
             issues = json_data.get('issues', [])
             
-            # Garante que todos os registros foram classificados
-            if len(classified_records) < len(records):
-                issues.append(f"Apenas {len(classified_records)} de {len(records)} registros foram classificados")
+            # Valida e corrige registros classificados
+            validated_records = []
+            for idx, record in enumerate(records):
+                # Procura registro correspondente na resposta da IA
+                classified_record = None
+                if idx < len(classified_records):
+                    classified_record = classified_records[idx]
+                else:
+                    # Tenta encontrar por índice ou campos únicos
+                    for cr in classified_records:
+                        # Compara campos chave para encontrar correspondência
+                        if self._records_match(record, cr):
+                            classified_record = cr
+                            break
+                
+                if classified_record:
+                    # Valida campos de classificação
+                    validated_record = dict(record)  # Mantém campos originais
+                    validated_record['group_id'] = self._validate_id(classified_record.get('group_id'))
+                    validated_record['subgroup_id'] = self._validate_id(classified_record.get('subgroup_id'))
+                    validated_record['classification_confidence'] = float(classified_record.get('classification_confidence', 0.0))
+                    validated_records.append(validated_record)
+                else:
+                    # Registro não foi classificado, adiciona sem classificação
+                    record_copy = dict(record)
+                    record_copy['group_id'] = None
+                    record_copy['subgroup_id'] = None
+                    record_copy['classification_confidence'] = 0.0
+                    validated_records.append(record_copy)
+            
+            # Garante que todos os registros foram processados
+            if len(validated_records) < len(records):
+                issues.append(f"Apenas {len(validated_records)} de {len(records)} registros foram processados")
                 # Adiciona registros faltantes sem classificação
-                for idx in range(len(classified_records), len(records)):
+                for idx in range(len(validated_records), len(records)):
                     record = records[idx].copy()
                     record['group_id'] = None
                     record['subgroup_id'] = None
                     record['classification_confidence'] = 0.0
-                    classified_records.append(record)
+                    validated_records.append(record)
+            
+            classified_records = validated_records
             
             return {
                 'success': True,
@@ -392,6 +462,39 @@ IMPORTANTE:
         else:
             return 'transactions'  # Default
     
+    def _validate_id(self, id_value: Any) -> Optional[int]:
+        """
+        Valida e converte ID para inteiro ou None
+        """
+        if id_value is None:
+            return None
+        try:
+            id_int = int(id_value)
+            return id_int if id_int > 0 else None
+        except (ValueError, TypeError):
+            return None
+    
+    def _records_match(self, record1: Dict, record2: Dict) -> bool:
+        """
+        Verifica se dois registros correspondem (para matching quando a ordem pode estar diferente)
+        """
+        # Compara campos chave comuns
+        key_fields = ['date', 'value', 'description', 'descricao', 'valor', 'data']
+        
+        for field in key_fields:
+            if field in record1 and field in record2:
+                val1 = record1.get(field)
+                val2 = record2.get(field)
+                if val1 is not None and val2 is not None:
+                    # Compara valores (tolerante a diferenças de tipo)
+                    try:
+                        if str(val1).strip() == str(val2).strip():
+                            return True
+                    except:
+                        pass
+        
+        return False
+    
     def _extract_json_from_response(self, content: str) -> Optional[Dict]:
         """
         Extrai JSON da resposta da IA
@@ -406,12 +509,29 @@ IMPORTANTE:
         content = re.sub(r'```\s*', '', content)
         content = content.strip()
         
-        # Procura por JSON
+        # Procura por JSON (procura por chaves balanceadas)
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             try:
-                return json.loads(json_match.group(0))
-            except json.JSONDecodeError:
+                json_str = json_match.group(0)
+                # Tenta encontrar chaves balanceadas
+                start = json_str.find('{')
+                if start != -1:
+                    depth = 0
+                    end = start
+                    for i, char in enumerate(json_str[start:], start):
+                        if char == '{':
+                            depth += 1
+                        elif char == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end = i + 1
+                                break
+                    
+                    if depth == 0:
+                        balanced_json = json_str[start:end]
+                        return json.loads(balanced_json)
+            except (json.JSONDecodeError, ValueError):
                 pass
         
         # Tenta parse direto
@@ -421,4 +541,70 @@ IMPORTANTE:
             pass
         
         return None
+    
+    def _extract_json_from_response_aggressive(self, content: str) -> Optional[Dict]:
+        """
+        Extrai JSON da resposta da IA usando método mais agressivo
+        """
+        import re
+        
+        if not content:
+            return None
+        
+        # Remove tudo antes da primeira {
+        start_idx = content.find('{')
+        if start_idx == -1:
+            return None
+        
+        content = content[start_idx:]
+        
+        # Tenta encontrar JSON válido procurando por padrões
+        # Procura por "classified_records" ou "records" no conteúdo
+        patterns = [
+            r'\{[^{}]*"classified_records"[^{}]*\}',
+            r'\{[^{}]*"records"[^{}]*\}',
+            r'\{.*"classified_records".*\}',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, content, re.DOTALL)
+            if match:
+                try:
+                    # Tenta extrair JSON balanceado a partir do match
+                    json_str = match.group(0)
+                    start = json_str.find('{')
+                    if start != -1:
+                        # Encontra chave de fechamento balanceada
+                        depth = 0
+                        end = start
+                        for i, char in enumerate(json_str[start:], start):
+                            if char == '{':
+                                depth += 1
+                            elif char == '}':
+                                depth -= 1
+                                if depth == 0:
+                                    end = i + 1
+                                    break
+                        
+                        if depth == 0:
+                            balanced_json = json_str[start:end]
+                            return json.loads(balanced_json)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        
+        return None
+    
+    def _create_fallback_classification(self, records: List[Dict]) -> List[Dict]:
+        """
+        Cria classificação básica quando a IA falha
+        Adiciona campos de classificação vazios aos registros originais
+        """
+        fallback_records = []
+        for record in records:
+            record_copy = dict(record)
+            record_copy['group_id'] = None
+            record_copy['subgroup_id'] = None
+            record_copy['classification_confidence'] = 0.0
+            fallback_records.append(record_copy)
+        return fallback_records
 
