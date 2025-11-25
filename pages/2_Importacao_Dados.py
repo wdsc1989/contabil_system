@@ -690,11 +690,21 @@ if uploaded_file:
                             st.stop()
                         import_type = st.session_state.detected_import_type
                 elif ai_service.is_available():
-                    # Tenta detectar com IA
-                    with st.spinner("🤖 Analisando arquivo para detectar tipo de dado..."):
-                        columns = list(df.columns)
-                        data_sample = ai_service._prepare_data_sample(df, max_rows=15)
-                        detection_result = ai_service.detect_data_type(df, columns, data_sample)
+                    # Usa Multi-Agente para detecção (mais preciso, menos alucinações)
+                    from services.ai_multi_agent import AIMultiAgent
+                    multi_agent = AIMultiAgent(db)
+                    
+                    if multi_agent.is_available():
+                        with st.spinner("🤖 [Agente 1] Detectando tipo de dado..."):
+                            columns = list(df.columns)
+                            data_sample = ai_service._prepare_data_sample(df, max_rows=15)
+                            detection_result = multi_agent.agent_detect_type(columns, data_sample)
+                    else:
+                        # Fallback para método antigo
+                        with st.spinner("🤖 Analisando arquivo para detectar tipo de dado..."):
+                            columns = list(df.columns)
+                            data_sample = ai_service._prepare_data_sample(df, max_rows=15)
+                            detection_result = ai_service.detect_data_type(df, columns, data_sample)
                     
                     if detection_result.get('success'):
                         suggested_type = detection_result.get('suggested_type')
@@ -858,16 +868,46 @@ if uploaded_file:
                         record['group_id'] = None
                         record['subgroup_id'] = None
                     
-                    # NORMALIZAÇÃO: Estrutura dados para as colunas corretas da tabela destino
-                    # Após extração, a IA deve entender os dados e mapeá-los para as colunas da tabela
+                    # NORMALIZAÇÃO: Estrutura dados usando Multi-Agentes (mais preciso, menos alucinações)
                     db = SessionLocal()
                     try:
                         from services.ai_service import AIService
+                        from services.ai_multi_agent import AIMultiAgent
                         ai_service = AIService(db)
+                        multi_agent = AIMultiAgent(db)
                         
-                        if ai_service.is_available():
-                            # SEMPRE usa IA para estruturar os dados (não apenas quando mapeamento é baixo)
-                            # A IA deve entender a estrutura origem e mapear para a estrutura destino
+                        if multi_agent.is_available():
+                            # Usa arquitetura Multi-Agente (5 agentes especializados)
+                            with st.spinner("🤖 [Agente 2] Analisando estrutura origem..."):
+                                structure_analysis = multi_agent.agent_analyze_structure(df, import_type)
+                            
+                            if structure_analysis.get('success'):
+                                with st.spinner("🤖 [Agente 3] Mapeando colunas origem → destino..."):
+                                    mapping = multi_agent.agent_map_columns(structure_analysis, import_type)
+                                
+                                with st.spinner("🤖 [Agente 4] Extraindo e formatando valores..."):
+                                    normalized_records = multi_agent.agent_extract_and_format(
+                                        processed_data, import_type, mapping
+                                    )
+                                
+                                with st.spinner("🤖 [Agente 5] Validando dados estruturados..."):
+                                    validation = multi_agent.agent_validate(normalized_records, import_type)
+                                
+                                # Cria resultado no formato esperado
+                                normalization_result = {
+                                    'normalized_data': normalized_records,
+                                    'summary': {
+                                        'total_rows_processed': len(processed_data),
+                                        'successfully_normalized': len(normalized_records),
+                                        'validation': validation,
+                                        'mapping_applied': mapping
+                                    }
+                                }
+                            else:
+                                # Se multi-agent falhar, usa método antigo
+                                raise Exception("Multi-agent falhou, usando fallback")
+                        elif ai_service.is_available():
+                            # Fallback: método antigo (single agent)
                             with st.spinner("🤖 Analisando estrutura origem e estruturando para tabela destino..."):
                                 try:
                                     # Prepara análise estrutural do DataFrame
@@ -883,14 +923,13 @@ Estrutura do arquivo origem:
                                             sample_values = df[col].dropna().head(3).tolist()
                                             structural_analysis += f"  - {col}: {dtype} (exemplos: {sample_values})\n"
                                     
-                                    # Prepara dados completos para análise (não apenas amostra)
-                                    # Usa todas as linhas para garantir estruturação completa
+                                    # Prepara dados completos para análise
                                     file_data = json.dumps(processed_data, ensure_ascii=False, indent=2, default=str)
                                     
-                                    # Cria mapeamento inicial vazio - IA deve fazer o mapeamento completo
+                                    # Cria mapeamento inicial vazio
                                     mapping = {}
                                     
-                                    # SEMPRE usa normalize_data para estruturar (IA entende estrutura origem e destino)
+                                    # Usa normalize_data (método antigo)
                                     normalization_result = ai_service.normalize_data(
                                         df,
                                         import_type,
@@ -898,7 +937,12 @@ Estrutura do arquivo origem:
                                         structural_analysis=structural_analysis
                                     )
                                     
-                                    if normalization_result and 'normalized_data' in normalization_result:
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    st.warning(f"⚠️ Não foi possível estruturar automaticamente: {error_msg}")
+                                    normalization_result = None
+                                
+                                if normalization_result and 'normalized_data' in normalization_result:
                                         normalized_records = normalization_result['normalized_data']
                                         
                                         # VALIDA E CORRIGE VALORES MONETÁRIOS (importante para strings complexas)
