@@ -330,16 +330,35 @@ SUA ÚNICA TAREFA: Extrair valores de strings complexas e formatar para o padrã
     ]
 }}
 
-**IMPORTANTE:**
-- Cada registro DEVE ter TODAS as colunas destino
+**IMPORTANTE - CRÍTICO:**
+- Cada registro DEVE ter TODAS as colunas destino listadas acima: {', '.join(target_columns)}
+- NÃO omita nenhuma coluna destino, mesmo que não tenha valor (use null)
 - Valores numéricos devem ser números (float/int), NUNCA strings
 - Datas devem ser strings no formato YYYY-MM-DD
 - Use null para campos opcionais não encontrados
+- Se uma coluna destino não tem correspondência no registro origem, use null mas INCLUA a coluna
 """
             response, error = self._call_ai(prompt, max_tokens=4000)
             if error:
-                # Se falhar, mantém registros originais
-                all_normalized.extend(batch)
+                # Se falhar, cria registros com todas as colunas destino
+                for record in batch:
+                    normalized_record = {}
+                    for col in target_columns:
+                        # Tenta mapear do registro original
+                        found = False
+                        for orig_key, orig_value in record.items():
+                            if orig_key in mapping and mapping[orig_key] == col:
+                                normalized_record[col] = orig_value
+                                found = True
+                                break
+                            # Tenta correspondência direta por nome
+                            if orig_key.lower() == col.lower():
+                                normalized_record[col] = orig_value
+                                found = True
+                                break
+                        if not found:
+                            normalized_record[col] = None
+                    all_normalized.append(normalized_record)
                 continue
             
             try:
@@ -349,11 +368,41 @@ SUA ÚNICA TAREFA: Extrair valores de strings complexas e formatar para o padrã
                     response = response.split('```')[1].split('```')[0]
                 
                 result = json.loads(response.strip())
-                normalized = result.get('normalized_records', batch)
+                normalized = result.get('normalized_records', [])
+                
+                # GARANTE que todos os registros têm todas as colunas destino
+                for record in normalized:
+                    for col in target_columns:
+                        if col not in record:
+                            record[col] = None
+                
                 all_normalized.extend(normalized)
             except:
-                # Se falhar, mantém registros originais
-                all_normalized.extend(batch)
+                # Se falhar, cria registros com todas as colunas destino
+                for record in batch:
+                    normalized_record = {}
+                    for col in target_columns:
+                        # Tenta mapear do registro original
+                        found = False
+                        for orig_key, orig_value in record.items():
+                            if orig_key in mapping and mapping[orig_key] == col:
+                                normalized_record[col] = orig_value
+                                found = True
+                                break
+                            # Tenta correspondência direta por nome
+                            if orig_key.lower() == col.lower():
+                                normalized_record[col] = orig_value
+                                found = True
+                                break
+                        if not found:
+                            normalized_record[col] = None
+                    all_normalized.append(normalized_record)
+        
+        # VALIDAÇÃO FINAL: Garante que todos os registros têm todas as colunas destino
+        for record in all_normalized:
+            for col in target_columns:
+                if col not in record:
+                    record[col] = None
         
         return all_normalized
     

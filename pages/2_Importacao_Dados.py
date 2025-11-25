@@ -890,6 +890,13 @@ if uploaded_file:
                                         processed_data, import_type, mapping
                                     )
                                 
+                                # GARANTE que todos os registros têm todas as colunas destino
+                                target_columns = multi_agent._get_target_columns(import_type)
+                                for record in normalized_records:
+                                    for col in target_columns:
+                                        if col not in record:
+                                            record[col] = None
+                                
                                 with st.spinner("🤖 [Agente 5] Validando dados estruturados..."):
                                     validation = multi_agent.agent_validate(normalized_records, import_type)
                                 
@@ -2086,6 +2093,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
