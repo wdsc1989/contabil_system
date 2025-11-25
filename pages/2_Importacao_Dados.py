@@ -1657,6 +1657,22 @@ if uploaded_file:
     # Prepara dados para edição
     db_edit = SessionLocal()
     try:
+        # Busca grupos e subgrupos do cliente para seleção manual
+        groups = db_edit.query(Group).filter(Group.client_id == client_id).order_by(Group.name).all()
+        groups_dict = {g.id: g.name for g in groups}
+        groups_options = [None] + [g.id for g in groups]  # None para "Sem grupo"
+        groups_labels = ["-"] + [g.name for g in groups]
+        
+        # Cria mapeamento de grupos para subgrupos
+        subgroups_by_group = {}
+        for group in groups:
+            subgroups = db_edit.query(Subgroup).filter(Subgroup.group_id == group.id).order_by(Subgroup.name).all()
+            subgroups_by_group[group.id] = {
+                'options': [None] + [sg.id for sg in subgroups],
+                'labels': ["-"] + [sg.name for sg in subgroups],
+                'mapping': {sg.id: sg.name for sg in subgroups}
+            }
+        
         group_mapping, subgroup_mapping = _get_group_subgroup_names_mapping(db_edit, client_id)
     finally:
         db_edit.close()
@@ -1668,25 +1684,28 @@ if uploaded_file:
         row_copy['_row_num'] = idx + 1
         edit_data.append(row_copy)
     
-    # Adiciona nomes de grupos e subgrupos
+    # Adiciona nomes de grupos e subgrupos (para exibição)
     edit_data = _add_group_subgroup_names_to_data(edit_data, group_mapping, subgroup_mapping)
     edit_df = pd.DataFrame(edit_data)
     
     # Configura colunas para edição
     display_cols = ['_row_num', '_select']
-    if 'group_name' in edit_df.columns:
-        display_cols.append('group_name')
-    if 'subgroup_name' in edit_df.columns:
-        display_cols.append('subgroup_name')
     
-    # Adiciona outras colunas
+    # Adiciona outras colunas (exceto group_id e subgroup_id que serão editáveis)
     for col in edit_df.columns:
         if col not in ['_row_num', '_select', 'group_id', 'subgroup_id', 'group_name', 'subgroup_name']:
             display_cols.append(col)
     
-    # Adiciona colunas ocultas (group_id, subgroup_id)
-    all_cols = display_cols + ['group_id', 'subgroup_id'] if 'group_id' in edit_df.columns else display_cols
-    edit_df = edit_df[[c for c in all_cols if c in edit_df.columns]]
+    # Adiciona group_id e subgroup_id como colunas editáveis
+    if 'group_id' not in edit_df.columns:
+        edit_df['group_id'] = None
+    if 'subgroup_id' not in edit_df.columns:
+        edit_df['subgroup_id'] = None
+    
+    display_cols.append('group_id')
+    display_cols.append('subgroup_id')
+    
+    edit_df = edit_df[[c for c in display_cols if c in edit_df.columns]]
     
     # Configura colunas editáveis
     column_config = {
@@ -1694,14 +1713,40 @@ if uploaded_file:
         "_select": st.column_config.CheckboxColumn("Importar", width="small"),
     }
     
-    if 'group_name' in edit_df.columns:
-        column_config['group_name'] = st.column_config.TextColumn("Grupo", width="medium", disabled=True)
-    if 'subgroup_name' in edit_df.columns:
-        column_config['subgroup_name'] = st.column_config.TextColumn("Subgrupo", width="medium", disabled=True)
-    if 'group_id' in edit_df.columns:
-        column_config['group_id'] = st.column_config.NumberColumn("group_id", width=0, disabled=True)
-    if 'subgroup_id' in edit_df.columns:
-        column_config['subgroup_id'] = st.column_config.NumberColumn("subgroup_id", width=0, disabled=True)
+    # Configura group_id como SelectboxColumn editável
+    if groups:
+        column_config['group_id'] = st.column_config.SelectboxColumn(
+            "Grupo",
+            options=groups_options,
+            format_func=lambda x: groups_dict.get(x, "-") if x is not None and x in groups_dict else "-",
+            width="medium"
+        )
+    else:
+        column_config['group_id'] = st.column_config.NumberColumn("Grupo", width="medium", disabled=True)
+    
+    # Configura subgroup_id como SelectboxColumn editável (dinâmico baseado no grupo selecionado)
+    # Nota: Streamlit não suporta selectbox dinâmico diretamente, então usaremos um selectbox simples
+    # que mostra todos os subgrupos disponíveis
+    all_subgroups = []
+    all_subgroups_labels = ["-"]
+    all_subgroups_mapping = {}
+    for group_id, subs_data in subgroups_by_group.items():
+        for sg_id, sg_name in subs_data['mapping'].items():
+            if sg_id not in all_subgroups:
+                all_subgroups.append(sg_id)
+                all_subgroups_labels.append(sg_name)
+                all_subgroups_mapping[sg_id] = sg_name
+    
+    if all_subgroups:
+        subgroup_options = [None] + all_subgroups
+        column_config['subgroup_id'] = st.column_config.SelectboxColumn(
+            "Subgrupo",
+            options=subgroup_options,
+            format_func=lambda x: all_subgroups_mapping.get(x, "-") if x is not None and x in all_subgroups_mapping else "-",
+            width="medium"
+        )
+    else:
+        column_config['subgroup_id'] = st.column_config.NumberColumn("Subgrupo", width="medium", disabled=True)
     
     # Adiciona configuração para campos comuns
     if 'date' in edit_df.columns:
@@ -1726,9 +1771,9 @@ if uploaded_file:
     
     # Dica de uso
     if len(edit_df) > 10:
-        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela e use as checkboxes para selecionar quais importar.")
+        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela, selecione grupos/subgrupos manualmente e use as checkboxes para selecionar quais importar.")
     else:
-        st.caption("💡 Edite os dados diretamente na tabela e selecione quais registros importar.")
+        st.caption("💡 Edite os dados diretamente na tabela, selecione grupos/subgrupos manualmente e selecione quais registros importar.")
     
     # Exibe tabela editável
     edited_df = st.data_editor(
@@ -1757,16 +1802,24 @@ if uploaded_file:
         row_dict.pop('group_name', None)
         row_dict.pop('subgroup_name', None)
         
-        # PRESERVA group_id e subgroup_id (converte NaN para None)
+        # PRESERVA group_id e subgroup_id (converte NaN para None e valida)
         if 'group_id' in row_dict:
             group_id_val = row_dict.get('group_id')
             if pd.isna(group_id_val) or group_id_val is None:
                 row_dict['group_id'] = None
             else:
                 try:
-                    row_dict['group_id'] = int(float(group_id_val)) if group_id_val else None
+                    group_id_int = int(float(group_id_val))
+                    # Valida se o group_id existe na lista de grupos disponíveis
+                    if 'groups_dict' in locals() and group_id_int in groups_dict:
+                        row_dict['group_id'] = group_id_int
+                    else:
+                        # Se groups_dict não está disponível, aceita o valor
+                        row_dict['group_id'] = group_id_int
                 except (ValueError, TypeError):
                     row_dict['group_id'] = None
+        else:
+            row_dict['group_id'] = None
         
         if 'subgroup_id' in row_dict:
             subgroup_id_val = row_dict.get('subgroup_id')
@@ -1774,9 +1827,27 @@ if uploaded_file:
                 row_dict['subgroup_id'] = None
             else:
                 try:
-                    row_dict['subgroup_id'] = int(float(subgroup_id_val)) if subgroup_id_val else None
+                    subgroup_id_int = int(float(subgroup_id_val))
+                    # Valida se o subgroup_id existe (se all_subgroups_mapping estiver disponível)
+                    if 'all_subgroups_mapping' in locals() and subgroup_id_int in all_subgroups_mapping:
+                        # Valida se o subgrupo pertence ao grupo selecionado (se houver)
+                        group_id_selected = row_dict.get('group_id')
+                        if group_id_selected and 'subgroups_by_group' in locals() and group_id_selected in subgroups_by_group:
+                            if subgroup_id_int in subgroups_by_group[group_id_selected]['mapping']:
+                                row_dict['subgroup_id'] = subgroup_id_int
+                            else:
+                                # Subgrupo não pertence ao grupo selecionado, remove
+                                row_dict['subgroup_id'] = None
+                        else:
+                            # Aceita o subgrupo se não houver validação de grupo
+                            row_dict['subgroup_id'] = subgroup_id_int
+                    else:
+                        # Se all_subgroups_mapping não está disponível, aceita o valor
+                        row_dict['subgroup_id'] = subgroup_id_int
                 except (ValueError, TypeError):
                     row_dict['subgroup_id'] = None
+        else:
+            row_dict['subgroup_id'] = None
         
         # Converte datas
         if 'date' in row_dict and pd.notna(row_dict.get('date')):
@@ -2117,6 +2188,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
