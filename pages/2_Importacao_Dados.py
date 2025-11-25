@@ -324,10 +324,10 @@ if uploaded_file:
             
             # Processa todas as abas automaticamente
             try:
-                df = ParserService.parse_excel(file_content, all_sheets=True)
+                    df = ParserService.parse_excel(file_content, all_sheets=True)
                 if df is None or df.empty:
                     # Fallback: tenta apenas a primeira aba
-                    df = ParserService.parse_excel(file_content)
+                df = ParserService.parse_excel(file_content)
             except Exception as e:
                 st.error(f"❌ Erro ao processar Excel: {str(e)}")
                 st.stop()
@@ -389,15 +389,15 @@ if uploaded_file:
                     st.stop()
             else:
                 # PDF válido, processa normalmente
-                pdf_data = None
-                try:
+            pdf_data = None
+            try:
                     pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
-                    df = pdf_data.get('dataframe')
+                df = pdf_data.get('dataframe')
                     
                     # Se OCR foi usado, informa ao usuário
                     if pdf_data.get('metadata', {}).get('ocr_used', False):
                         st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
-                except Exception as e:
+            except Exception as e:
                     error_msg = str(e).lower()
                     if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
                         st.warning(f"⚠️ PDF pode estar corrompido: {str(e)}")
@@ -411,42 +411,42 @@ if uploaded_file:
                             st.error(f"❌ Não foi possível processar o PDF: {str(ocr_error)}")
                             st.stop()
                     else:
-                        st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
-                        # Fallback para método simples
+                st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
+                # Fallback para método simples
                         try:
-                            df = ParserService.parse_pdf_to_dataframe(file_content)
+                df = ParserService.parse_pdf_to_dataframe(file_content)
                         except Exception as fallback_error:
                             st.error(f"❌ Erro ao processar PDF: {str(fallback_error)}")
                             st.stop()
-                
-                if df is None or df.empty:
+            
+            if df is None or df.empty:
                     # Se não encontrou tabelas, tenta extrair do texto usando regex
-                    if pdf_data and pdf_data.get('full_text'):
-                        st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
+                if pdf_data and pdf_data.get('full_text'):
+                    st.info("ℹ️ Nenhuma tabela estruturada encontrada. Tentando extrair dados do texto...")
                         # Tenta criar DataFrame a partir do texto extraído
                         df = ParserService._text_to_dataframe_from_ocr(pdf_data.get('full_text', ''))
                         if df is None or df.empty:
                             st.warning("⚠️ Não foi possível extrair dados estruturados do texto. O texto completo será usado para classificação.")
-                            df = pd.DataFrame()
+                    df = pd.DataFrame()
                         # Salva dados completos do PDF para referência
-                        st.session_state['pdf_full_data'] = pdf_data
-                    else:
-                        st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
-                        st.stop()
+                    st.session_state['pdf_full_data'] = pdf_data
                 else:
+                    st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
+                    st.stop()
+            else:
                     # Salva dados completos do PDF para referência
-                    if pdf_data:
-                        st.session_state['pdf_full_data'] = pdf_data
+                if pdf_data:
+                    st.session_state['pdf_full_data'] = pdf_data
         
         elif file_type == 'OFX':
             update_status("Processando arquivo OFX...")
             progress_bar.progress(20)
             # file_content já foi lido acima
             try:
-                df = ParserService.ofx_to_dataframe(file_content)
+            df = ParserService.ofx_to_dataframe(file_content)
                 if df is not None and not df.empty:
                     st.success("✅ OFX processado com sucesso")
-                else:
+        else:
                     st.error("❌ Não foi possível extrair dados do arquivo OFX.")
                     st.stop()
             except Exception as e:
@@ -801,12 +801,12 @@ if uploaded_file:
                         st.error("❌ IA não configurada. Configure a IA na página de Administração antes de usar classificação automática.")
                         use_ai_classification = False
                     else:
-                        # Container para status em tempo real
-                        status_container = st.empty()
+                # Container para status em tempo real
+                status_container = st.empty()
                         status_messages = []
-                        
-                        def update_status(message):
-                            status_messages.append(message)
+                
+                def update_status(message):
+                    status_messages.append(message)
                             status_container.info(f"🤖 **Classificando:** {message}")
                         
                         # Classifica dados extraídos
@@ -815,11 +815,11 @@ if uploaded_file:
                                 df,
                                 groups_subgroups=groups_subgroups,
                                 import_type=import_type,
-                                status_callback=update_status
-                            )
-                            
-                            status_container.empty()
-                        
+                        status_callback=update_status
+                    )
+                    
+                    status_container.empty()
+                
                         if classification_result.get('success'):
                             processed_data = classification_result.get('classified_data', [])
                             # Se tipo foi detectado, atualiza
@@ -1227,8 +1227,8 @@ if uploaded_file:
                         edit_df['classification_confidence'] = pd.to_numeric(
                             edit_df['classification_confidence'], errors='coerce'
                         )
-                    except:
-                        pass
+                        except:
+                            pass
                 
                 # Configura colunas editáveis
                 column_config = {
@@ -1346,6 +1346,27 @@ if uploaded_file:
                     row_dict.pop('_select', None)
                     row_dict.pop('group_name', None)  # Remove nome, mantém apenas ID
                     row_dict.pop('subgroup_name', None)  # Remove nome, mantém apenas ID
+                    
+                    # PRESERVA group_id e subgroup_id (converte NaN para None)
+                    if 'group_id' in row_dict:
+                        group_id_val = row_dict.get('group_id')
+                        if pd.isna(group_id_val) or group_id_val is None:
+                            row_dict['group_id'] = None
+                        else:
+                            try:
+                                row_dict['group_id'] = int(float(group_id_val)) if group_id_val else None
+                            except (ValueError, TypeError):
+                                row_dict['group_id'] = None
+                    
+                    if 'subgroup_id' in row_dict:
+                        subgroup_id_val = row_dict.get('subgroup_id')
+                        if pd.isna(subgroup_id_val) or subgroup_id_val is None:
+                            row_dict['subgroup_id'] = None
+                        else:
+                            try:
+                                row_dict['subgroup_id'] = int(float(subgroup_id_val)) if subgroup_id_val else None
+                            except (ValueError, TypeError):
+                                row_dict['subgroup_id'] = None
                     
                     # Converte datas de datetime para string YYYY-MM-DD
                     if 'date' in row_dict and pd.notna(row_dict.get('date')):
@@ -1563,7 +1584,7 @@ if uploaded_file:
                             del st.session_state.bank_name_override
             finally:
                 db.close()
-    
+        
     type_names = {
         'transactions': '💳 Transações Financeiras',
         'bank_statements': '🏦 Extratos Bancários',
@@ -2039,19 +2060,19 @@ if uploaded_file:
                 if 'bank_name_override' in st.session_state:
                     del st.session_state.bank_name_override
                 st.rerun()
-            
-        except Exception as e:
+    
+    except Exception as e:
             st.error(f"❌ Erro ao importar: {str(e)}")
-            st.exception(e)
+        st.exception(e)
         finally:
             db.close()
 
 else:
     st.info("💡 **Como funciona:** Faça upload do arquivo e o sistema processará automaticamente com IA Vision, detectando o tipo de dado e classificando por grupos/subgrupos.")
-    
+
     st.markdown("---")
     with st.expander("ℹ️ Sobre o Processamento Automático"):
-        st.markdown("""
+    st.markdown("""
         **Formatos Suportados:**
         - 📄 CSV, Excel, TXT
         - 📑 PDF (incluindo PDFs escaneados/imagens)
@@ -2070,6 +2091,7 @@ else:
         2. Revisar e editar se necessário
         3. Importar!
         """)
+
 
 
 
