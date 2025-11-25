@@ -5,6 +5,7 @@ import streamlit as st
 import sys
 import os
 import pandas as pd
+import json
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -859,6 +860,94 @@ if uploaded_file:
                         record['group_id'] = None
                         record['subgroup_id'] = None
                         record['classification_confidence'] = 1.0  # Sem classificação = confiança máxima (dados já extraídos)
+                
+                # NORMALIZAÇÃO: Estrutura dados para as colunas corretas da tabela destino
+                # Após extração, a IA deve entender os dados e mapeá-los para as colunas da tabela
+                db = SessionLocal()
+                try:
+                    from services.ai_service import AIService
+                    ai_service = AIService(db)
+                    
+                    if ai_service.is_available():
+                        # Prepara dados para normalização
+                        sample_data = json.dumps(processed_data[:min(20, len(processed_data))], ensure_ascii=False, indent=2, default=str)
+                        
+                        # Cria mapeamento básico (colunas do DataFrame para colunas da tabela)
+                        mapping = {}
+                        target_columns = ai_service.get_target_columns(import_type)
+                        
+                        # Tenta mapear automaticamente baseado em nomes similares
+                        df_columns = list(df.columns) if not df.empty else []
+                        for df_col in df_columns:
+                            df_col_lower = str(df_col).lower().strip()
+                            for target_col in target_columns:
+                                target_col_lower = str(target_col).lower().strip()
+                                # Mapeia se o nome for similar ou contém palavras-chave
+                                if (df_col_lower == target_col_lower or 
+                                    df_col_lower in target_col_lower or 
+                                    target_col_lower in df_col_lower):
+                                    mapping[df_col] = target_col
+                                    break
+                        
+                        # Se não há mapeamento suficiente, usa IA para mapear
+                        if len(mapping) < len(target_columns) * 0.5:  # Menos de 50% mapeado
+                            with st.spinner("🤖 Estruturando dados para a tabela destino..."):
+                                try:
+                                    # Usa normalize_data para estruturar os dados
+                                    normalization_result = ai_service.normalize_data(
+                                        df,
+                                        import_type,
+                                        mapping,
+                                        structural_analysis=None
+                                    )
+                                    
+                                    if normalization_result and 'normalized_data' in normalization_result:
+                                        normalized_records = normalization_result['normalized_data']
+                                        
+                                        # Se normalizou apenas uma amostra, aplica padrões ao resto
+                                        if len(normalized_records) < len(processed_data):
+                                            # Mantém os normalizados e normaliza o resto
+                                            remaining = processed_data[len(normalized_records):]
+                                            # Para o resto, mantém estrutura original mas garante colunas corretas
+                                            for record in remaining:
+                                                # Garante que tem todas as colunas da tabela destino
+                                                for target_col in target_columns:
+                                                    if target_col not in record:
+                                                        record[target_col] = None
+                                            processed_data = normalized_records + remaining
+                                        else:
+                                            processed_data = normalized_records
+                                        
+                                        st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
+                                except Exception as e:
+                                    st.warning(f"⚠️ Não foi possível normalizar automaticamente: {str(e)}")
+                                    # Continua com dados originais
+                                    pass
+                        else:
+                            # Aplica mapeamento manual
+                            for record in processed_data:
+                                # Renomeia colunas conforme mapeamento
+                                new_record = {}
+                                for df_col, target_col in mapping.items():
+                                    if df_col in record:
+                                        new_record[target_col] = record[df_col]
+                                # Mantém outras colunas que não foram mapeadas
+                                for key, value in record.items():
+                                    if key not in mapping:
+                                        new_record[key] = value
+                                # Garante que tem todas as colunas da tabela destino
+                                for target_col in target_columns:
+                                    if target_col not in new_record:
+                                        new_record[target_col] = None
+                                # Atualiza record
+                                record.clear()
+                                record.update(new_record)
+                except Exception as e:
+                    st.warning(f"⚠️ Erro ao estruturar dados: {str(e)}")
+                    # Continua com dados originais
+                    pass
+                finally:
+                    db.close()
                 
                 # Normaliza dados
                 processed_data = [_ensure_classification_confidence(dict(record)) for record in processed_data]

@@ -1035,73 +1035,306 @@ Analise o arquivo fornecido e forneça uma análise estrutural completa.
         mapping: Dict[str, str]
     ) -> str:
         """
-        Cria prompt para normalização e estruturação de dados
+        Cria prompt para normalização e estruturação de dados com colunas específicas da tabela destino
         """
         type_name = self.DATA_TYPES.get(import_type, import_type)
-        expected_fields = self.EXPECTED_FIELDS.get(import_type, [])
         all_fields = self.get_target_columns(import_type)
         
-        expected_structure = {
-            field: "tipo e formato esperado" for field in all_fields
-        }
+        # Define estrutura detalhada para cada tipo de importação
+        column_specs = self._get_column_specifications(import_type)
         
-        prompt = f"""Você é um especialista em normalização e estruturação de dados financeiros.
+        prompt = f"""Você é um especialista em normalização e estruturação de dados financeiros para importação em banco de dados.
 
-Normalize e estruture os dados do arquivo para o formato esperado pelo sistema.
+**TIPO DE DADOS:** {type_name}
+**TABELA DESTINO:** {import_type}
 
-**Tipo de dados:** {type_name}
-**Estrutura esperada:**
-{json.dumps(expected_structure, indent=2, ensure_ascii=False)}
+**COLUNAS DA TABELA DESTINO (OBRIGATÓRIO USAR EXATAMENTE ESTES NOMES):**
+{json.dumps(column_specs, indent=2, ensure_ascii=False)}
 
-**Mapeamento de colunas:**
+**MAPEAMENTO DE COLUNAS DO ARQUIVO PARA TABELA:**
 {json.dumps(mapping, indent=2, ensure_ascii=False)}
 
-**Dados do arquivo (primeiras 20 linhas):**
+**DADOS EXTRAÍDOS DO ARQUIVO:**
 {file_data}
 
-**Análise estrutural prévia:**
+**ANÁLISE ESTRUTURAL:**
 {structural_analysis}
 
-**Tarefa:**
-Para cada linha de dados:
-1. Normalize datas para formato YYYY-MM-DD
-2. Normalize valores monetários para número decimal (sem símbolos)
-3. Identifique tipo de transação (entrada/saída) baseado em valores ou descrições
-4. Extraia informações relevantes de campos de texto
-5. Preencha campos faltantes com valores inferidos quando possível
-6. Valide e corrija dados inconsistentes
-7. Estruture no formato JSON esperado
+**TAREFA CRÍTICA:**
+Analise os dados extraídos do arquivo e estruture CADA registro para corresponder EXATAMENTE às colunas da tabela destino.
 
-**Regras de normalização:**
-- Datas: Converter qualquer formato para YYYY-MM-DD
-- Valores: Remover símbolos (R$, BRL, etc), pontos de milhar, manter apenas vírgula ou ponto decimal
-- Descrições: Limpar espaços extras, normalizar caracteres
-- Tipos: Identificar automaticamente entrada/saída baseado em sinais ou palavras-chave
+**INSTRUÇÕES DETALHADAS:**
 
-**Responda em formato JSON com array de objetos normalizados:**
+1. **ENTENDA OS DADOS DO ARQUIVO:**
+   - Identifique qual coluna do arquivo contém datas
+   - Identifique qual coluna contém valores monetários
+   - Identifique qual coluna contém descrições
+   - Identifique outras informações relevantes
+
+2. **MAPEIE PARA AS COLUNAS DA TABELA DESTINO:**
+   - Use o mapeamento fornecido para associar colunas do arquivo às colunas da tabela
+   - Se uma coluna não está mapeada, tente inferir o mapeamento baseado no nome e conteúdo
+   - Garanta que TODAS as colunas obrigatórias da tabela destino sejam preenchidas
+
+3. **FORMATE OS DADOS CORRETAMENTE:**
+   - **Datas**: Converta QUALQUER formato (DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY, etc) para YYYY-MM-DD
+   - **Valores monetários**: Remova símbolos (R$, BRL, $), pontos de milhar, converta vírgula para ponto. Ex: "R$ 1.234,56" → 1234.56
+   - **Números inteiros**: Apenas números, sem decimais
+   - **Strings**: Limpe espaços extras, normalize caracteres especiais
+   - **Booleanos**: Converta "sim/não", "true/false", "1/0" para true/false
+
+4. **PREENCHA CAMPOS OBRIGATÓRIOS:**
+   - Se um campo obrigatório não está no arquivo, tente inferir do contexto
+   - Se não conseguir inferir, use null (mas documente no summary)
+
+5. **MANTENHA A ESTRUTURA:**
+   - Cada registro DEVE ter EXATAMENTE as colunas listadas acima
+   - NÃO adicione colunas que não existem na tabela destino
+   - NÃO renomeie colunas - use os nomes exatos da tabela destino
+
+**FORMATO DE RESPOSTA (JSON):**
 {{
     "normalized_data": [
         {{
-            "date": "YYYY-MM-DD",
-            "description": "descrição normalizada",
-            "value": 1234.56,
-            "type": "entrada|saida",
-            "category": "categoria se identificada",
-            "account": "conta se identificada",
-            "original_row": 1,
-            "transformations_applied": ["lista de transformações"],
-            "confidence": 0.0-1.0
+            {self._get_example_structure(import_type)}
         }}
     ],
     "summary": {{
-        "total_rows": 100,
+        "total_rows_processed": 100,
         "successfully_normalized": 95,
-        "rows_with_issues": 5,
-        "common_issues": ["lista de problemas comuns"]
+        "rows_with_missing_required_fields": 3,
+        "rows_with_format_errors": 2,
+        "common_issues": ["lista de problemas encontrados"],
+        "mapping_applied": {{
+            "coluna_arquivo": "coluna_tabela_destino"
+        }}
     }}
 }}
+
+**IMPORTANTE:**
+- Retorne APENAS JSON válido, sem texto adicional
+- Cada objeto em normalized_data DEVE ter TODAS as colunas da tabela destino
+- Use null para campos opcionais que não podem ser inferidos
+- Valores numéricos devem ser números (não strings)
+- Datas devem ser strings no formato YYYY-MM-DD
 """
         return prompt
+    
+    def _get_column_specifications(self, import_type: str) -> Dict[str, Dict[str, Any]]:
+        """
+        Retorna especificações detalhadas de cada coluna para o tipo de importação
+        """
+        specs = {
+            'transactions': {
+                'date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data da transação'},
+                'description': {'type': 'string', 'required': True, 'description': 'Descrição da transação'},
+                'value': {'type': 'float', 'required': True, 'description': 'Valor da transação (número decimal)'},
+                'type': {'type': 'string', 'required': True, 'values': ['entrada', 'saida'], 'description': 'Tipo: entrada ou saida'},
+                'category': {'type': 'string', 'required': False, 'description': 'Categoria da transação'},
+                'account': {'type': 'string', 'required': False, 'description': 'Conta relacionada'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo (será preenchido depois)'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo (será preenchido depois)'}
+            },
+            'bank_statements': {
+                'date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data da movimentação'},
+                'description': {'type': 'string', 'required': True, 'description': 'Descrição da movimentação'},
+                'value': {'type': 'float', 'required': True, 'description': 'Valor da movimentação (positivo=crédito, negativo=débito)'},
+                'balance': {'type': 'float', 'required': False, 'description': 'Saldo após a movimentação'},
+                'account': {'type': 'string', 'required': False, 'description': 'Número da conta'},
+                'bank_name': {'type': 'string', 'required': False, 'description': 'Nome do banco'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'contracts': {
+                'contract_start': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data de início do contrato'},
+                'event_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data do evento'},
+                'service_value': {'type': 'float', 'required': True, 'description': 'Valor do serviço'},
+                'contractor_name': {'type': 'string', 'required': True, 'description': 'Nome do contratante'},
+                'displacement_value': {'type': 'float', 'required': False, 'description': 'Valor de deslocamento'},
+                'event_type': {'type': 'string', 'required': False, 'description': 'Tipo de evento'},
+                'service_sold': {'type': 'string', 'required': False, 'description': 'Serviço vendido'},
+                'guests_count': {'type': 'integer', 'required': False, 'description': 'Número de convidados'},
+                'status': {'type': 'string', 'required': False, 'values': ['pendente', 'em_andamento', 'concluido', 'cancelado'], 'description': 'Status do contrato'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'accounts_payable': {
+                'account_name': {'type': 'string', 'required': True, 'description': 'Nome do credor/fornecedor'},
+                'due_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data de vencimento'},
+                'value': {'type': 'float', 'required': True, 'description': 'Valor da conta'},
+                'cpf_cnpj': {'type': 'string', 'required': False, 'description': 'CPF ou CNPJ'},
+                'month_ref': {'type': 'string', 'format': 'YYYY-MM', 'required': False, 'description': 'Mês de referência'},
+                'paid': {'type': 'boolean', 'required': False, 'description': 'Se foi pago'},
+                'monthly_installments': {'type': 'integer', 'required': False, 'description': 'Número de parcelas mensais'},
+                'total_monthly_outflow': {'type': 'float', 'required': False, 'description': 'Total mensal'},
+                'installment_number': {'type': 'integer', 'required': False, 'description': 'Número da parcela'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'accounts_receivable': {
+                'account_name': {'type': 'string', 'required': True, 'description': 'Nome do devedor/contratante'},
+                'due_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data de vencimento'},
+                'value': {'type': 'float', 'required': True, 'description': 'Valor a receber'},
+                'cpf_cnpj': {'type': 'string', 'required': False, 'description': 'CPF ou CNPJ'},
+                'month_ref': {'type': 'string', 'format': 'YYYY-MM', 'required': False, 'description': 'Mês de referência'},
+                'received': {'type': 'boolean', 'required': False, 'description': 'Se foi recebido'},
+                'event_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': False, 'description': 'Data do evento'},
+                'contract_value': {'type': 'float', 'required': False, 'description': 'Valor total do contrato'},
+                'payment_method': {'type': 'string', 'required': False, 'description': 'Forma de pagamento'},
+                'monthly_installments': {'type': 'integer', 'required': False, 'description': 'Número de parcelas'},
+                'total_expected_inflow': {'type': 'float', 'required': False, 'description': 'Total esperado'},
+                'installment_number': {'type': 'integer', 'required': False, 'description': 'Número da parcela'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'financial_investments': {
+                'date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data da operação'},
+                'investment_type': {'type': 'string', 'required': False, 'description': 'Tipo de investimento (CDB, LCI, etc)'},
+                'institution': {'type': 'string', 'required': False, 'description': 'Instituição financeira'},
+                'operation_type': {'type': 'string', 'values': ['aplicado', 'resgatado'], 'required': False, 'description': 'Tipo de operação'},
+                'applied_value': {'type': 'float', 'required': False, 'description': 'Valor aplicado'},
+                'redeemed_value': {'type': 'float', 'required': False, 'description': 'Valor resgatado'},
+                'yield_value': {'type': 'float', 'required': False, 'description': 'Rendimento'},
+                'balance': {'type': 'float', 'required': False, 'description': 'Saldo'},
+                'description': {'type': 'string', 'required': False, 'description': 'Descrição'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'credit_card_invoices': {
+                'transaction_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data da transação'},
+                'description': {'type': 'string', 'required': True, 'description': 'Descrição da transação'},
+                'value': {'type': 'float', 'required': True, 'description': 'Valor da transação'},
+                'category': {'type': 'string', 'required': False, 'description': 'Categoria'},
+                'establishment': {'type': 'string', 'required': False, 'description': 'Estabelecimento'},
+                'installment_number': {'type': 'integer', 'required': False, 'description': 'Número da parcela'},
+                'total_installments': {'type': 'integer', 'required': False, 'description': 'Total de parcelas'},
+                'card_brand': {'type': 'string', 'required': False, 'description': 'Bandeira do cartão'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'card_machine_statements': {
+                'date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data da transação'},
+                'gross_value': {'type': 'float', 'required': True, 'description': 'Valor bruto'},
+                'fee': {'type': 'float', 'required': False, 'description': 'Taxa'},
+                'net_value': {'type': 'float', 'required': True, 'description': 'Valor líquido'},
+                'card_brand': {'type': 'string', 'required': False, 'description': 'Bandeira do cartão'},
+                'transaction_type': {'type': 'string', 'values': ['debito', 'credito'], 'required': False, 'description': 'Tipo de transação'},
+                'description': {'type': 'string', 'required': False, 'description': 'Descrição'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            },
+            'inventory': {
+                'product_name': {'type': 'string', 'required': True, 'description': 'Nome do produto'},
+                'quantity': {'type': 'float', 'required': True, 'description': 'Quantidade'},
+                'unit_value': {'type': 'float', 'required': True, 'description': 'Valor unitário'},
+                'movement_date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True, 'description': 'Data do movimento'},
+                'movement_type': {'type': 'string', 'values': ['entrada', 'saida'], 'required': True, 'description': 'Tipo de movimento'},
+                'description': {'type': 'string', 'required': False, 'description': 'Descrição'},
+                'group_id': {'type': 'integer', 'required': False, 'description': 'ID do grupo'},
+                'subgroup_id': {'type': 'integer', 'required': False, 'description': 'ID do subgrupo'}
+            }
+        }
+        
+        return specs.get(import_type, {})
+    
+    def _get_example_structure(self, import_type: str) -> str:
+        """
+        Retorna exemplo de estrutura JSON para o tipo de importação
+        """
+        examples = {
+            'transactions': '''"date": "2024-01-15",
+            "description": "Pagamento fornecedor",
+            "value": 1500.00,
+            "type": "saida",
+            "category": "Fornecedores",
+            "account": null,
+            "group_id": null,
+            "subgroup_id": null''',
+            'bank_statements': '''"date": "2024-01-15",
+            "description": "Transferência recebida",
+            "value": 2500.00,
+            "balance": 5000.00,
+            "account": "12345-6",
+            "bank_name": "Banco do Brasil",
+            "group_id": null,
+            "subgroup_id": null''',
+            'contracts': '''"contract_start": "2024-01-01",
+            "event_date": "2024-02-15",
+            "service_value": 5000.00,
+            "contractor_name": "João Silva",
+            "displacement_value": 200.00,
+            "event_type": "Casamento",
+            "service_sold": "Fotografia",
+            "guests_count": 100,
+            "status": "pendente",
+            "group_id": null,
+            "subgroup_id": null''',
+            'accounts_payable': '''"account_name": "Fornecedor XYZ",
+            "due_date": "2024-02-10",
+            "value": 500.00,
+            "cpf_cnpj": "12.345.678/0001-90",
+            "month_ref": "2024-02",
+            "paid": false,
+            "monthly_installments": 3,
+            "total_monthly_outflow": 500.00,
+            "installment_number": 1,
+            "group_id": null,
+            "subgroup_id": null''',
+            'accounts_receivable': '''"account_name": "Cliente ABC",
+            "due_date": "2024-02-20",
+            "value": 1000.00,
+            "cpf_cnpj": null,
+            "month_ref": "2024-02",
+            "received": false,
+            "event_date": "2024-02-15",
+            "contract_value": 3000.00,
+            "payment_method": "Parcelado",
+            "monthly_installments": 3,
+            "total_expected_inflow": 3000.00,
+            "installment_number": 1,
+            "group_id": null,
+            "subgroup_id": null''',
+            'financial_investments': '''"date": "2024-01-15",
+            "investment_type": "CDB",
+            "institution": "Banco XYZ",
+            "operation_type": "aplicado",
+            "applied_value": 10000.00,
+            "redeemed_value": null,
+            "yield_value": null,
+            "balance": 10000.00,
+            "description": "Aplicação CDB 90 dias",
+            "group_id": null,
+            "subgroup_id": null''',
+            'credit_card_invoices': '''"transaction_date": "2024-01-15",
+            "description": "Compra supermercado",
+            "value": 250.00,
+            "category": "Alimentação",
+            "establishment": "Supermercado ABC",
+            "installment_number": 1,
+            "total_installments": 1,
+            "card_brand": "Visa",
+            "group_id": null,
+            "subgroup_id": null''',
+            'card_machine_statements': '''"date": "2024-01-15",
+            "gross_value": 1000.00,
+            "fee": 30.00,
+            "net_value": 970.00,
+            "card_brand": "Visa",
+            "transaction_type": "credito",
+            "description": "Venda produto",
+            "group_id": null,
+            "subgroup_id": null''',
+            'inventory': '''"product_name": "Produto XYZ",
+            "quantity": 10.0,
+            "unit_value": 50.00,
+            "movement_date": "2024-01-15",
+            "movement_type": "entrada",
+            "description": "Compra fornecedor",
+            "group_id": null,
+            "subgroup_id": null'''
+        }
+        
+        return examples.get(import_type, '')
 
     def _create_prompt_validation(
         self,
@@ -2807,6 +3040,7 @@ Processe e retorne em JSON com array "processed_data".
                 return recommendation
         
         return recommendation
+
 
 
 
