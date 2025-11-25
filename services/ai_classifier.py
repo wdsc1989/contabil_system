@@ -309,8 +309,9 @@ class AIClassifier:
             issues = json_data.get('issues', [])
             
             # Valida e corrige registros classificados
+            # CRÍTICO: Garante que a estrutura original seja preservada
             validated_records = []
-            for idx, record in enumerate(records):
+            for idx, original_record in enumerate(records):
                 # Procura registro correspondente na resposta da IA
                 classified_record = None
                 if idx < len(classified_records):
@@ -319,24 +320,46 @@ class AIClassifier:
                     # Tenta encontrar por índice ou campos únicos
                     for cr in classified_records:
                         # Compara campos chave para encontrar correspondência
-                        if self._records_match(record, cr):
+                        if self._records_match(original_record, cr):
                             classified_record = cr
                             break
                 
+                # SEMPRE começa com o registro original para preservar estrutura
+                validated_record = dict(original_record)
+                
                 if classified_record:
-                    # Valida campos de classificação
-                    validated_record = dict(record)  # Mantém campos originais
+                    # Extrai APENAS os campos de classificação da resposta da IA
+                    # Mantém TODOS os outros campos do registro original
                     validated_record['group_id'] = self._validate_id(classified_record.get('group_id'))
                     validated_record['subgroup_id'] = self._validate_id(classified_record.get('subgroup_id'))
                     validated_record['classification_confidence'] = float(classified_record.get('classification_confidence', 0.0))
-                    validated_records.append(validated_record)
+                    
+                    # Validação crítica: verifica se a IA não alterou campos originais
+                    original_keys = set(original_record.keys())
+                    classified_keys = set(classified_record.keys())
+                    
+                    # Remove campos de classificação da comparação
+                    original_keys.discard('group_id')
+                    original_keys.discard('subgroup_id')
+                    original_keys.discard('classification_confidence')
+                    classified_keys.discard('group_id')
+                    classified_keys.discard('subgroup_id')
+                    classified_keys.discard('classification_confidence')
+                    
+                    # Se a IA adicionou ou removeu campos, usa apenas os originais
+                    if original_keys != classified_keys:
+                        issues.append(f"Registro {idx+1}: IA alterou estrutura (campos originais preservados)")
+                        # Garante que todos os campos originais estão presentes
+                        for key in original_keys:
+                            if key not in validated_record:
+                                validated_record[key] = original_record.get(key)
                 else:
                     # Registro não foi classificado, adiciona sem classificação
-                    record_copy = dict(record)
-                    record_copy['group_id'] = None
-                    record_copy['subgroup_id'] = None
-                    record_copy['classification_confidence'] = 0.0
-                    validated_records.append(record_copy)
+                    validated_record['group_id'] = None
+                    validated_record['subgroup_id'] = None
+                    validated_record['classification_confidence'] = 0.0
+                
+                validated_records.append(validated_record)
             
             # Garante que todos os registros foram processados
             if len(validated_records) < len(records):
@@ -393,8 +416,30 @@ class AIClassifier:
             
             groups_info = "\n".join(groups_list)
         
-        # Prepara amostra de dados
-        sample_data = json.dumps(records[:10], ensure_ascii=False, indent=2, default=str)
+        # Prepara amostra de dados com estrutura explícita
+        # Mostra estrutura completa dos primeiros registros
+        sample_records = records[:min(10, len(records))]
+        
+        # Cria exemplo explícito da estrutura esperada
+        example_structure = {}
+        if sample_records:
+            example_structure = sample_records[0].copy()
+            # Remove campos de classificação se existirem
+            example_structure.pop('group_id', None)
+            example_structure.pop('subgroup_id', None)
+            example_structure.pop('classification_confidence', None)
+        
+        sample_data = json.dumps(sample_records, ensure_ascii=False, indent=2, default=str)
+        structure_example = json.dumps(example_structure, ensure_ascii=False, indent=2, default=str)
+        
+        # Lista todas as colunas/chaves dos registros
+        all_keys = set()
+        for record in sample_records:
+            all_keys.update(record.keys())
+        all_keys.discard('group_id')
+        all_keys.discard('subgroup_id')
+        all_keys.discard('classification_confidence')
+        columns_list = sorted(list(all_keys))
         
         prompt = f"""Você é um especialista em classificação contábil. Sua tarefa é classificar registros financeiros por grupo e subgrupo.
 
@@ -403,22 +448,32 @@ Tipo de dado: {import_type or 'Não especificado - detecte automaticamente'}
 Grupos e Subgrupos disponíveis para classificação:
 {groups_info if groups_info else 'Nenhum grupo disponível - use group_id e subgroup_id como null'}
 
+ESTRUTURA DOS DADOS (IMPORTANTE - MANTENHA EXATAMENTE ESTA ESTRUTURA):
+Colunas/chaves dos registros: {', '.join(columns_list)}
+
+Exemplo de estrutura de um registro:
+{structure_example}
+
 Dados a classificar ({len(records)} registros):
 {sample_data}
 {f'... e mais {len(records) - 10} registros' if len(records) > 10 else ''}
 
-INSTRUÇÕES:
-1. Para CADA registro, analise a descrição e valor
-2. Identifique o grupo e subgrupo mais apropriado baseado no contexto
-3. Retorne group_id e subgroup_id (IDs numéricos) para cada registro
-4. Informe classification_confidence (0.0 a 1.0) para cada classificação
-5. Se não conseguir classificar com confiança, use null para group_id/subgroup_id e confidence baixa
+INSTRUÇÕES CRÍTICAS:
+1. MANTENHA A ESTRUTURA ORIGINAL: Cada registro DEVE manter TODAS as colunas/chaves originais com seus valores originais
+2. NÃO ALTERE: Não renomeie colunas, não transforme valores em nomes de colunas, não mude a estrutura
+3. APENAS ADICIONE: Adicione APENAS os campos group_id, subgroup_id e classification_confidence
+4. Para CADA registro, analise a descrição e valor para identificar grupo e subgrupo
+5. Retorne group_id e subgroup_id (IDs numéricos) para cada registro
+6. Informe classification_confidence (0.0 a 1.0) para cada classificação
+7. Se não conseguir classificar com confiança, use null para group_id/subgroup_id e confidence baixa
 
 FORMATO DE RESPOSTA (JSON válido):
 {{
     "classified_records": [
         {{
-            ... (todos os campos do registro original) ...,
+            "coluna1": "valor_original_1",
+            "coluna2": "valor_original_2",
+            ... (TODAS as colunas originais com seus valores originais) ...,
             "group_id": 1,
             "subgroup_id": 2,
             "classification_confidence": 0.85
@@ -427,11 +482,14 @@ FORMATO DE RESPOSTA (JSON válido):
     "issues": ["Lista de problemas encontrados, se houver"]
 }}
 
-IMPORTANTE:
+REGRAS ABSOLUTAS:
 - Retorne TODOS os {len(records)} registros classificados
-- Mantenha todos os campos originais de cada registro
-- Adicione apenas group_id, subgroup_id e classification_confidence
-- Retorne APENAS JSON válido, sem texto adicional
+- MANTENHA TODOS os campos originais de cada registro EXATAMENTE como estão
+- NÃO transforme valores em nomes de colunas
+- NÃO renomeie colunas existentes
+- NÃO altere valores dos campos originais
+- Adicione APENAS: group_id, subgroup_id e classification_confidence
+- Retorne APENAS JSON válido, sem texto adicional ou explicações
 """
         
         return prompt
