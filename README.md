@@ -66,22 +66,30 @@ Sistema web desenvolvido em Streamlit para gestão contábil completa, permitind
 - **Permissões por Usuário:** Atribua acesso específico a cada cliente
 
 ### Importação Inteligente 📥
-- **4 Formatos Suportados:**
+- **5 Formatos Suportados:**
   - **CSV**: Detecção automática de delimitador e encoding
   - **Excel**: Suporte a múltiplas planilhas (leitura completa de todas as abas)
-  - **PDF**: Extração completa de todas as páginas, texto e tabelas
+  - **PDF**: Extração completa de todas as páginas, texto e tabelas (incluindo PDFs protegidos por senha)
   - **OFX**: Extratos bancários padrão brasileiro
+  - **Imagens**: JPG, PNG, TIFF, BMP, WEBP (com OCR automático)
 - **IA para Processamento:**
-  - **Detecção Automática de Tipo:** IA identifica automaticamente o tipo de dado (extrato bancário, transações, contratos, etc.)
+  - **Detecção Automática de Tipo:** IA identifica automaticamente o tipo de dado (extrato bancário, transações, contratos, etc.) com amostra maior (20 linhas)
   - **Mapeamento Inteligente:** IA analisa estrutura do arquivo e sugere mapeamento de colunas
   - **Processamento Completo:** Leitura e processamento de arquivos completos (sem limitações de linhas)
+  - **Filtragem Automática:** Remove automaticamente linhas em branco e linhas de "saldo do dia"
   - **Classificação Automática:** IA classifica cada linha por grupo e subgrupo baseado em descrição e contexto
   - **Extração de Informações:** Extração automática de nome do banco, datas precisas e outros metadados
+  - **Edição de Prompts:** Administradores podem personalizar os prompts dos 5 agentes de IA
 - **Preview de Dados:**
   - Visualização completa ou limitada (opcional)
-  - Remoção automática de linhas em branco
+  - Remoção automática de linhas em branco e linhas não transacionais
   - Scrollbar para navegação em arquivos grandes
   - Edição direta dos dados antes da importação
+  - Campo de nome do banco aparece apenas uma vez na seção de configurações
+- **Recursos Especiais:**
+  - **PDFs Protegidos por Senha:** Detecção automática e solicitação de senha durante o processamento
+  - **Botão Finalizar Importação:** Aparece após importação bem-sucedida para limpar estado e iniciar nova importação
+  - **Mensagens Contextuais:** Mensagens de sucesso/erro aparecem logo abaixo do botão de importar
 - **Classificação Contábil:**
   - **PRIMÁRIO:** Grupos e Subgrupos (Plano de Contas) - Obrigatório para relatórios DRE/DFC
   - **SECUNDÁRIO:** Categoria (opcional) - Usada apenas como fallback quando não há grupo/subgrupo
@@ -2288,6 +2296,31 @@ Para mais detalhes, consulte a [documentação completa de deploy](docs/deploy/H
 - `streamlit>=1.29.0` - Framework web
 - `sqlalchemy>=2.0.0` - ORM
 - `pandas>=2.0.0` - Processamento de dados
+
+### Processamento de Arquivos:
+- `pdfplumber>=0.10.0` - Extração de texto e tabelas de PDFs
+- `PyMuPDF>=1.23.0` (fitz) - Processamento de PDFs (principal, funciona sem poppler)
+- `pdf2image>=1.16.3` - Conversão de PDF para imagens (requer poppler-utils)
+- `PyPDF2>=3.0.0` - Processamento adicional de PDFs
+- `openpyxl>=3.1.0` - Leitura de arquivos Excel
+- `ofxparse>=0.21` - Processamento de arquivos OFX
+- `Pillow>=10.0.0` - Processamento de imagens
+
+### OCR (Opcional):
+- `pytesseract>=0.3.10` - OCR engine wrapper
+- `easyocr>=1.7.0` - OCR alternativo
+
+### IA/ML:
+- `openai>=1.0.0` - OpenAI GPT-4o Vision API (obrigatório)
+- `google-generativeai>=0.3.0` - Google Gemini (opcional)
+- `groq>=0.4.0` - Groq (opcional)
+- `ollama` - Modelos locais (opcional)
+
+### Dependências de Sistema (para Hostinger):
+- `poppler-utils` - Necessário para pdf2image (instalado via apt-get no Linux)
+- Python 3.8+ (recomendado 3.11 ou 3.12 para melhor compatibilidade com PyMuPDF)
+
+**Nota:** Todas as dependências Python estão listadas no arquivo `requirements.txt`. Para deploy na Hostinger, consulte `docs/deploy/HOSTINGER_DEPLOY.md` para instruções completas de instalação.
 - `bcrypt>=4.1.0` - Hash de senhas
 
 ### Parsing:
@@ -2460,6 +2493,9 @@ Para dúvidas, sugestões ou suporte:
 ---
 
 **Sistema Contábil v1.0** | Desenvolvido com ❤️ usando Streamlit
+
+
+
 
 
 

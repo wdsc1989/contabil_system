@@ -6,7 +6,7 @@ import sys
 import os
 import pandas as pd
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -76,6 +76,104 @@ def _add_group_subgroup_names_to_data(data: list, group_mapping: dict, subgroup_
     return result
 
 
+def _filter_transaction_rows(df: pd.DataFrame, import_type: str) -> pd.DataFrame:
+    """
+    Filtra linhas inválidas do DataFrame, removendo:
+    - Linhas completamente em branco
+    - Linhas que contêm saldo do dia (não são transações)
+    
+    Mantém apenas linhas que parecem ser transações reais.
+    """
+    if df.empty:
+        return df
+    
+    # Palavras-chave que indicam saldo (não transação)
+    saldo_keywords = [
+        'saldo', 'saldo do dia', 'saldo inicial', 'saldo final', 
+        'saldo anterior', 'saldo atual', 'saldo anterior do dia',
+        'saldo do período', 'saldo consolidado', 'balance'
+    ]
+    
+    # Cria uma cópia para não modificar o original
+    filtered_df = df.copy()
+    
+    # Identifica linhas a remover
+    rows_to_remove = []
+    
+    for idx, row in filtered_df.iterrows():
+        should_remove = False
+        
+        # Verifica se a linha está completamente vazia
+        is_empty = True
+        for col in filtered_df.columns:
+            value = row.get(col)
+            if pd.notna(value) and value != '' and str(value).strip() != '':
+                is_empty = False
+                break
+        
+        if is_empty:
+            should_remove = True
+            rows_to_remove.append(idx)
+            continue
+        
+        # Converte todos os valores da linha para string para busca
+        row_text = ' '.join([
+            str(row.get(col, '')).lower() 
+            for col in filtered_df.columns 
+            if pd.notna(row.get(col, ''))
+        ])
+        
+        # Verifica se contém palavras-chave de saldo
+        contains_saldo_keyword = any(
+            keyword.lower() in row_text 
+            for keyword in saldo_keywords
+        )
+        
+        # Para bank_statements: verifica se tem apenas balance sem description ou value
+        if import_type == 'bank_statements':
+            has_balance = pd.notna(row.get('balance')) and str(row.get('balance', '')).strip() != ''
+            has_description = pd.notna(row.get('description')) and str(row.get('description', '')).strip() != ''
+            has_value = pd.notna(row.get('value')) and str(row.get('value', '')).strip() != ''
+            
+            # Se tem balance mas não tem description nem value, provavelmente é linha de saldo
+            if has_balance and not has_description and not has_value:
+                should_remove = True
+        
+        # Se contém palavra-chave de saldo e não parece ser uma transação válida
+        if contains_saldo_keyword:
+            # Verifica se tem campos que indicam transação (description, value, date)
+            has_transaction_fields = False
+            if import_type == 'bank_statements':
+                has_transaction_fields = (
+                    (pd.notna(row.get('description')) and str(row.get('description', '')).strip() != '') or
+                    (pd.notna(row.get('value')) and str(row.get('value', '')).strip() != '')
+                )
+            elif import_type == 'transactions':
+                has_transaction_fields = (
+                    (pd.notna(row.get('description')) and str(row.get('description', '')).strip() != '') and
+                    (pd.notna(row.get('value')) and str(row.get('value', '')).strip() != '')
+                )
+            else:
+                # Para outros tipos, verifica se tem pelo menos description ou value
+                has_transaction_fields = (
+                    (pd.notna(row.get('description')) and str(row.get('description', '')).strip() != '') or
+                    (pd.notna(row.get('value')) and str(row.get('value', '')).strip() != '')
+                )
+            
+            # Se não tem campos de transação, provavelmente é linha de saldo
+            if not has_transaction_fields:
+                should_remove = True
+        
+        if should_remove:
+            rows_to_remove.append(idx)
+    
+    # Remove linhas identificadas
+    if rows_to_remove:
+        filtered_df = filtered_df.drop(index=rows_to_remove).reset_index(drop=True)
+    
+    return filtered_df
+
+
 st.set_page_config(page_title="Importação de Dados", page_icon="📥", layout="wide")
 
 # Esconde o menu automático do Streamlit
@@ -86,33 +184,115 @@ hide_streamlit_menu()
 AuthService.init_session_state()
 AuthService.require_auth()
 
-# Verifica se há resultado de importação concluída
-if 'import_result' in st.session_state and st.session_state.import_result:
-    result = st.session_state.import_result
-    # Mostra notificação se a importação foi concluída recentemente (últimos 5 minutos)
-    from datetime import datetime, timedelta
-    try:
-        timestamp = datetime.fromisoformat(result.get('timestamp', ''))
-        if datetime.now() - timestamp < timedelta(minutes=5):
-            if result.get('status') == 'success':
-                st.success(f"✅ **Importação Concluída:** {result.get('message', '')}")
-            elif result.get('status') == 'warning':
-                st.warning(f"⚠️ **Importação:** {result.get('message', '')}")
-            
-            # Botão para limpar notificação
-            if st.button("✖️ Fechar notificação", key="clear_import_notification"):
-                del st.session_state.import_result
-                st.rerun()
-    except:
-        pass
+# Verifica se usuário é administrador
+user = AuthService.get_current_user()
+is_admin = user and user.get('role') == 'admin'
 
+# Seção de Prompts de IA (apenas para administradores)
+if is_admin:
+    from services.ai_multi_agent import AIMultiAgent
+    from config.database import SessionLocal
+    
+    with st.expander("🔧 **Prompts de IA (Apenas Administrador)**", expanded=False):
+        db = SessionLocal()
+        try:
+            multi_agent = AIMultiAgent(db)
+            prompts_info = multi_agent.get_prompts()
+            
+            # Tabs para cada agente
+            tab_names = [info['name'] for info in prompts_info.values()]
+            tabs = st.tabs(tab_names)
+            
+            for idx, (agent_key, agent_info) in enumerate(prompts_info.items()):
+                with tabs[idx]:
+                    st.caption(f"**{agent_info['description']}**")
+                    
+                    # Estado de edição para este agente
+                    edit_key = f"edit_{agent_key}"
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = False
+                    
+                    # Obtém prompt atual (customizado ou padrão)
+                    current_prompt = agent_info.get('custom')
+                    default_template = agent_info.get('default_template', '')
+                    
+                    # Sempre mostra o prompt original (padrão) em um expander
+                    with st.expander("📋 Ver Prompt Original (Padrão)", expanded=False):
+                        if default_template:
+                            st.text_area(
+                                "Prompt Original",
+                                value=default_template,
+                                height=300,
+                                disabled=True,
+                                key=f"original_prompt_{agent_key}",
+                                help="Este é o prompt padrão do sistema. Use como referência ao editar."
+                            )
+                        else:
+                            st.info("Prompt padrão não disponível para visualização.")
+                    
+                    # Status do prompt atual
+                    if not current_prompt:
+                        # Se não há customizado, mostra template padrão
+                        prompt_display = default_template if default_template else "**Prompt padrão em uso**\n\nNão há prompt customizado configurado."
+                        st.info("ℹ️ Usando prompt padrão. Clique em 'Editar' para personalizar.")
+                    else:
+                        prompt_display = current_prompt
+                        st.success("✅ Usando prompt customizado.")
+                    
+                    st.markdown("---")
+                    
+                    # Text area para exibir/editar prompt
+                    prompt_text = st.text_area(
+                        f"Prompt Atual do {agent_info['name']}",
+                        value=prompt_display if st.session_state[edit_key] else (prompt_display[:500] + "..." if len(prompt_display) > 500 and not st.session_state[edit_key] else prompt_display),
+                        height=400 if st.session_state[edit_key] else 200,
+                        disabled=not st.session_state[edit_key],
+                        key=f"prompt_text_{agent_key}",
+                        help=f"Placeholders disponíveis: {', '.join(agent_info.get('placeholders', []))}"
+                    )
+                    
+                    # Botões de ação
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if st.button("✏️ Editar", key=f"btn_edit_{agent_key}"):
+                            st.session_state[edit_key] = True
+                            st.rerun()
+                    
+                    with col2:
+                        if st.session_state[edit_key]:
+                            if st.button("💾 Salvar", key=f"btn_save_{agent_key}", type="primary"):
+                                if prompt_text and prompt_text.strip():
+                                    multi_agent.update_prompt(agent_key, prompt_text.strip())
+                                    st.session_state[edit_key] = False
+                                    st.success(f"✅ Prompt do {agent_info['name']} salvo com sucesso!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ O prompt não pode estar vazio!")
+                    
+                    with col3:
+                        if agent_info.get('custom'):
+                            if st.button("🔄 Restaurar Original", key=f"btn_reset_{agent_key}"):
+                                multi_agent.reset_prompt(agent_key)
+                                st.session_state[edit_key] = False
+                                st.success(f"✅ Prompt do {agent_info['name']} restaurado para o padrão!")
+                                st.rerun()
+                    
+                    # Informações sobre placeholders
+                    if agent_info.get('placeholders'):
+                        st.caption(f"💡 **Placeholders disponíveis:** {', '.join(agent_info['placeholders'])}")
+                        st.caption("Use {placeholder_name} no prompt para inserir valores dinâmicos.")
+        finally:
+            db.close()
+    
+    st.markdown("---")
 
 # Usa sidebar centralizada
 from utils.sidebar import show_sidebar
 show_sidebar()
 
 st.title("📥 Importação de Dados")
-st.markdown("**Processamento automático com IA Vision - Suporta CSV, Excel, PDF, OFX e Imagens**")
+st.markdown("**Processamento automático com IA Vision - Suporta CSV, Excel, PDF (incluindo protegidos por senha), OFX e Imagens**")
 st.markdown("---")
 
 # Verifica se há cliente selecionado
@@ -137,7 +317,7 @@ st.subheader("📤 Upload do Arquivo")
 uploaded_file = st.file_uploader(
     "Selecione um arquivo para importar",
     type=['csv', 'txt', 'xlsx', 'xls', 'pdf', 'ofx', 'jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'],
-    help="Formatos suportados: CSV, Excel, PDF, OFX, Imagens (JPG, PNG, etc). O sistema detecta e processa automaticamente."
+    help="Formatos suportados: CSV, Excel, PDF (incluindo protegidos por senha), OFX, Imagens (JPG, PNG, etc). O sistema detecta e processa automaticamente. Para PDFs protegidos, você poderá inserir a senha durante o processamento."
 )
 
 if uploaded_file:
@@ -320,9 +500,54 @@ if uploaded_file:
             progress_bar.progress(20)
             # file_content já foi lido acima
             
-            # Valida PDF antes de processar
+            # Inicializa senha do PDF no session_state se não existir
+            pdf_password_key = f"pdf_password_{file_hash}"
+            if pdf_password_key not in st.session_state:
+                st.session_state[pdf_password_key] = ""
+            
+            # Valida PDF antes de processar (sem senha primeiro para detectar se está protegido)
             is_valid, validation_error = ParserService.validate_pdf(file_content, uploaded_file.name)
-            if not is_valid:
+            pdf_password = st.session_state[pdf_password_key] if st.session_state[pdf_password_key] else None
+            
+            # Se PDF está protegido por senha
+            if not is_valid and validation_error == "PDF_PROTECTED":
+                st.warning("🔒 **PDF Protegido por Senha**")
+                st.info("Este PDF está protegido por senha. Por favor, insira a senha para continuar.")
+                
+                # Campo de senha
+                pdf_password_input = st.text_input(
+                    "🔑 Senha do PDF",
+                    value=st.session_state[pdf_password_key],
+                    type="password",
+                    key=f"pdf_password_input_{file_hash}",
+                    help="Digite a senha do PDF protegido"
+                )
+                
+                # Atualiza session_state quando senha é inserida
+                if pdf_password_input != st.session_state[pdf_password_key]:
+                    st.session_state[pdf_password_key] = pdf_password_input
+                    st.rerun()
+                
+                # Se senha foi fornecida, tenta validar novamente
+                if pdf_password_input:
+                    is_valid_with_password, validation_error_with_password = ParserService.validate_pdf(
+                        file_content, uploaded_file.name, password=pdf_password_input
+                    )
+                    if not is_valid_with_password:
+                        if "incorrect password" in validation_error_with_password.lower() or "senha incorreta" in validation_error_with_password.lower():
+                            st.error("❌ **Senha incorreta.** Por favor, verifique a senha e tente novamente.")
+                        else:
+                            st.error(f"❌ **Erro:** {validation_error_with_password}")
+                        st.stop()
+                    else:
+                        # Senha correta, continua com o processamento
+                        pdf_password = pdf_password_input
+                        st.success("✅ Senha correta! Processando PDF...")
+                else:
+                    st.stop()
+            
+            # Se ainda não é válido e não é problema de senha
+            elif not is_valid:
                 st.error(f"❌ **Erro ao Validar PDF**\n\n{validation_error}")
                 
                 # Detecta tipo real do arquivo para dar sugestões específicas
@@ -357,11 +582,11 @@ if uploaded_file:
                         """)
                 
                 # Oferece tentar processar com OCR mesmo assim
-                if st.button("🔄 Tentar processar com OCR (pode demorar)", use_container_width=True, key="try_ocr_pdf_invalid"):
+                if st.button("🔄 Tentar processar com OCR (pode demorar)", width='stretch', key="try_ocr_pdf_invalid"):
                     try:
                         update_status("Tentando processar PDF corrompido com OCR...")
                         progress_bar.progress(30)
-                        pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                        pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content, password=pdf_password)
                         df = pdf_data.get('dataframe')
                         st.session_state['pdf_full_data'] = pdf_data
                         st.success("✅ PDF processado com OCR! Alguns dados podem estar incompletos.")
@@ -374,7 +599,7 @@ if uploaded_file:
                 # PDF válido, processa normalmente
                 pdf_data = None
                 try:
-                    pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
+                    pdf_data = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True, password=pdf_password)
                     df = pdf_data.get('dataframe')
                     
                     # Se OCR foi usado, informa ao usuário
@@ -382,11 +607,17 @@ if uploaded_file:
                         st.info("ℹ️ PDF baseado em imagens detectado. OCR foi usado para extrair o texto.")
                 except Exception as e:
                     error_msg = str(e).lower()
-                    if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
+                    # Verifica se é erro de senha incorreta
+                    if "senha incorreta" in error_msg or "incorrect password" in error_msg or "password" in error_msg:
+                        st.error("❌ **Senha incorreta.** Por favor, verifique a senha e tente novamente.")
+                        # Limpa a senha para permitir nova tentativa
+                        st.session_state[pdf_password_key] = ""
+                        st.stop()
+                    elif "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
                         st.warning(f"⚠️ PDF pode estar corrompido: {str(e)}")
                         st.info("🔄 Tentando processar com OCR como alternativa...")
                         try:
-                            pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                            pdf_data = ParserService._parse_pdf_with_ocr_fallback(file_content, password=pdf_password)
                             df = pdf_data.get('dataframe')
                             st.session_state['pdf_full_data'] = pdf_data
                             st.success("✅ PDF processado com OCR!")
@@ -397,7 +628,7 @@ if uploaded_file:
                         st.warning(f"⚠️ Aviso ao processar PDF: {str(e)}")
                         # Fallback para método simples
                         try:
-                            df = ParserService.parse_pdf_to_dataframe(file_content)
+                            df = ParserService.parse_pdf_to_dataframe(file_content, password=pdf_password)
                         except Exception as fallback_error:
                             st.error(f"❌ Erro ao processar PDF: {str(fallback_error)}")
                             st.stop()
@@ -417,7 +648,7 @@ if uploaded_file:
                     st.error("❌ Não foi possível extrair dados do PDF. Tente converter para CSV ou Excel.")
                     st.stop()
             else:
-                    # Salva dados completos do PDF para referência
+                # Salva dados completos do PDF para referência
                 if pdf_data:
                     st.session_state['pdf_full_data'] = pdf_data
         
@@ -612,7 +843,7 @@ if uploaded_file:
             
             if not validation_result['is_complete'] and validation_result['completeness_percentage']:
                 st.error("❌ **Atenção:** A extração pode estar incompleta. Algumas linhas podem não ter sido extraídas.")
-                if st.button("🔄 Tentar Reprocessar", use_container_width=True, key="retry_extraction"):
+                if st.button("🔄 Tentar Reprocessar", width='stretch', key="retry_extraction"):
                     # Limpa estado e recarrega
                     if 'extracted_df' in st.session_state:
                         del st.session_state.extracted_df
@@ -635,10 +866,10 @@ if uploaded_file:
             # Exibe preview (traduzido para português)
             df_preview_translated = translate_dataframe(df_preview.copy(), translate_columns=True, translate_values=False)
             if show_full_preview:
-                st.dataframe(df_preview_translated, use_container_width=True, height=400)
+                st.dataframe(df_preview_translated, width='stretch', height=400)
                 st.caption(f"📊 Exibindo todas as {len(df_preview_translated)} linhas (após remover linhas vazias)")
             else:
-                st.dataframe(df_preview_translated.head(10), use_container_width=True)
+                st.dataframe(df_preview_translated.head(10), width='stretch')
                 st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview_translated)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
             
             # Salva DataFrame extraído no session state
@@ -675,12 +906,12 @@ if uploaded_file:
                     if 'type_confirmed' not in st.session_state or not st.session_state.type_confirmed:
                         col1, col2 = st.columns([3, 1])
                         with col1:
-                            if st.button("✅ Confirmar e Continuar", use_container_width=True, type="primary", key="confirm_ofx_type"):
+                            if st.button("✅ Confirmar e Continuar", width='stretch', type="primary", key="confirm_ofx_type"):
                                 st.session_state.detected_import_type = import_type
                                 st.session_state.type_confirmed = True
                                 st.rerun()
                         with col2:
-                            if st.button("✏️ Alterar Tipo Manualmente", use_container_width=True, key="change_ofx_type"):
+                            if st.button("✏️ Alterar Tipo Manualmente", width='stretch', key="change_ofx_type"):
                                 st.session_state.show_manual_selection = True
                                 st.session_state.type_confirmed = False  # Limpa confirmação anterior
                                 st.rerun()
@@ -697,13 +928,13 @@ if uploaded_file:
                     if multi_agent.is_available():
                         with st.spinner("🤖 [Agente 1] Detectando tipo de dado..."):
                             columns = list(df.columns)
-                            data_sample = ai_service._prepare_data_sample(df, max_rows=15)
+                            data_sample = ai_service._prepare_data_sample(df, max_rows=20)
                             detection_result = multi_agent.agent_detect_type(columns, data_sample)
                     else:
                         # Fallback para método antigo
                         with st.spinner("🤖 Analisando arquivo para detectar tipo de dado..."):
                             columns = list(df.columns)
-                            data_sample = ai_service._prepare_data_sample(df, max_rows=15)
+                            data_sample = ai_service._prepare_data_sample(df, max_rows=20)
                             detection_result = ai_service.detect_data_type(df, columns, data_sample)
                     
                     if detection_result.get('success'):
@@ -777,14 +1008,14 @@ if uploaded_file:
                         # Botões de ação
                         col_confirm, col_correct = st.columns(2)
                         with col_confirm:
-                            if st.button("✅ Confirmar Tipo Detectado", use_container_width=True, type="primary", key="confirm_ai_detected_type"):
+                            if st.button("✅ Confirmar Tipo Detectado", width='stretch', type="primary", key="confirm_ai_detected_type"):
                                 import_type = suggested_type
                                 st.session_state.detected_import_type = import_type
                                 st.session_state.type_confirmed = True
                                 st.rerun()
                         
                         with col_correct:
-                            if st.button("✏️ Usar Tipo Corrigido", use_container_width=True, key="use_corrected_type"):
+                            if st.button("✏️ Usar Tipo Corrigido", width='stretch', key="use_corrected_type"):
                                 import_type = corrected_type
                                 st.session_state.detected_import_type = import_type
                                 st.session_state.type_confirmed = True
@@ -836,7 +1067,7 @@ if uploaded_file:
                         format_func=lambda x: type_names_map[x],
                         key="manual_import_type"
                     )
-                    if st.button("✅ Confirmar Tipo", use_container_width=True, key="confirm_manual_type"):
+                    if st.button("✅ Confirmar Tipo", width='stretch', key="confirm_manual_type"):
                         st.session_state.detected_import_type = import_type
                         st.session_state.type_confirmed = True
                         st.session_state.show_manual_selection = False
@@ -856,19 +1087,30 @@ if uploaded_file:
                     st.stop()
                 
                 # Estrutura os dados (sem classificação de grupo/subgrupo)
-                # A IA apenas estrutura/normaliza os dados, não classifica grupos
-                # Verifica se já foi estruturado para evitar reestruturação ao editar grupos/subgrupos
                 structure_hash = f"{uploaded_file.name}_{len(df)}_{import_type}_structured"
+                previous_structure_valid = (
+                    st.session_state.get('last_structure_hash') == structure_hash and
+                    st.session_state.get('processed_data_is_structured', False)
+                )
                 
-                if 'last_structure_hash' not in st.session_state or st.session_state.last_structure_hash != structure_hash:
-                    # Primeira vez estruturando este arquivo
-                    processed_data = df.to_dict('records')
+                if not previous_structure_valid:
+                    # Filtra linhas em branco e saldos antes do mapeamento
+                    df_filtered = _filter_transaction_rows(df, import_type)
+                    rows_before = len(df)
+                    rows_after = len(df_filtered)
+                    rows_filtered = rows_before - rows_after
+                    
+                    if rows_filtered > 0:
+                        st.info(f"ℹ️ **{rows_filtered} linha(s)** foram filtradas (linhas em branco ou saldos). Processando **{rows_after} transação(ões)** válidas.")
+                    
+                    processed_data = df_filtered.to_dict('records')
                     for record in processed_data:
-                        # Garante que group_id e subgroup_id não sejam preenchidos
                         record['group_id'] = None
                         record['subgroup_id'] = None
                     
-                    # NORMALIZAÇÃO: Estrutura dados usando Multi-Agentes (mais preciso, menos alucinações)
+                    structure_successful = False
+                    structure_method = None
+                    
                     db = SessionLocal()
                     try:
                         from services.ai_service import AIService
@@ -877,20 +1119,41 @@ if uploaded_file:
                         multi_agent = AIMultiAgent(db)
                         
                         if multi_agent.is_available():
-                            # Usa arquitetura Multi-Agente (5 agentes especializados)
                             with st.spinner("🤖 [Agente 2] Analisando estrutura origem..."):
-                                structure_analysis = multi_agent.agent_analyze_structure(df, import_type)
+                                structure_analysis = multi_agent.agent_analyze_structure(df_filtered, import_type)
                             
                             if structure_analysis.get('success'):
                                 with st.spinner("🤖 [Agente 3] Mapeando colunas origem → destino..."):
                                     mapping = multi_agent.agent_map_columns(structure_analysis, import_type)
+                                    
+                                    # Se IA não retornou mapeamento, tenta mapeamento automático tradicional
+                                    if not mapping:
+                                        from utils.column_mapper import ColumnMapper
+                                        target_columns = multi_agent._get_target_columns(import_type)
+                                        fallback_mapping = ColumnMapper.suggest_mapping(
+                                            list(df.columns),
+                                            target_columns,
+                                            df=df,
+                                            db=db,
+                                            import_type=import_type
+                                        )
+                                        # Remove entradas 'ignore' do fallback
+                                        mapping = {
+                                            source: target
+                                            for source, target in fallback_mapping.items()
+                                            if target and target != 'ignore'
+                                        }
+                                        
+                                        if mapping:
+                                            st.info("ℹ️ IA não retornou mapeamento explícito. Usando mapeamento automático baseado em nomes de colunas.")
+                                        else:
+                                            st.warning("⚠️ IA não conseguiu mapear colunas e mapeamento automático também falhou. Continuando mesmo assim, mas revise a tabela.")
                                 
                                 with st.spinner("🤖 [Agente 4] Extraindo e formatando valores..."):
                                     normalized_records = multi_agent.agent_extract_and_format(
                                         processed_data, import_type, mapping
                                     )
                                 
-                                # GARANTE que todos os registros têm todas as colunas destino
                                 target_columns = multi_agent._get_target_columns(import_type)
                                 for record in normalized_records:
                                     for col in target_columns:
@@ -900,7 +1163,6 @@ if uploaded_file:
                                 with st.spinner("🤖 [Agente 5] Validando dados estruturados..."):
                                     validation = multi_agent.agent_validate(normalized_records, import_type)
                                 
-                                # Cria resultado no formato esperado
                                 normalization_result = {
                                     'normalized_data': normalized_records,
                                     'summary': {
@@ -910,8 +1172,11 @@ if uploaded_file:
                                         'mapping_applied': mapping
                                     }
                                 }
+                                
+                                processed_data = normalized_records
+                                structure_successful = True
+                                structure_method = 'multi_agent'
                             else:
-                                # Se multi-agent falhar, usa método antigo
                                 raise Exception("Multi-agent falhou, usando fallback")
                         elif ai_service.is_available():
                             # Fallback: método antigo (single agent)
@@ -1042,6 +1307,8 @@ Estrutura do arquivo origem:
                                         processed_data = normalized_records
                                     
                                     st.success(f"✅ Dados estruturados para {len(processed_data)} registros")
+                                    structure_successful = True
+                                    structure_method = 'single_agent'
                                     
                                     # Mostra resumo do mapeamento se disponível
                                     if normalization_result.get('summary', {}).get('mapping_applied'):
@@ -1071,6 +1338,8 @@ Estrutura do arquivo origem:
                         df_columns = list(df.columns) if not df.empty else []
                         
                         if df_columns and target_columns:
+                            structure_method = 'manual'
+                            structure_successful = True
                             st.markdown("**Colunas do arquivo origem:**")
                             st.write(", ".join(df_columns))
                             
@@ -1102,34 +1371,45 @@ Estrutura do arquivo origem:
                                 record.update(new_record)
                         else:
                             st.error("❌ Não foi possível identificar colunas origem ou destino.")
+                            structure_successful = False
                             st.stop()
                     except Exception as e:
-                        st.warning(f"⚠️ Erro ao estruturar dados: {str(e)}")
-                        # Continua com dados originais
-                        pass
+                            st.warning(f"⚠️ Erro ao estruturar dados: {str(e)}")
+                            pass
                     finally:
                         db.close()
                     
-                    # Garante que todos os registros têm group_id e subgroup_id como None
                     for record in processed_data:
                         record['group_id'] = None
                         record['subgroup_id'] = None
                     
-                    # Salva no session state e marca como estruturado
                     st.session_state.processed_data = processed_data
-                    st.session_state.last_structure_hash = structure_hash
-                else:
-                    # Já foi estruturado, usa dados do session state
-                    if 'processed_data' in st.session_state:
-                        processed_data = st.session_state.processed_data
+                    st.session_state.processed_data_is_structured = structure_successful
+                    st.session_state.structure_method = structure_method
+                    if structure_successful:
+                        st.session_state.last_structure_hash = structure_hash
                     else:
-                        # Fallback: estrutura novamente se não houver no session state
-                        processed_data = df.to_dict('records')
+                        st.session_state.pop('last_structure_hash', None)
+                else:
+                    if 'processed_data' in st.session_state:
+                        processed_data = [dict(record) for record in st.session_state.processed_data]
+                    else:
+                        # Filtra linhas em branco e saldos antes do mapeamento
+                        df_filtered = _filter_transaction_rows(df, import_type)
+                        rows_before = len(df)
+                        rows_after = len(df_filtered)
+                        rows_filtered = rows_before - rows_after
+                        
+                        if rows_filtered > 0:
+                            st.info(f"ℹ️ **{rows_filtered} linha(s)** foram filtradas (linhas em branco ou saldos). Processando **{rows_after} transação(ões)** válidas.")
+                        
+                        processed_data = df_filtered.to_dict('records')
                         for record in processed_data:
                             record['group_id'] = None
                             record['subgroup_id'] = None
                         st.session_state.processed_data = processed_data
                         st.session_state.last_structure_hash = structure_hash
+                        st.session_state.processed_data_is_structured = False
                 
                 # Cria summary para compatibilidade
                 summary = {
@@ -1146,6 +1426,12 @@ Estrutura do arquivo origem:
                 if not processed_data:
                     st.warning("⚠️ Nenhum dado foi processado. Verifique o arquivo.")
                     st.stop()
+                
+                # Define imported_at para extratos bancários (timestamp atual)
+                if import_type == 'bank_statements':
+                    current_timestamp = datetime.now(timezone.utc).isoformat()
+                    for record in processed_data:
+                        record['imported_at'] = current_timestamp
                 
                 # Validação: verifica se todas as linhas foram processadas
                 original_rows = len(df)
@@ -1194,14 +1480,14 @@ Estrutura do arquivo origem:
                         edited_bank_name = st.text_input(
                             "Editar nome do banco:",
                             value=st.session_state.bank_name_override if st.session_state.bank_name_override else extracted_bank_name if extracted_bank_name else "Banco",
-                            key="bank_name_input"
+                            key="bank_name_input_config"
                         )
                         
                         # Atualiza o session state
                         st.session_state.bank_name_override = edited_bank_name
                         
                         # Botão para aplicar o nome do banco a todos os registros
-                        if st.button("🔄 Aplicar a Todos os Registros", use_container_width=True, key="apply_bank_name"):
+                        if st.button("🔄 Aplicar a Todos os Registros", width='stretch', key="apply_bank_name"):
                             if 'processed_data' in st.session_state:
                                 for record in st.session_state.processed_data:
                                     record['bank_name'] = edited_bank_name
@@ -1232,7 +1518,8 @@ Estrutura do arquivo origem:
                     if bank_name_to_apply:
                         # Aplica o nome do banco a todos os registros que não têm bank_name definido
                         for record in working_data:
-                            if 'bank_name' not in record or not record.get('bank_name') or (isinstance(record.get('bank_name'), float) and pd.isna(record.get('bank_name'))):
+                            current_value = record.get('bank_name')
+                            if not current_value or (isinstance(current_value, float) and pd.isna(current_value)):
                                 record['bank_name'] = bank_name_to_apply
                 
                 # Inicializa seleção de linhas
@@ -1274,15 +1561,31 @@ Estrutura do arquivo origem:
                 import_btn = st.button(
                     "📥 Importar Dados Selecionados",
                     key="import_selected_data",
-                    use_container_width=True,
+                    width='stretch',
                     disabled=len(st.session_state.selected_rows) == 0,
                     type="primary"
                 )
                 
                 if import_btn and len(st.session_state.selected_rows) > 0:
+                    # Garante que selected_rows está atualizado e válido
+                    selected_rows = st.session_state.get('selected_rows', set())
+                    if not selected_rows or len(selected_rows) == 0:
+                        st.error("❌ **Nenhuma linha selecionada.** Por favor, selecione pelo menos uma linha para importar.")
+                        st.stop()
+                    
+                    # Filtra apenas linhas selecionadas - validação rigorosa
+                    selected_indices = sorted([int(i) for i in selected_rows if isinstance(i, (int, str)) and str(i).isdigit()])
+                    
+                    # Valida que os índices estão dentro do range válido
+                    max_index = len(st.session_state.processed_data) - 1
+                    selected_indices = [i for i in selected_indices if 0 <= i <= max_index]
+                    
+                    if not selected_indices:
+                        st.error("❌ **Nenhuma linha válida selecionada.** Por favor, selecione linhas válidas para importar.")
+                        st.stop()
+                    
                     # Filtra apenas linhas selecionadas
-                    selected_indices = sorted(list(st.session_state.selected_rows))
-                    data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
+                    data_to_import = [st.session_state.processed_data[i] for i in selected_indices]
                     import_df = pd.DataFrame(data_to_import)
                     
                     # Container para mostrar progresso de importação
@@ -1356,7 +1659,6 @@ Estrutura do arquivo origem:
                     import_progress_container.empty()
                     
                     # Armazena resultado da importação no session_state para notificações
-                    from datetime import datetime
                     if import_type == 'bank_statements' and imported_count > 0:
                         transactions_created = import_result.get('transactions', 0)
                         st.session_state.import_result = {
@@ -1365,7 +1667,7 @@ Estrutura do arquivo origem:
                             'count': imported_count,
                             'transactions_created': transactions_created,
                             'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s) automaticamente!",
-                            'timestamp': datetime.now().isoformat()
+                            'timestamp': datetime.now(timezone.utc).isoformat()
                         }
                         # Mensagem já foi exibida acima
                     elif import_type != 'bank_statements' and imported_count > 0:
@@ -1374,7 +1676,7 @@ Estrutura do arquivo origem:
                             'import_type': import_type,
                             'count': imported_count,
                             'message': f"{imported_count} registro(s) importado(s) com sucesso!",
-                            'timestamp': datetime.now().isoformat()
+                            'timestamp': datetime.now(timezone.utc).isoformat()
                         }
                         st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
                         st.balloons()
@@ -1384,7 +1686,7 @@ Estrutura do arquivo origem:
                             'import_type': import_type,
                             'count': 0,
                             'message': "⚠️ Nenhum registro foi importado. Verifique os dados.",
-                            'timestamp': datetime.now().isoformat()
+                            'timestamp': datetime.now(timezone.utc).isoformat()
                         }
                         st.warning("⚠️ Nenhum registro foi importado. Verifique os dados.")
                     
@@ -1469,12 +1771,12 @@ Estrutura do arquivo origem:
     col1, col2, col3 = st.columns([2, 2, 3])
     
     with col1:
-        if st.button("✅ Selecionar Todas", use_container_width=True, key="select_all_review"):
+        if st.button("✅ Selecionar Todas", width='stretch', key="select_all_review"):
             st.session_state.selected_rows = set(range(len(processed_data)))
             st.rerun()
     
     with col2:
-        if st.button("❌ Desselecionar Todas", use_container_width=True, key="deselect_all_review"):
+        if st.button("❌ Desselecionar Todas", width='stretch', key="deselect_all_review"):
             st.session_state.selected_rows = set()
             st.rerun()
         
@@ -1508,7 +1810,8 @@ Estrutura do arquivo origem:
     edit_data = []
     for idx, row in enumerate(processed_data):
         row_copy = row.copy()
-        row_copy['_select'] = idx in st.session_state.selected_rows
+        # Garante que _select seja sempre boolean (True/False), nunca string ou NaN
+        row_copy['_select'] = bool(idx in st.session_state.selected_rows)
         row_copy['_row_num'] = idx + 1
         edit_data.append(row_copy)
     
@@ -1620,7 +1923,7 @@ Estrutura do arquivo origem:
         edit_df,
         column_config=column_config,
         hide_index=True,
-        use_container_width=True,
+        width='stretch',
         num_rows="fixed",
         height=min(600, max(400, len(edit_df) * 40)),
         key="data_editor_import"
@@ -1693,7 +1996,19 @@ Estrutura do arquivo origem:
     
     for idx, row in edited_df.iterrows():
         row_num = int(row.get('_row_num', idx + 1)) - 1
-        if row.get('_select', False):
+        
+        # Conversão robusta de _select para boolean
+        select_value = row.get('_select', False)
+        if isinstance(select_value, str):
+            # Trata strings "True", "False", "true", "false", etc.
+            select_value = select_value.lower().strip() in ('true', '1', 'yes', 'sim')
+        elif pd.isna(select_value) or select_value is None:
+            select_value = False
+        else:
+            # Converte para boolean (trata int, float, etc.)
+            select_value = bool(select_value)
+        
+        if select_value:
             new_selection.add(row_num)
         
         # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
@@ -1765,17 +2080,9 @@ Estrutura do arquivo origem:
         
         updated_data.append(row_dict)
     
+    # Atualiza estado sem forçar rerun (st.data_editor já atualiza automaticamente)
     st.session_state.selected_rows = new_selection
     st.session_state.processed_data = updated_data
-    
-    # Recalcula valor total dos selecionados após edição e mostra atualização
-    if new_selection != st.session_state.get('last_selection', set()):
-        selected_data_updated = [updated_data[i] for i in new_selection if 0 <= i < len(updated_data)]
-        total_value_selected_updated = sum(float(r.get('value', 0)) for r in selected_data_updated if r.get('value') and pd.notna(r.get('value')))
-        if total_value_selected_updated != 0:
-            from utils.formatters import format_currency
-            st.info(f"💰 **Valor total atualizado:** {format_currency(total_value_selected_updated)} ({len(new_selection)} registro(s) selecionado(s))")
-        st.session_state.last_selection = new_selection
     
     st.markdown("---")
     st.subheader("📥 Importação")
@@ -1788,16 +2095,10 @@ Estrutura do arquivo origem:
     import_type = summary.get('import_type', 'transactions')
     bank_name = "Banco"
     if import_type == 'bank_statements':
-        bank_name = summary.get('bank_name', 'Banco')
-        if 'bank_name_override' not in st.session_state:
-            st.session_state.bank_name_override = bank_name
-        
-        bank_name = st.text_input(
-            "Nome do banco:",
-            value=st.session_state.get('bank_name_override', bank_name),
-            key="bank_name_input"
-        )
-        st.session_state.bank_name_override = bank_name
+        # Usa o nome do banco já configurado na seção de configurações acima
+        bank_name = st.session_state.get('bank_name_override', summary.get('bank_name', 'Banco'))
+        if bank_name:
+            st.info(f"🏦 **Nome do banco:** {bank_name}")
     
     # Botão de importar (mais destacado)
     col1, col2 = st.columns([1, 2])
@@ -1805,7 +2106,7 @@ Estrutura do arquivo origem:
         import_btn = st.button(
             "📥 **Importar Dados**",
             key="import_data_final",
-            use_container_width=True,
+            width='stretch',
             disabled=len(st.session_state.selected_rows) == 0,
             type="primary"
         )
@@ -1814,15 +2115,34 @@ Estrutura do arquivo origem:
             st.warning("⚠️ Selecione pelo menos um registro para importar")
     
     if import_btn and len(st.session_state.selected_rows) > 0:
+        # Garante que selected_rows está atualizado e válido
+        selected_rows = st.session_state.get('selected_rows', set())
+        if not selected_rows or len(selected_rows) == 0:
+            st.error("❌ **Nenhuma linha selecionada.** Por favor, selecione pelo menos uma linha para importar.")
+            st.stop()
+        
+        # Filtra apenas linhas selecionadas - validação rigorosa
+        selected_indices = sorted([int(i) for i in selected_rows if isinstance(i, (int, str)) and str(i).isdigit()])
+        
+        # Valida que os índices estão dentro do range válido
+        max_index = len(st.session_state.processed_data) - 1
+        selected_indices = [i for i in selected_indices if 0 <= i <= max_index]
+        
+        if not selected_indices:
+            st.error("❌ **Nenhuma linha válida selecionada.** Por favor, selecione linhas válidas para importar.")
+            st.stop()
+        
         # Filtra apenas linhas selecionadas
-        selected_indices = sorted(list(st.session_state.selected_rows))
-        data_to_import = [st.session_state.processed_data[i] for i in selected_indices if 0 <= i < len(st.session_state.processed_data)]
+        data_to_import = [st.session_state.processed_data[i] for i in selected_indices]
         import_df = pd.DataFrame(data_to_import)
         
         # Valida se há dados para importar
         if import_df.empty:
             st.error("❌ **Nenhum dado válido para importar.** Verifique se os registros selecionados contêm dados válidos.")
             st.stop()
+        
+        # Debug: mostra quantas linhas foram selecionadas
+        st.info(f"ℹ️ **Importando {len(selected_indices)} de {len(st.session_state.processed_data)} registro(s) selecionado(s).**")
         
         # Prepara dados para importação - garante formato correto
         # Converte datas para string no formato esperado
@@ -1982,86 +2302,108 @@ Estrutura do arquivo origem:
             
             import_progress_container.empty()
             
-            # Armazena resultado
-            from datetime import datetime
-            import_type = summary.get('import_type', 'transactions')
-            if import_type == 'bank_statements' and imported_count > 0:
-                transactions_created = import_result.get('transactions', 0)
-                st.session_state.import_result = {
-                    'status': 'success',
-                    'import_type': import_type,
-                    'count': imported_count,
-                    'transactions_created': transactions_created,
-                    'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!",
-                    'timestamp': datetime.now().isoformat()
-                }
-                st.success(f"✅ {imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!")
-            elif imported_count > 0:
-                st.session_state.import_result = {
-                    'status': 'success',
-                    'import_type': import_type,
-                    'count': imported_count,
-                    'message': f"{imported_count} registro(s) importado(s) com sucesso!",
-                    'timestamp': datetime.now().isoformat()
-                }
-                st.success(f"✅ {imported_count} registro(s) importado(s) com sucesso!")
-                st.balloons()
-            else:
-                st.error("❌ **Nenhum registro foi importado.**")
-                
-                # Mostra informações de debug
-                with st.expander("🔍 Detalhes do problema", expanded=True):
-                    st.write(f"**Registros selecionados:** {len(st.session_state.selected_rows)}")
-                    import_type = summary.get('import_type', 'transactions')
-                    st.write(f"**Tipo de importação:** {import_type}")
-                    
-                    # Verifica problemas comuns
-                    issues = []
-                    if 'date' in import_df.columns:
-                        date_valid = import_df['date'].notna().sum()
-                        if date_valid == 0:
-                            issues.append("❌ Nenhuma data válida encontrada")
-                        elif date_valid < len(import_df):
-                            issues.append(f"⚠️ Apenas {date_valid} de {len(import_df)} registros têm data válida")
-                    
-                    if 'value' in import_df.columns:
-                        value_valid = import_df['value'].notna().sum()
-                        if value_valid == 0:
-                            issues.append("❌ Nenhum valor válido encontrado")
-                        elif value_valid < len(import_df):
-                            issues.append(f"⚠️ Apenas {value_valid} de {len(import_df)} registros têm valor válido")
-                    
-                    if issues:
-                        st.write("**Problemas identificados:**")
-                        for issue in issues:
-                            st.write(f"- {issue}")
-                    else:
-                        st.write("**Possíveis causas:**")
-                        st.write("- Os dados não foram parseados corretamente pelo ImportService")
-                        st.write("- Erro na validação de grupos/subgrupos")
-                        st.write("- Dados duplicados que foram ignorados")
-                        st.write("- Erro silencioso durante o processamento")
-                
-                st.info("""
-                **Soluções:**
-                - Verifique os dados na tabela e corrija campos obrigatórios (data e valor)
-                - Certifique-se de que as datas estão no formato correto (DD/MM/YYYY ou YYYY-MM-DD)
-                - Verifique se os valores são números válidos
-                - Verifique se os grupos/subgrupos estão corretos
-                - Tente importar novamente após fazer as correções
-                """)
+            # Container para mensagens de importação (logo abaixo do botão)
+            import_message_container = st.container()
             
-            # Limpa estado após importação
-            if imported_count > 0:
-                if 'processed_data' in st.session_state:
-                    del st.session_state.processed_data
-                if 'selected_rows' in st.session_state:
-                    del st.session_state.selected_rows
-                if 'processed_file_hash' in st.session_state:
-                    del st.session_state.processed_file_hash
-                if 'bank_name_override' in st.session_state:
-                    del st.session_state.bank_name_override
-                st.rerun()
+            with import_message_container:
+                # Armazena resultado
+                import_type = summary.get('import_type', 'transactions')
+                if import_type == 'bank_statements' and imported_count > 0:
+                    transactions_created = import_result.get('transactions', 0)
+                    st.session_state.import_result = {
+                        'status': 'success',
+                        'import_type': import_type,
+                        'count': imported_count,
+                        'transactions_created': transactions_created,
+                        'message': f"{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!",
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    st.success(f"✅ **{imported_count} extrato(s) importado(s) e {transactions_created} transação(ões) criada(s)!**")
+                    st.balloons()
+                    
+                    # Botão para finalizar importação
+                    if st.button("✅ Finalizar Importação", key="finish_import_3", type="primary", width='stretch'):
+                        # Limpa estado após importação bem-sucedida
+                        if 'processed_data' in st.session_state:
+                            del st.session_state.processed_data
+                        if 'selected_rows' in st.session_state:
+                            del st.session_state.selected_rows
+                        if 'processed_file_hash' in st.session_state:
+                            del st.session_state.processed_file_hash
+                        if 'bank_name_override' in st.session_state:
+                            del st.session_state.bank_name_override
+                        if 'import_result' in st.session_state:
+                            del st.session_state.import_result
+                        st.rerun()
+                elif imported_count > 0:
+                    st.session_state.import_result = {
+                        'status': 'success',
+                        'import_type': import_type,
+                        'count': imported_count,
+                        'message': f"{imported_count} registro(s) importado(s) com sucesso!",
+                        'timestamp': datetime.now(timezone.utc).isoformat()
+                    }
+                    st.success(f"✅ **{imported_count} registro(s) importado(s) com sucesso!**")
+                    st.balloons()
+                    
+                    # Botão para finalizar importação
+                    if st.button("✅ Finalizar Importação", key="finish_import_4", type="primary", width='stretch'):
+                        # Limpa estado após importação bem-sucedida
+                        if 'processed_data' in st.session_state:
+                            del st.session_state.processed_data
+                        if 'selected_rows' in st.session_state:
+                            del st.session_state.selected_rows
+                        if 'processed_file_hash' in st.session_state:
+                            del st.session_state.processed_file_hash
+                        if 'bank_name_override' in st.session_state:
+                            del st.session_state.bank_name_override
+                        if 'import_result' in st.session_state:
+                            del st.session_state.import_result
+                        st.rerun()
+                else:
+                    st.error("❌ **Nenhum registro foi importado.**")
+                    
+                    # Mostra informações de debug
+                    with st.expander("🔍 Detalhes do problema", expanded=True):
+                        st.write(f"**Registros selecionados:** {len(st.session_state.selected_rows)}")
+                        import_type = summary.get('import_type', 'transactions')
+                        st.write(f"**Tipo de importação:** {import_type}")
+                        
+                        # Verifica problemas comuns
+                        issues = []
+                        if 'date' in import_df.columns:
+                            date_valid = import_df['date'].notna().sum()
+                            if date_valid == 0:
+                                issues.append("❌ Nenhuma data válida encontrada")
+                            elif date_valid < len(import_df):
+                                issues.append(f"⚠️ Apenas {date_valid} de {len(import_df)} registros têm data válida")
+                        
+                        if 'value' in import_df.columns:
+                            value_valid = import_df['value'].notna().sum()
+                            if value_valid == 0:
+                                issues.append("❌ Nenhum valor válido encontrado")
+                            elif value_valid < len(import_df):
+                                issues.append(f"⚠️ Apenas {value_valid} de {len(import_df)} registros têm valor válido")
+                        
+                        if issues:
+                            st.write("**Problemas identificados:**")
+                            for issue in issues:
+                                st.write(f"- {issue}")
+                        else:
+                            st.write("**Possíveis causas:**")
+                            st.write("- Os dados não foram parseados corretamente pelo ImportService")
+                            st.write("- Erro na validação de grupos/subgrupos")
+                            st.write("- Dados duplicados que foram ignorados")
+                            st.write("- Erro silencioso durante o processamento")
+                    
+                    st.info("""
+                    **Soluções:**
+                    - Verifique os dados na tabela e corrija campos obrigatórios (data e valor)
+                    - Certifique-se de que as datas estão no formato correto (DD/MM/YYYY ou YYYY-MM-DD)
+                    - Verifique se os valores são números válidos
+                    - Verifique se os grupos/subgrupos estão corretos
+                    - Tente importar novamente após fazer as correções
+                    """)
     
         except Exception as e:
             st.error(f"❌ Erro ao importar: {str(e)}")
@@ -2070,29 +2412,42 @@ Estrutura do arquivo origem:
             db.close()
 
 else:
-    st.info("💡 **Como funciona:** Faça upload do arquivo e o sistema processará automaticamente com IA Vision, detectando o tipo de dado e classificando por grupos/subgrupos.")
+    st.info("💡 **Como funciona:** Faça upload do arquivo e o sistema processará automaticamente com IA Vision, detectando o tipo de dado e classificando por grupos/subgrupos. Para PDFs protegidos por senha, você poderá inserir a senha durante o processo. Após a importação bem-sucedida, use o botão 'Finalizar Importação' para limpar o estado e iniciar uma nova importação.")
 
     st.markdown("---")
     with st.expander("ℹ️ Sobre o Processamento Automático"):
         st.markdown("""
         **Formatos Suportados:**
         - 📄 CSV, Excel, TXT
-        - 📑 PDF (incluindo PDFs escaneados/imagens)
+        - 📑 PDF (incluindo PDFs escaneados/imagens e protegidos por senha)
         - 🖼️ Imagens (JPG, PNG, TIFF, etc)
         - 💳 OFX (extratos bancários)
         
         **O que a IA faz automaticamente:**
         - ✅ Detecta o tipo de dado (transações, extratos, contratos, etc)
         - ✅ Extrai todos os dados estruturados
+        - ✅ Filtra automaticamente linhas em branco e linhas de "saldo do dia"
         - ✅ Classifica por grupos e subgrupos
         - ✅ Normaliza datas e valores
         - ✅ Identifica tipo de transação (entrada/saída)
         
+        **Recursos especiais:**
+        - 🔒 **PDFs protegidos por senha:** O sistema detecta automaticamente e solicita a senha
+        - ⚙️ **Edição de prompts de IA:** Administradores podem personalizar os prompts dos agentes de IA
+        - ✅ **Finalizar Importação:** Após importação bem-sucedida, use o botão para limpar o estado
+        
         **Você só precisa:**
-        1. Fazer upload do arquivo
+        1. Fazer upload do arquivo (inserir senha se o PDF estiver protegido)
         2. Revisar e editar se necessário
-        3. Importar!
+        3. Selecionar os registros desejados
+        4. Importar e finalizar!
         """)
+
+
+
+
+
+
 
 
 

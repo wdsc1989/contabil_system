@@ -21,3 +21,6 @@ echo "Agora você pode executar:"
 echo "  ./deploy/deploy.sh"
 echo ""
 
+
+
+

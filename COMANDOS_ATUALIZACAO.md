@@ -346,3 +346,6 @@ systemctl status contabil.service
 
 **Nota:** O script `deploy/deploy.sh` executa a maioria desses comandos automaticamente. Use-o sempre que possível!
 
+
+
+

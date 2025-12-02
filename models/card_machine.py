@@ -45,3 +45,9 @@ class CardMachineStatement(Base):
 
 
 
+
+
+
+
+
+

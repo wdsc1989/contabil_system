@@ -57,18 +57,26 @@ class VisionProcessor:
         except Exception as e:
             return None, f"Erro ao inicializar cliente OpenAI: {str(e)}"
     
-    def _pdf_to_images(self, pdf_bytes: bytes) -> List[bytes]:
+    def _pdf_to_images(self, pdf_bytes: bytes, password: Optional[str] = None) -> List[bytes]:
         """
         Converte PDF para lista de imagens (uma por página)
         Tenta PyMuPDF primeiro, depois pdf2image como fallback
+        
+        Args:
+            pdf_bytes: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         # Tenta PyMuPDF primeiro (funciona melhor no Linux, não precisa de poppler)
         try:
             import fitz  # PyMuPDF
-            pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+            pdf_kwargs = {}
+            if password:
+                pdf_kwargs['password'] = password
             
-            # Verifica se o PDF está protegido por senha
-            if pdf_document.is_encrypted:
+            pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf", **pdf_kwargs)
+            
+            # Verifica se o PDF está protegido por senha e não foi fornecida senha
+            if pdf_document.is_encrypted and not password:
                 pdf_document.close()
                 raise Exception(
                     "PDF protegido por senha. O sistema não pode processar PDFs com senha.\n\n"
@@ -201,12 +209,17 @@ class VisionProcessor:
                 )
             raise Exception(f"Erro ao converter PDF para imagens: {str(e)}")
     
-    def _prepare_file_for_vision(self, file_content: bytes, filename: str) -> Tuple[Optional[str], List[Dict], str]:
+    def _prepare_file_for_vision(self, file_content: bytes, filename: str, password: Optional[str] = None) -> Tuple[Optional[str], List[Dict], str]:
         """
         Prepara arquivo para processamento via Vision API
         Retorna (texto_do_arquivo, lista_de_imagens_base64, tipo_de_arquivo)
         - Se o arquivo for texto (CSV/Excel), retorna o texto e None para imagens
         - Se o arquivo for imagem/PDF, retorna None para texto e lista de imagens
+        
+        Args:
+            file_content: Conteúdo do arquivo em bytes
+            filename: Nome do arquivo
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         filename_lower = filename.lower()
         
@@ -244,7 +257,7 @@ class VisionProcessor:
         elif filename_lower.endswith('.pdf'):
             # A Vision API só aceita imagens, então sempre convertemos PDF para imagens
             try:
-                images = self._pdf_to_images(file_content)
+                images = self._pdf_to_images(file_content, password=password)
                 image_list = []
                 for img_bytes in images:
                     img_base64 = base64.b64encode(img_bytes).decode('utf-8')
@@ -410,7 +423,8 @@ REGRAS CRÍTICAS:
         file_content: bytes,
         filename: str,
         import_type: Optional[str] = None,
-        groups_subgroups: Optional[List[Dict]] = None
+        groups_subgroups: Optional[List[Dict]] = None,
+        password: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Processa arquivo usando Vision API
@@ -420,6 +434,7 @@ REGRAS CRÍTICAS:
             filename: Nome do arquivo
             import_type: Tipo de importação esperado (opcional, será detectado automaticamente)
             groups_subgroups: Lista de grupos e subgrupos para classificação
+            password: Senha do PDF (opcional, para PDFs protegidos)
             
         Returns:
             {
@@ -444,7 +459,7 @@ REGRAS CRÍTICAS:
         
         try:
             # Prepara arquivo para Vision API
-            file_text, images, file_type = self._prepare_file_for_vision(file_content, filename)
+            file_text, images, file_type = self._prepare_file_for_vision(file_content, filename, password=password)
             
             # Constrói prompt
             prompt = self._build_prompt(file_type, groups_subgroups, import_type)

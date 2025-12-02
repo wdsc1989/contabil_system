@@ -87,3 +87,6 @@ echo "   Reiniciar serviço: systemctl restart contabil.service"
 echo "   Recarregar Nginx: systemctl reload nginx"
 echo ""
 
+
+
+

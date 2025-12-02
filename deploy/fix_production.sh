@@ -73,3 +73,6 @@ echo -e "${GREEN}✅ Tudo pronto! Agora você pode executar:${NC}"
 echo "   ./deploy/deploy.sh"
 echo ""
 
+
+
+

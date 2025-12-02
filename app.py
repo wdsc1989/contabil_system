@@ -518,7 +518,7 @@ def main_page():
         **Formatos suportados:**
         - **CSV/TXT**: Extratos bancários, transações, contas
         - **Excel (XLSX/XLS)**: Planilhas complexas, múltiplas abas
-        - **PDF**: Extração automática de texto e tabelas
+        - **PDF**: Extração automática de texto e tabelas (incluindo PDFs protegidos por senha)
         - **OFX**: Extratos bancários no formato OFX
         - **Imagens**: JPG, PNG, TIFF, BMP, WEBP (com OCR automático)
         
@@ -537,17 +537,22 @@ def main_page():
         O sistema processa o arquivo:
         
         1. **Extração de dados**:
-           - PDFs: Extrai texto completo e tabelas
+           - PDFs: Extrai texto completo e tabelas (se protegido por senha, solicita senha automaticamente)
            - Imagens: Usa OCR para extrair texto
            - Excel/CSV: Lê todas as planilhas/linhas
         
-        2. **Classificação automática**:
+        2. **Filtragem automática**:
+           - Remove automaticamente linhas em branco
+           - Remove linhas de "saldo do dia" ou outras linhas não transacionais
+           - Foca apenas em transações válidas
+        
+        3. **Classificação automática**:
            - Detecta o tipo de dado (extrato, transação, contrato, etc.)
            - Mapeia colunas automaticamente
            - Classifica por grupo/subgrupo usando IA
            - Calcula confiança da classificação
         
-        3. **Validação completa**:
+        4. **Validação completa**:
            - Compara número de linhas processadas vs. original
            - Alerta se houver diferença
            - Permite usar IA como "avaliador completo" para garantir processamento total
@@ -579,10 +584,19 @@ def main_page():
         **Passo 5: Importação Final**
         
         1. Revise os dados uma última vez
-        2. Clique em **"Importar Dados Selecionados"**
-        3. Aguarde a confirmação
-        4. Os dados serão salvos no banco de dados
-        5. Aparecerão automaticamente nos relatórios (se habilitados na configuração)
+        2. **Configure o nome do banco** (se for extrato bancário) - aparece apenas uma vez na seção de configurações
+        3. Clique em **"Importar Dados Selecionados"** ou **"Importar Dados"**
+        4. Aguarde a confirmação - mensagens aparecem logo abaixo do botão
+        5. Os dados serão salvos no banco de dados
+        6. Após importação bem-sucedida, clique em **"Finalizar Importação"** para limpar o estado e iniciar nova importação
+        7. Os dados aparecerão automaticamente nos relatórios (se habilitados na configuração)
+        
+        **Recursos Especiais para Administradores:**
+        
+        - **Edição de Prompts de IA**: Administradores podem acessar a seção "⚙️ Prompts de IA" na página de importação para personalizar os prompts dos 5 agentes de IA
+          - Visualize o prompt original mesmo ao editar
+          - Edite, salve ou restaure prompts padrão
+          - Útil para ajustar o comportamento da IA conforme necessário
         
         ### 3.2 Cadastro Manual
         
@@ -998,6 +1012,9 @@ if __name__ == "__main__":
     # Inicializa banco de dados e cria admin se necessário
     initialize_database()
     main()
+
+
+
 
 
 

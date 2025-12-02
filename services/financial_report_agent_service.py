@@ -607,3 +607,5 @@ Retorne o relatório formatado em markdown, pronto para exibição."""
 
 
 
+
+

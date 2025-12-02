@@ -181,15 +181,24 @@ class ParserService:
             raise Exception(f"Erro ao ler planilhas do Excel: {str(e)}")
 
     @staticmethod
-    def parse_pdf(file_content: bytes) -> Dict[str, Any]:
+    def parse_pdf(file_content: bytes, password: Optional[str] = None) -> Dict[str, Any]:
         """
         Extrai texto de arquivo PDF
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         try:
             text_content = []
             tables = []
             
-            with pdfplumber.open(BytesIO(file_content)) as pdf:
+            # Abre PDF com senha se fornecida
+            pdf_kwargs = {}
+            if password:
+                pdf_kwargs['password'] = password
+            
+            with pdfplumber.open(BytesIO(file_content), **pdf_kwargs) as pdf:
                 for page in pdf.pages:
                     # Extrai texto
                     text = page.extract_text()
@@ -208,15 +217,27 @@ class ParserService:
             }
         
         except Exception as e:
+            error_msg = str(e).lower()
+            # Detecta erro de senha incorreta
+            if "password" in error_msg or "encrypted" in error_msg or "senha" in error_msg or "incorrect password" in error_msg:
+                raise Exception("Senha incorreta ou PDF protegido por senha. Verifique a senha fornecida.")
             raise Exception(f"Erro ao fazer parse do PDF: {str(e)}")
     
     @staticmethod
-    def _is_pdf_image_based(file_content: bytes) -> bool:
+    def _is_pdf_image_based(file_content: bytes, password: Optional[str] = None) -> bool:
         """
         Detecta se um PDF é baseado em imagens (sem texto extraível)
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         try:
-            with pdfplumber.open(BytesIO(file_content)) as pdf:
+            pdf_kwargs = {}
+            if password:
+                pdf_kwargs['password'] = password
+            
+            with pdfplumber.open(BytesIO(file_content), **pdf_kwargs) as pdf:
                 # Verifica as primeiras 3 páginas
                 pages_to_check = min(3, len(pdf.pages))
                 total_text_length = 0
@@ -315,12 +336,61 @@ class ParserService:
                 return 'UNKNOWN'
     
     @staticmethod
-    def validate_pdf(file_content: bytes, filename: str = "") -> Tuple[bool, Optional[str]]:
+    def _is_pdf_encrypted(file_content: bytes) -> bool:
+        """
+        Verifica se um PDF está criptografado/protegido por senha sem tentar abrir
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+        
+        Returns:
+            True se o PDF está criptografado, False caso contrário
+        """
+        try:
+            # Tenta usar PyMuPDF primeiro (mais confiável)
+            try:
+                import fitz  # PyMuPDF
+                pdf_document = fitz.open(stream=file_content, filetype="pdf")
+                is_encrypted = pdf_document.is_encrypted
+                pdf_document.close()
+                return is_encrypted
+            except ImportError:
+                # PyMuPDF não disponível, tenta PyPDF2
+                pass
+            except Exception:
+                # Se houver erro ao abrir, pode ser que esteja criptografado
+                # Mas não podemos ter certeza, então retorna False
+                return False
+            
+            # Fallback: tenta PyPDF2
+            try:
+                from PyPDF2 import PdfReader
+                reader = PdfReader(BytesIO(file_content))
+                return reader.is_encrypted
+            except ImportError:
+                # PyPDF2 não disponível, não podemos detectar
+                return False
+            except Exception:
+                # Se houver erro, pode ser criptografado
+                return False
+        except Exception:
+            # Em caso de qualquer erro, assume que não está criptografado
+            # O validate_pdf tentará abrir e capturará o erro
+            return False
+    
+    @staticmethod
+    def validate_pdf(file_content: bytes, filename: str = "", password: Optional[str] = None) -> Tuple[bool, Optional[str]]:
         """
         Valida se o arquivo é um PDF válido antes de tentar processá-lo
         
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            filename: Nome do arquivo (opcional)
+            password: Senha do PDF (opcional, para PDFs protegidos)
+        
         Returns:
             (is_valid, error_message)
+            Se o PDF estiver protegido por senha e nenhuma senha for fornecida, retorna (False, "PDF_PROTECTED")
         """
         try:
             # Verifica se o arquivo está vazio
@@ -358,9 +428,20 @@ class ParserService:
             if len(content) < 8:
                 return False, "Arquivo PDF muito pequeno ou corrompido."
             
+            # Verifica se o PDF está criptografado ANTES de tentar abrir
+            # Isso permite detectar PDFs protegidos mesmo quando pdfplumber não fornece mensagem clara
+            if not password:
+                is_encrypted = ParserService._is_pdf_encrypted(file_content)
+                if is_encrypted:
+                    return False, "PDF_PROTECTED"
+            
             # Tenta abrir com pdfplumber para validar estrutura
             try:
-                with pdfplumber.open(BytesIO(file_content)) as pdf:
+                pdf_kwargs = {}
+                if password:
+                    pdf_kwargs['password'] = password
+                
+                with pdfplumber.open(BytesIO(file_content), **pdf_kwargs) as pdf:
                     # Tenta acessar metadados ou páginas para validar
                     num_pages = len(pdf.pages)
                     if num_pages == 0:
@@ -368,21 +449,57 @@ class ParserService:
                 return True, None
             except Exception as e:
                 error_msg = str(e).lower()
+                error_type = type(e).__name__
+                
+                # Verifica se é exceção específica de senha do pdfplumber
+                if "password" in error_type.lower() or "encrypted" in error_type.lower():
+                    if not password:
+                        return False, "PDF_PROTECTED"
+                    return False, "Senha incorreta. Verifique a senha fornecida."
+                
+                # Verifica mensagens de erro relacionadas a senha/criptografia
+                password_keywords = [
+                    "encrypted", "password", "senha", "incorrect password",
+                    "wrong password", "invalid password", "password required",
+                    "requires a password", "password-protected", "protected",
+                    "crypt", "decrypt", "authentication", "autenticação"
+                ]
+                
+                if any(keyword in error_msg for keyword in password_keywords):
+                    if not password:
+                        return False, "PDF_PROTECTED"
+                    return False, "Senha incorreta. Verifique a senha fornecida."
+                
+                # Verifica erros de estrutura
                 if "root" in error_msg or "no /root" in error_msg:
                     return False, "PDF corrompido ou inválido (sem objeto /Root). O arquivo pode estar danificado. Tente abrir em um visualizador de PDF e salvar novamente."
-                elif "encrypted" in error_msg or "password" in error_msg or "senha" in error_msg:
-                    return False, "PDF protegido por senha. Remova a senha antes de importar."
-                else:
-                    return False, f"PDF inválido ou corrompido: {str(e)}"
+                
+                # Se chegou aqui e não há senha, verifica novamente se está criptografado
+                # (pode ser que a detecção anterior tenha falhado)
+                if not password:
+                    try:
+                        is_encrypted = ParserService._is_pdf_encrypted(file_content)
+                        if is_encrypted:
+                            return False, "PDF_PROTECTED"
+                    except:
+                        pass
+                
+                # Erro genérico
+                return False, f"PDF inválido ou corrompido: {str(e)}"
         except Exception as e:
             return False, f"Erro ao validar PDF: {str(e)}"
     
     @staticmethod
-    def parse_pdf_complete(file_content: bytes, use_ocr_if_needed: bool = True) -> Dict[str, Any]:
+    def parse_pdf_complete(file_content: bytes, use_ocr_if_needed: bool = True, password: Optional[str] = None) -> Dict[str, Any]:
         """
         Extrai informações completas de um PDF incluindo texto, tabelas, metadados e contexto
         
         Se o PDF for baseado em imagens (sem texto extraível), usa OCR automaticamente se use_ocr_if_needed=True
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            use_ocr_if_needed: Se True, usa OCR quando necessário
+            password: Senha do PDF (opcional, para PDFs protegidos)
         
         Retorna estrutura rica com:
         - dataframe: DataFrame com tabelas extraídas
@@ -392,12 +509,12 @@ class ParserService:
         - headers_footers: Cabeçalhos/rodapés extraídos
         """
         # Valida PDF antes de processar
-        is_valid, error_msg = ParserService.validate_pdf(file_content)
+        is_valid, error_msg = ParserService.validate_pdf(file_content, password=password)
         if not is_valid:
             # Se PDF é inválido mas pode ser convertido para imagem, tenta OCR
             if use_ocr_if_needed:
                 try:
-                    return ParserService._parse_pdf_with_ocr_fallback(file_content)
+                    return ParserService._parse_pdf_with_ocr_fallback(file_content, password=password)
                 except Exception as ocr_error:
                     raise Exception(f"{error_msg}\n\nTentativa de OCR também falhou: {str(ocr_error)}")
             else:
@@ -412,7 +529,11 @@ class ParserService:
             footers = []
             ocr_used = False
             
-            with pdfplumber.open(BytesIO(file_content)) as pdf:
+            pdf_kwargs = {}
+            if password:
+                pdf_kwargs['password'] = password
+            
+            with pdfplumber.open(BytesIO(file_content), **pdf_kwargs) as pdf:
                 # Metadados do PDF
                 metadata = {
                     'title': pdf.metadata.get('Title', '') if pdf.metadata else '',
@@ -703,17 +824,25 @@ class ParserService:
         return ''
 
     @staticmethod
-    def _parse_pdf_with_ocr_fallback(file_content: bytes) -> Dict[str, Any]:
+    def _parse_pdf_with_ocr_fallback(file_content: bytes, password: Optional[str] = None) -> Dict[str, Any]:
         """
         Tenta processar PDF corrompido ou inválido convertendo para imagens e usando OCR
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         try:
             # Tenta converter PDF para imagens usando PyMuPDF
             try:
                 import fitz  # PyMuPDF
-                pdf_document = fitz.open(stream=file_content, filetype="pdf")
+                pdf_kwargs = {}
+                if password:
+                    pdf_kwargs['password'] = password
                 
-                if pdf_document.is_encrypted:
+                pdf_document = fitz.open(stream=file_content, filetype="pdf", **pdf_kwargs)
+                
+                if pdf_document.is_encrypted and not password:
                     pdf_document.close()
                     raise Exception("PDF protegido por senha")
                 
@@ -773,22 +902,26 @@ class ParserService:
             raise Exception(f"Erro ao processar PDF corrompido com OCR: {str(e)}")
     
     @staticmethod
-    def parse_pdf_to_dataframe(file_content: bytes) -> Optional[pd.DataFrame]:
+    def parse_pdf_to_dataframe(file_content: bytes, password: Optional[str] = None) -> Optional[pd.DataFrame]:
         """
         Tenta extrair todas as tabelas de PDF e converter para DataFrame
         Combina tabelas de todas as páginas que tenham a mesma estrutura
         
         Agora usa parse_pdf_complete internamente para melhor extração
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         try:
-            result = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True)
+            result = ParserService.parse_pdf_complete(file_content, use_ocr_if_needed=True, password=password)
             return result.get('dataframe')
         except Exception as e:
             error_msg = str(e).lower()
             # Se o erro indica PDF corrompido, tenta OCR
             if "root" in error_msg or "corrompido" in error_msg or "invalid" in error_msg:
                 try:
-                    result = ParserService._parse_pdf_with_ocr_fallback(file_content)
+                    result = ParserService._parse_pdf_with_ocr_fallback(file_content, password=password)
                     return result.get('dataframe')
                 except Exception as ocr_error:
                     raise Exception(
@@ -1176,9 +1309,13 @@ class ParserService:
         return column_types
     
     @staticmethod
-    def parse_pdf_with_ocr(file_content: bytes) -> Dict[str, Any]:
+    def parse_pdf_with_ocr(file_content: bytes, password: Optional[str] = None) -> Dict[str, Any]:
         """
         Extrai texto de PDF usando OCR (para PDFs baseados em imagens)
+        
+        Args:
+            file_content: Conteúdo do arquivo PDF em bytes
+            password: Senha do PDF (opcional, para PDFs protegidos)
         """
         try:
             # Tenta importar bibliotecas de OCR
@@ -1194,7 +1331,20 @@ class ParserService:
             
             # Converte PDF para imagens
             try:
-                images = convert_from_bytes(file_content, dpi=300)
+                # pdf2image não suporta senha diretamente, então precisamos usar PyMuPDF primeiro
+                if password:
+                    import fitz  # PyMuPDF
+                    pdf_document = fitz.open(stream=file_content, filetype="pdf", password=password)
+                    images = []
+                    for page_num in range(len(pdf_document)):
+                        page = pdf_document[page_num]
+                        mat = fitz.Matrix(300/72, 300/72)  # 300 DPI
+                        pix = page.get_pixmap(matrix=mat)
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        images.append(img)
+                    pdf_document.close()
+                else:
+                    images = convert_from_bytes(file_content, dpi=300)
             except Exception as e:
                 # Fallback: tenta com easyocr se disponível
                 try:
@@ -1253,7 +1403,7 @@ class ParserService:
             raise Exception(f"Erro ao processar PDF com OCR: {str(e)}")
     
     @staticmethod
-    def parse_image(file_content: bytes, file_extension: str) -> Dict[str, Any]:
+    def parse_image(file_content: bytes, file_extension: str, use_vision_api: bool = True) -> Dict[str, Any]:
         """
         Extrai texto de arquivos de imagem usando OCR
         Suporta: JPG, JPEG, PNG, TIFF, BMP, WEBP
@@ -1455,6 +1605,10 @@ class ParserService:
                     stats['sheets_processed'] = df['_sheet_name'].nunique()
         
         return stats
+
+
+
+
 
 
 

@@ -98,3 +98,6 @@ journalctl -u contabil.service -f
 - `deploy/setup_vps_hostinger.sh` - Instala dependências do sistema
 - `deploy/deploy.sh` - Verifica poppler-utils
 
+
+
+

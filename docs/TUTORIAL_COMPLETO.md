@@ -115,7 +115,10 @@ O sistema possui um menu superior organizado em abas:
 
 1. Clique em **"Escolher arquivo"**
 2. Selecione o arquivo que deseja importar
-3. Aguarde o upload
+3. **Para PDFs protegidos por senha:** O sistema detectará automaticamente e solicitará a senha
+   - Insira a senha quando solicitado
+   - O sistema validará a senha antes de continuar
+4. Aguarde o upload e processamento inicial
 
 #### Passo 2: Processamento com IA
 
@@ -131,21 +134,25 @@ O sistema automaticamente:
 - Você verá mensagens em tempo real do progresso
 - Linhas com baixa confiança (< 70%) serão destacadas
 
-#### Passo 3: Revisar Dados
+#### Passo 3: Revisar e Configurar Dados
 
 1. Visualize os dados processados na tabela
-2. **Edite diretamente** se necessário:
+2. **Configure o nome do banco** (se for extrato bancário):
+   - O campo aparece apenas uma vez na seção de configurações
+   - Edite se necessário e aplique a todos os registros
+3. **Edite diretamente** se necessário:
    - Clique em uma célula para editar
    - Pressione Enter para salvar
-3. **Selecione linhas** para importar:
+4. **Selecione linhas** para importar:
    - Use as checkboxes à esquerda
    - Ou selecione todas com o checkbox do cabeçalho
 
 #### Passo 4: Importar
 
 1. Revise os dados uma última vez
-2. Clique em **"Importar Dados Selecionados"**
-3. Aguarde a confirmação
+2. Clique em **"Importar Dados Selecionados"** ou **"Importar Dados"**
+3. Aguarde a confirmação - mensagens aparecem logo abaixo do botão
+4. Após importação bem-sucedida, clique em **"Finalizar Importação"** para limpar o estado e iniciar nova importação
 
 ### 3.4 Tipos de Dados que Podem ser Importados
 
@@ -182,13 +189,51 @@ O sistema automaticamente:
 9. **Controle de Estoque**
    - Campos: Produto, Quantidade, Valor, Tipo de movimento
 
-### 3.5 Dicas de Importação
+### 3.5 Recursos Especiais
 
-- **PDFs:** O sistema extrai texto completo, incluindo cabeçalhos e rodapés
+#### PDFs Protegidos por Senha
+
+- O sistema detecta automaticamente PDFs protegidos
+- Solicita a senha durante o processamento
+- Valida a senha antes de continuar
+- Se a senha estiver incorreta, permite nova tentativa
+
+#### Edição de Prompts de IA (Apenas Administradores)
+
+- Administradores podem acessar a seção **"⚙️ Prompts de IA"** na página de importação
+- Visualize e edite os prompts dos 5 agentes de IA:
+  - Agente 1: Detecção de tipo de dado
+  - Agente 2: Análise de estrutura
+  - Agente 3: Mapeamento de colunas
+  - Agente 4: Extração e formatação
+  - Agente 5: Validação final
+- Visualize o prompt original mesmo ao editar
+- Salve alterações ou restaure o prompt padrão
+
+#### Filtragem Automática
+
+- O sistema remove automaticamente:
+  - Linhas em branco
+  - Linhas de "saldo do dia" ou outras linhas não transacionais
+- Foca apenas em transações válidas
+- Melhora a qualidade dos dados importados
+
+#### Botão Finalizar Importação
+
+- Aparece após importação bem-sucedida
+- Limpa o estado da importação atual
+- Permite iniciar nova importação imediatamente
+- Mensagens de sucesso aparecem logo abaixo do botão de importar
+
+### 3.6 Dicas de Importação
+
+- **PDFs:** O sistema extrai texto completo, incluindo cabeçalhos e rodapés. PDFs protegidos por senha são suportados.
 - **Excel:** Suporta múltiplas planilhas - todas serão processadas
 - **CSV:** Detecção automática de delimitador e encoding
 - **Classificação:** A IA classifica automaticamente, mas você pode revisar e corrigir
 - **Confiança:** Linhas com confiança < 70% devem ser revisadas manualmente
+- **Filtragem:** O sistema filtra automaticamente linhas inválidas, mas sempre revise antes de importar
+- **Finalizar:** Use o botão "Finalizar Importação" após cada importação bem-sucedida
 
 ---
 

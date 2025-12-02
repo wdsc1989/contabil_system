@@ -41,3 +41,6 @@ echo -e "${YELLOW}   Para ver: git stash list${NC}"
 echo -e "${YELLOW}   Para restaurar: git stash pop${NC}"
 echo ""
 
+
+
+

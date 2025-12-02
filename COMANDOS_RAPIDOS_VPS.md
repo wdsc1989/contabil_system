@@ -43,3 +43,6 @@ systemctl status contabil.service
 journalctl -u contabil.service -n 20
 ```
 
+
+
+

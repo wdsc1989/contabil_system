@@ -11,6 +11,44 @@ Este guia fornece instruções passo a passo para fazer deploy do Sistema Contá
 - Domínio configurado apontando para o IP da VPS (opcional, mas recomendado)
 - Repositório GitHub do projeto
 
+## 📦 Dependências Necessárias
+
+### Dependências Python (instaladas via requirements.txt)
+
+**Core:**
+- `streamlit>=1.29.0` - Framework web
+- `sqlalchemy>=2.0.0` - ORM
+- `pandas>=2.0.0` - Processamento de dados
+- `psycopg2-binary>=2.9.0` - Driver PostgreSQL
+
+**Processamento de Arquivos:**
+- `pdfplumber>=0.10.0` - Extração de texto e tabelas de PDFs
+- `PyMuPDF>=1.23.0` (fitz) - Processamento de PDFs (principal)
+- `pdf2image>=1.16.3` - Conversão de PDF para imagens (fallback)
+- `PyPDF2>=3.0.0` - Processamento adicional de PDFs
+- `openpyxl>=3.1.0` - Leitura de arquivos Excel
+- `ofxparse>=0.21` - Processamento de arquivos OFX
+- `Pillow>=10.0.0` - Processamento de imagens
+
+**OCR (Opcional):**
+- `pytesseract>=0.3.10` - OCR engine wrapper
+- `easyocr>=1.7.0` - OCR alternativo
+
+**IA/ML:**
+- `openai>=1.0.0` - OpenAI GPT-4o Vision API (obrigatório)
+- `google-generativeai>=0.3.0` - Google Gemini (opcional)
+- `groq>=0.4.0` - Groq (opcional)
+
+### Dependências do Sistema (instaladas via apt-get)
+
+O script `setup_vps_hostinger.sh` instala automaticamente:
+- `poppler-utils` - Necessário para pdf2image
+- `libpoppler-cpp-dev` - Bibliotecas de desenvolvimento do poppler
+- `libjpeg-dev`, `libpng-dev`, `libtiff-dev` - Bibliotecas para processamento de imagens
+- Outras dependências necessárias para processamento de PDFs e imagens
+
+**Nota:** Todas as dependências Python estão listadas no arquivo `requirements.txt` na raiz do projeto. O script de setup instala automaticamente as dependências do sistema necessárias.
+
 ## 🎯 Visão Geral do Processo
 
 1. **Preparação Local** - Backup do SQLite e preparação do código
@@ -103,10 +141,17 @@ O script irá:
 - ✅ Instalar PostgreSQL 16
 - ✅ Instalar Nginx
 - ✅ Instalar Certbot (Let's Encrypt)
+- ✅ Instalar dependências do sistema (poppler-utils, libpoppler-cpp-dev, etc.)
 - ✅ Configurar firewall (UFW)
 - ✅ Criar usuário da aplicação
 - ✅ Criar diretórios necessários
 - ✅ Configurar PostgreSQL com banco e usuário
+
+**Dependências do Sistema Instaladas:**
+- `poppler-utils` - Necessário para pdf2image (conversão de PDF para imagens)
+- `libpoppler-cpp-dev` - Bibliotecas de desenvolvimento do poppler
+- `libjpeg-dev`, `libpng-dev`, `libtiff-dev` - Bibliotecas para processamento de imagens
+- Outras dependências necessárias para processamento de PDFs e imagens
 
 **⚠️ IMPORTANTE: Anote as credenciais do banco de dados que serão exibidas!**
 
@@ -278,8 +323,18 @@ cd /opt/contabil/contabil_system
 python3.12 -m venv venv
 source venv/bin/activate
 
-# Instala dependências
+# Instala dependências Python
 pip install -r requirements.txt
+
+# Verifica instalação de bibliotecas críticas
+python -c "import pdfplumber; print('pdfplumber OK')"
+python -c "import fitz; print('PyMuPDF OK')"
+python -c "from pdf2image import convert_from_bytes; print('pdf2image OK')"
+python -c "from PIL import Image; print('Pillow OK')"
+python -c "import openai; print('OpenAI OK')"
+
+# Verifica se poppler-utils está instalado (necessário para pdf2image)
+pdftoppm -v || echo "⚠️ poppler-utils não encontrado - instale com: sudo apt-get install poppler-utils"
 
 # Se você transferiu o banco SQLite do Windows, ele está em /tmp/contabil.db
 # Se não transferiu, você precisará fazer isso primeiro (veja seção 4.2)
@@ -526,6 +581,62 @@ sudo -u contabil cat /opt/contabil/contabil_system/.env
 sudo -u contabil psql -h localhost -U contabil_user -d contabil_db
 ```
 
+### Problemas com Dependências
+
+#### Verificar Instalação de Bibliotecas Python
+
+```bash
+# Ativa ambiente virtual
+cd /opt/contabil/contabil_system
+source venv/bin/activate
+
+# Verifica bibliotecas críticas
+python -c "import pdfplumber; print('✅ pdfplumber OK')"
+python -c "import fitz; print('✅ PyMuPDF OK')"
+python -c "from pdf2image import convert_from_bytes; print('✅ pdf2image OK')"
+python -c "from PIL import Image; print('✅ Pillow OK')"
+python -c "import openai; print('✅ OpenAI OK')"
+python -c "import pandas; print('✅ pandas OK')"
+python -c "import streamlit; print('✅ streamlit OK')"
+```
+
+#### Verificar Dependências do Sistema
+
+```bash
+# Verifica poppler-utils (necessário para pdf2image)
+pdftoppm -v
+
+# Se não estiver instalado, instale:
+sudo apt-get update
+sudo apt-get install -y poppler-utils libpoppler-cpp-dev
+
+# Verifica outras dependências de imagem
+dpkg -l | grep -E "libjpeg|libpng|libtiff"
+```
+
+#### Reinstalar Dependências Python
+
+```bash
+# Se houver problemas, reinstale todas as dependências
+cd /opt/contabil/contabil_system
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt --force-reinstall
+```
+
+#### Verificar Compatibilidade de Versões
+
+```bash
+# Verifica versão do Python (recomendado 3.11 ou 3.12)
+python3 --version
+
+# Lista todas as bibliotecas instaladas
+pip list
+
+# Verifica versões específicas
+pip show pdfplumber PyMuPDF pdf2image Pillow openai
+```
+
 ### Erro de permissões
 
 ```bash
@@ -611,4 +722,5 @@ Comandos rápidos:
 ---
 
 **✅ Deploy concluído com sucesso!**
+
 
