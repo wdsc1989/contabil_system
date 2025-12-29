@@ -193,95 +193,117 @@ if is_admin:
     from services.ai_multi_agent import AIMultiAgent
     from config.database import SessionLocal
     
-    with st.expander("🔧 **Prompts de IA (Apenas Administrador)**", expanded=False):
+    with st.expander("🔧 **Configuração de IA com MCP (Apenas Administrador)**", expanded=False):
         db = SessionLocal()
         try:
             multi_agent = AIMultiAgent(db)
             prompts_info = multi_agent.get_prompts()
+            mcp_tools_info = multi_agent.get_mcp_tools_info()
             
-            # Tabs para cada agente
-            tab_names = [info['name'] for info in prompts_info.values()]
-            tabs = st.tabs(tab_names)
+            st.info("💡 **Arquitetura MCP:** Os agentes agora usam MCP Tools estruturados. Schemas JSON são gerados automaticamente a partir dos modelos SQLAlchemy.")
             
-            for idx, (agent_key, agent_info) in enumerate(prompts_info.items()):
-                with tabs[idx]:
-                    st.caption(f"**{agent_info['description']}**")
-                    
-                    # Estado de edição para este agente
-                    edit_key = f"edit_{agent_key}"
-                    if edit_key not in st.session_state:
-                        st.session_state[edit_key] = False
-                    
-                    # Obtém prompt atual (customizado ou padrão)
-                    current_prompt = agent_info.get('custom')
-                    default_template = agent_info.get('default_template', '')
-                    
-                    # Sempre mostra o prompt original (padrão) em um expander
-                    with st.expander("📋 Ver Prompt Original (Padrão)", expanded=False):
-                        if default_template:
-                            st.text_area(
-                                "Prompt Original",
-                                value=default_template,
-                                height=300,
-                                disabled=True,
-                                key=f"original_prompt_{agent_key}",
-                                help="Este é o prompt padrão do sistema. Use como referência ao editar."
-                            )
+            # Tabs: Agentes e MCP Tools
+            tab1, tab2 = st.tabs(["🤖 Agentes", "🛠️ MCP Tools"])
+            
+            with tab1:
+                st.markdown("### Agentes de Processamento")
+                st.caption("Os agentes usam MCP Tools internamente. Prompts customizados são aplicados aos tools correspondentes.")
+                
+                # Tabs para cada agente
+                agent_tabs = st.tabs([info['name'] for info in prompts_info.values()])
+                
+                for idx, (agent_key, agent_info) in enumerate(prompts_info.items()):
+                    with agent_tabs[idx]:
+                        st.caption(f"**{agent_info['description']}**")
+                        
+                        # Mostra MCP Tools usados
+                        if 'mcp_tool' in agent_info:
+                            st.info(f"🔧 Usa MCP Tool: **{agent_info['mcp_tool']}**")
+                        elif 'mcp_tools' in agent_info:
+                            st.info(f"🔧 Usa MCP Tools: **{', '.join(agent_info['mcp_tools'])}**")
+                        
+                        if 'note' in agent_info:
+                            st.caption(f"ℹ️ {agent_info['note']}")
+                        
+                        # Estado de edição para este agente
+                        edit_key = f"edit_{agent_key}"
+                        if edit_key not in st.session_state:
+                            st.session_state[edit_key] = False
+                        
+                        # Obtém prompt atual (customizado ou padrão)
+                        current_prompt = agent_info.get('custom')
+                        default_template = agent_info.get('default_template', '')
+                        
+                        # Status do prompt atual
+                        if not current_prompt:
+                            prompt_display = default_template if default_template else "**Usando prompts gerados automaticamente pelos MCP Tools**"
+                            st.info("ℹ️ Usando prompts padrão dos MCP Tools. A personalização está disponível apenas para agent1 e agent3.")
                         else:
-                            st.info("Prompt padrão não disponível para visualização.")
-                    
-                    # Status do prompt atual
-                    if not current_prompt:
-                        # Se não há customizado, mostra template padrão
-                        prompt_display = default_template if default_template else "**Prompt padrão em uso**\n\nNão há prompt customizado configurado."
-                        st.info("ℹ️ Usando prompt padrão. Clique em 'Editar' para personalizar.")
-                    else:
-                        prompt_display = current_prompt
-                        st.success("✅ Usando prompt customizado.")
-                    
-                    st.markdown("---")
-                    
-                    # Text area para exibir/editar prompt
-                    prompt_text = st.text_area(
-                        f"Prompt Atual do {agent_info['name']}",
-                        value=prompt_display if st.session_state[edit_key] else (prompt_display[:500] + "..." if len(prompt_display) > 500 and not st.session_state[edit_key] else prompt_display),
-                        height=400 if st.session_state[edit_key] else 200,
-                        disabled=not st.session_state[edit_key],
-                        key=f"prompt_text_{agent_key}",
-                        help=f"Placeholders disponíveis: {', '.join(agent_info.get('placeholders', []))}"
-                    )
-                    
-                    # Botões de ação
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        if st.button("✏️ Editar", key=f"btn_edit_{agent_key}"):
-                            st.session_state[edit_key] = True
-                            st.rerun()
-                    
-                    with col2:
-                        if st.session_state[edit_key]:
-                            if st.button("💾 Salvar", key=f"btn_save_{agent_key}", type="primary"):
-                                if prompt_text and prompt_text.strip():
-                                    multi_agent.update_prompt(agent_key, prompt_text.strip())
-                                    st.session_state[edit_key] = False
-                                    st.success(f"✅ Prompt do {agent_info['name']} salvo com sucesso!")
+                            prompt_display = current_prompt
+                            st.success("✅ Usando prompt customizado.")
+                        
+                        st.markdown("---")
+                        
+                        # Text area para exibir/editar prompt (apenas para agentes que suportam)
+                        if agent_key in ['agent1', 'agent3']:
+                            prompt_text = st.text_area(
+                                f"Prompt do {agent_info['name']}",
+                                value=prompt_display if st.session_state[edit_key] else (prompt_display[:500] + "..." if len(prompt_display) > 500 and not st.session_state[edit_key] else prompt_display),
+                                height=400 if st.session_state[edit_key] else 200,
+                                disabled=not st.session_state[edit_key],
+                                key=f"prompt_text_{agent_key}",
+                                help=f"Placeholders: {', '.join(agent_info.get('placeholders', []))}"
+                            )
+                            
+                            # Botões de ação
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                if st.button("✏️ Editar", key=f"btn_edit_{agent_key}"):
+                                    st.session_state[edit_key] = True
                                     st.rerun()
-                                else:
-                                    st.error("❌ O prompt não pode estar vazio!")
-                    
-                    with col3:
-                        if agent_info.get('custom'):
-                            if st.button("🔄 Restaurar Original", key=f"btn_reset_{agent_key}"):
-                                multi_agent.reset_prompt(agent_key)
-                                st.session_state[edit_key] = False
-                                st.success(f"✅ Prompt do {agent_info['name']} restaurado para o padrão!")
-                                st.rerun()
-                    
-                    # Informações sobre placeholders
-                    if agent_info.get('placeholders'):
-                        st.caption(f"💡 **Placeholders disponíveis:** {', '.join(agent_info['placeholders'])}")
-                        st.caption("Use {placeholder_name} no prompt para inserir valores dinâmicos.")
+                            
+                            with col2:
+                                if st.session_state[edit_key]:
+                                    if st.button("💾 Salvar", key=f"btn_save_{agent_key}", type="primary"):
+                                        if prompt_text and prompt_text.strip():
+                                            multi_agent.update_prompt(agent_key, prompt_text.strip())
+                                            st.session_state[edit_key] = False
+                                            st.success(f"✅ Prompt salvo!")
+                                            st.rerun()
+                                        else:
+                                            st.error("❌ O prompt não pode estar vazio!")
+                            
+                            with col3:
+                                if agent_info.get('custom'):
+                                    if st.button("🔄 Restaurar", key=f"btn_reset_{agent_key}"):
+                                        multi_agent.reset_prompt(agent_key)
+                                        st.session_state[edit_key] = False
+                                        st.success(f"✅ Prompt restaurado!")
+                                        st.rerun()
+                            
+                            if agent_info.get('placeholders'):
+                                st.caption(f"💡 **Placeholders:** {', '.join(agent_info.get('placeholders', []))}")
+                        else:
+                            st.info("ℹ️ Este agente usa MCP Tools que geram prompts automaticamente baseados nos schemas. Não é necessário personalizar.")
+            
+            with tab2:
+                st.markdown("### MCP Tools Disponíveis")
+                st.caption("Tools estruturados que os agentes usam internamente. Schemas são gerados automaticamente.")
+                
+                for tool_name, tool_info in mcp_tools_info.items():
+                    with st.expander(f"🔧 {tool_name}", expanded=False):
+                        st.write(f"**Descrição:** {tool_info['description']}")
+                        st.write("**Parâmetros obrigatórios:**")
+                        for param in tool_info.get('required_params', []):
+                            st.write(f"- `{param}`")
+                        
+                        if tool_info.get('input_schema', {}).get('properties'):
+                            st.write("**Parâmetros disponíveis:**")
+                            for param, schema in tool_info['input_schema']['properties'].items():
+                                param_type = schema.get('type', 'unknown')
+                                param_desc = schema.get('description', '')
+                                st.write(f"- `{param}` ({param_type}): {param_desc}")
         finally:
             db.close()
     
@@ -810,116 +832,38 @@ if uploaded_file:
         
         if df is not None and not df.empty:
             st.markdown("---")
-            st.subheader("2️⃣ Validação da Extração")
+            st.subheader("📊 Dados Extraídos")
             
-            # Valida completude da extração (usa o conteúdo já lido)
-            validation_result = ParserService.validate_extraction_completeness(
-                df, file_content, file_type
-            )
-            
-            # Exibe resultados da validação
-            col1, col2, col3 = st.columns(3)
+            # Métricas simplificadas
+            col1, col2 = st.columns(2)
             with col1:
-                st.metric("Linhas Extraídas", f"{validation_result['extracted_rows']:,}".replace(',', '.'))
+                st.metric("Linhas", f"{len(df):,}".replace(',', '.'))
             with col2:
-                if validation_result['expected_rows']:
-                    st.metric("Linhas Esperadas", f"{validation_result['expected_rows']:,}".replace(',', '.'))
-                else:
-                    st.metric("Status", "✅ Extraído")
-            with col3:
-                if validation_result['completeness_percentage']:
-                    percentage = validation_result['completeness_percentage']
-                    if percentage >= 95:
-                        st.metric("Completude", f"{percentage:.1f}%", delta="Completo")
-                    else:
-                        st.metric("Completude", f"{percentage:.1f}%", delta="Incompleto", delta_color="inverse")
-                else:
-                    st.metric("Completude", "N/A")
-            
-            # Avisos se houver problemas
-            if validation_result['warnings']:
-                for warning in validation_result['warnings']:
-                    st.warning(f"⚠️ {warning}")
-            
-            if not validation_result['is_complete'] and validation_result['completeness_percentage']:
-                st.error("❌ **Atenção:** A extração pode estar incompleta. Algumas linhas podem não ter sido extraídas.")
-                if st.button("🔄 Tentar Reprocessar", width='stretch', key="retry_extraction"):
-                    # Limpa estado e recarrega
-                    if 'extracted_df' in st.session_state:
-                        del st.session_state.extracted_df
-                    st.rerun()
-            
-            st.markdown("---")
-            st.subheader("3️⃣ Preview dos Dados Extraídos")
-            
-            # Remove linhas completamente vazias para melhor visualização
-            df_preview = df.dropna(how='all').copy()
-            
-            # Opção para ver preview completo ou limitado
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.success(f"✅ **{len(df)} linhas** e **{len(df.columns)} colunas** extraídas com sucesso")
-            with col2:
-                show_full_preview = st.checkbox("📋 Ver todos os dados", value=False, 
-                                                help="Mostra todos os dados com barra de rolagem")
-            
-            # Exibe preview (traduzido para português)
-            df_preview_translated = translate_dataframe(df_preview.copy(), translate_columns=True, translate_values=False)
-            if show_full_preview:
-                st.dataframe(df_preview_translated, width='stretch', height=400)
-                st.caption(f"📊 Exibindo todas as {len(df_preview_translated)} linhas (após remover linhas vazias)")
-            else:
-                st.dataframe(df_preview_translated.head(10), width='stretch')
-                st.caption(f"📊 Mostrando 10 primeiras linhas de {len(df_preview_translated)} (após remover linhas vazias) | Total: {len(df)} linhas, {len(df.columns)} colunas")
+                st.metric("Colunas", len(df.columns))
             
             # Salva DataFrame extraído no session state
             st.session_state['extracted_df'] = df
             
-            # Prepara metadados para estatísticas
-            metadata = None
-            if file_type == 'PDF' and 'pdf_full_data' in st.session_state:
-                metadata = st.session_state['pdf_full_data'].get('metadata')
-            
-            st.session_state['extraction_stats'] = ParserService.get_extraction_stats(
-                df, file_type, metadata
-            )
-            
             # Detecção automática do tipo de dado
             st.markdown("---")
-            st.subheader("3️⃣ Tipo de Dado Detectado")
+            st.subheader("🔍 Tipo de Dado")
             
             db = SessionLocal()
             try:
                 # Inicializa import_type como None
                 import_type = None
                 
-                # Verifica se o tipo já foi confirmado anteriormente - se sim, pula toda a detecção
+                # Verifica se o tipo já foi confirmado anteriormente
                 if st.session_state.get('type_confirmed', False) and 'detected_import_type' in st.session_state:
                     import_type = st.session_state.detected_import_type
-                    st.info(f"✅ **Tipo confirmado:** {import_type}")
                 # Se for OFX, já sabemos que é extrato bancário
                 elif file_type == 'OFX':
                     import_type = 'bank_statements'
-                    st.info("🏦 **Tipo detectado automaticamente:** Extratos Bancários (formato OFX)")
-                    
-                    # Requer confirmação explícita do usuário
                     if 'type_confirmed' not in st.session_state or not st.session_state.type_confirmed:
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            if st.button("✅ Confirmar e Continuar", width='stretch', type="primary", key="confirm_ofx_type"):
-                                st.session_state.detected_import_type = import_type
-                                st.session_state.type_confirmed = True
-                                st.rerun()
-                        with col2:
-                            if st.button("✏️ Alterar Tipo Manualmente", width='stretch', key="change_ofx_type"):
-                                st.session_state.show_manual_selection = True
-                                st.session_state.type_confirmed = False  # Limpa confirmação anterior
-                                st.rerun()
-                        
-                        # Se ainda não foi confirmado, para aqui
-                        if 'detected_import_type' not in st.session_state:
-                            st.stop()
-                        import_type = st.session_state.detected_import_type
+                        st.session_state.detected_import_type = import_type
+                        st.session_state.type_confirmed = True
+                        st.rerun()
+                    import_type = st.session_state.detected_import_type
                 elif ai_service.is_available():
                     # Usa Multi-Agente para detecção (mais preciso, menos alucinações)
                     from services.ai_multi_agent import AIMultiAgent
@@ -960,68 +904,32 @@ if uploaded_file:
                         suggested_name = type_names.get(suggested_type, suggested_type)
                         confidence_percent = int(confidence * 100)
                         
-                        # Exibe sugestão com opção de correção sempre visível
-                        st.markdown("### 🤖 Tipo Detectado pela IA")
-                        
+                        # Exibe sugestão simplificada
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             if confidence >= 0.7:
-                                st.success(f"**{suggested_name}** (Confiança: {confidence_percent}%)")
-                            elif confidence >= 0.5:
-                                st.warning(f"**{suggested_name}** (Confiança: {confidence_percent}%)")
+                                st.success(f"**{suggested_name}**")
                             else:
-                                st.info(f"**{suggested_name}** (Confiança: {confidence_percent}% - Baixa)")
+                                st.warning(f"**{suggested_name}** (Confiança: {confidence_percent}%)")
                         
                         with col2:
-                            st.metric("Confiança", f"{confidence_percent}%")
+                            # Selectbox para correção se necessário
+                            corrected_type = st.selectbox(
+                                "Tipo:",
+                                options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
+                                        'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
+                                format_func=lambda x: type_names[x],
+                                index=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
+                                      'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'].index(suggested_type) if suggested_type in ['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable', 'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'] else 0,
+                                key="correct_type_selectbox"
+                            )
                         
-                        # Detalhes opcionais (colapsados)
-                        if reasoning or key_indicators or alternative_types:
-                            with st.expander("ℹ️ Detalhes da detecção", expanded=False):
-                                if reasoning:
-                                    st.write(f"**Motivo:** {reasoning}")
-                                if key_indicators:
-                                    st.write("**Indicadores:** " + ", ".join(key_indicators))
-                                if alternative_types:
-                                    st.write("**Alternativas sugeridas:**")
-                                    for alt in alternative_types[:3]:  # Mostra apenas top 3
-                                        alt_name = type_names.get(alt.get('type'), alt.get('type'))
-                                        alt_confidence = int(alt.get('confidence', 0) * 100)
-                                        st.write(f"- {alt_name} ({alt_confidence}%)")
-                        
-                        # Opção de correção sempre visível
-                        st.markdown("---")
-                        st.markdown("### ✏️ Correção do Tipo (se necessário)")
-                        st.info("💡 Se a detecção estiver incorreta, selecione o tipo correto abaixo:")
-                        
-                        # Selectbox para correção manual
-                        corrected_type = st.selectbox(
-                            "Tipo de dado correto:",
-                            options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
-                                    'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
-                            format_func=lambda x: type_names[x],
-                            index=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
-                                  'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'].index(suggested_type) if suggested_type in ['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable', 'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'] else 0,
-                            key="correct_type_selectbox"
-                        )
-                        
-                        # Botões de ação
-                        col_confirm, col_correct = st.columns(2)
-                        with col_confirm:
-                            if st.button("✅ Confirmar Tipo Detectado", width='stretch', type="primary", key="confirm_ai_detected_type"):
-                                import_type = suggested_type
-                                st.session_state.detected_import_type = import_type
-                                st.session_state.type_confirmed = True
-                                st.rerun()
-                        
-                        with col_correct:
-                            if st.button("✏️ Usar Tipo Corrigido", width='stretch', key="use_corrected_type"):
-                                import_type = corrected_type
-                                st.session_state.detected_import_type = import_type
-                                st.session_state.type_confirmed = True
-                                if corrected_type != suggested_type:
-                                    st.success(f"✅ Tipo alterado para: {type_names[corrected_type]}")
-                                st.rerun()
+                        # Botão único de confirmação
+                        if st.button("✅ Confirmar e Continuar", width='stretch', type="primary", key="confirm_ai_detected_type"):
+                            import_type = corrected_type if corrected_type != suggested_type else suggested_type
+                            st.session_state.detected_import_type = import_type
+                            st.session_state.type_confirmed = True
+                            st.rerun()
                         
                         # Se já foi confirmado anteriormente, usa o tipo confirmado
                         if 'detected_import_type' in st.session_state and st.session_state.get('type_confirmed', False):
@@ -1035,13 +943,8 @@ if uploaded_file:
                     st.info("ℹ️ IA não configurada. Selecione o tipo de dado manualmente.")
                     st.session_state.show_manual_selection = True
                 
-                # Seleção manual (se necessário ou se usuário escolheu)
+                # Seleção manual (se necessário)
                 if 'show_manual_selection' in st.session_state and st.session_state.show_manual_selection:
-                    st.markdown("---")
-                    st.subheader("✏️ Seleção Manual do Tipo de Dado")
-                    st.info("💡 Selecione o tipo de dado que melhor descreve o conteúdo do arquivo.")
-                    
-                    # Define mapeamento de tipos para nomes amigáveis
                     type_names_map = {
                         'transactions': '💳 Transações Financeiras',
                         'bank_statements': '🏦 Extratos Bancários',
@@ -1054,24 +957,21 @@ if uploaded_file:
                         'inventory': '📦 Controle de Estoque'
                     }
                     
-                    # Se havia uma sugestão anterior, mostra como referência
-                    if 'detected_import_type' in st.session_state:
-                        previous_suggestion = st.session_state.detected_import_type
-                        previous_name = type_names_map.get(previous_suggestion, previous_suggestion)
-                        st.caption(f"💡 Sugestão anterior da IA: {previous_name}")
-                    
-                    import_type = st.selectbox(
-                        "Tipo de dado:",
-                        options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
-                                'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
-                        format_func=lambda x: type_names_map[x],
-                        key="manual_import_type"
-                    )
-                    if st.button("✅ Confirmar Tipo", width='stretch', key="confirm_manual_type"):
-                        st.session_state.detected_import_type = import_type
-                        st.session_state.type_confirmed = True
-                        st.session_state.show_manual_selection = False
-                        st.rerun()
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        import_type = st.selectbox(
+                            "Tipo de dado:",
+                            options=['transactions', 'bank_statements', 'contracts', 'accounts_payable', 'accounts_receivable',
+                                    'financial_investments', 'credit_card_invoices', 'card_machine_statements', 'inventory'],
+                            format_func=lambda x: type_names_map[x],
+                            key="manual_import_type"
+                        )
+                    with col2:
+                        if st.button("✅ Confirmar", width='stretch', type="primary", key="confirm_manual_type"):
+                            st.session_state.detected_import_type = import_type
+                            st.session_state.type_confirmed = True
+                            st.session_state.show_manual_selection = False
+                            st.rerun()
                 
                 # Se ainda não tem tipo definido, tenta obter do session state ou para
                 if not import_type:
@@ -1081,12 +981,13 @@ if uploaded_file:
                         st.warning("⚠️ Tipo de dado não foi definido. Por favor, selecione o tipo de dado acima.")
                         st.stop()
                 
-                # Verifica se o tipo foi confirmado pelo usuário antes de processar
+                # Verifica se o tipo foi confirmado
                 if not st.session_state.get('type_confirmed', False):
-                    st.info("ℹ️ Por favor, confirme o tipo de dado detectado acima para continuar com o processamento.")
                     st.stop()
                 
-                # Estrutura os dados (sem classificação de grupo/subgrupo)
+                # Processamento dos dados
+                st.markdown("---")
+                st.subheader("⚙️ Processamento")
                 structure_hash = f"{uploaded_file.name}_{len(df)}_{import_type}_structured"
                 previous_structure_valid = (
                     st.session_state.get('last_structure_hash') == structure_hash and
@@ -1126,6 +1027,11 @@ if uploaded_file:
                                 with st.spinner("🤖 [Agente 3] Mapeando colunas origem → destino..."):
                                     mapping = multi_agent.agent_map_columns(structure_analysis, import_type)
                                     
+                                    # Log do mapeamento obtido
+                                    mapping_count = len(mapping) if mapping else 0
+                                    if mapping_count > 0:
+                                        st.info(f"✅ Mapeamento obtido: {mapping_count} coluna(s) mapeada(s)")
+                                    
                                     # Se IA não retornou mapeamento, tenta mapeamento automático tradicional
                                     if not mapping:
                                         from utils.column_mapper import ColumnMapper
@@ -1145,9 +1051,29 @@ if uploaded_file:
                                         }
                                         
                                         if mapping:
-                                            st.info("ℹ️ IA não retornou mapeamento explícito. Usando mapeamento automático baseado em nomes de colunas.")
+                                            st.info(f"ℹ️ Usando mapeamento automático: {len(mapping)} coluna(s) mapeada(s)")
                                         else:
-                                            st.warning("⚠️ IA não conseguiu mapear colunas e mapeamento automático também falhou. Continuando mesmo assim, mas revise a tabela.")
+                                            st.warning("⚠️ Mapeamento automático falhou. Criando mapeamento básico por nome...")
+                                            # Cria mapeamento básico baseado em nomes de colunas
+                                            source_cols = list(df.columns)
+                                            target_columns = multi_agent._get_target_columns(import_type)
+                                            for src_col in source_cols:
+                                                src_lower = str(src_col).lower().strip()
+                                                for tgt_col in target_columns:
+                                                    tgt_lower = str(tgt_col).lower().strip()
+                                                    if src_lower == tgt_lower or src_lower in tgt_lower or tgt_lower in src_lower:
+                                                        mapping[src_col] = tgt_col
+                                                        break
+                                            
+                                            if mapping:
+                                                st.info(f"✅ Mapeamento básico criado: {len(mapping)} coluna(s)")
+                                            else:
+                                                st.warning("⚠️ Nenhum mapeamento foi criado. Os dados podem não estar corretamente estruturados.")
+                                
+                                # Garante que sempre há um mapeamento (mesmo que parcial) antes de normalizar
+                                if not mapping:
+                                    st.error("❌ Não foi possível criar mapeamento. Verifique as colunas do arquivo.")
+                                    raise Exception("Mapeamento não pôde ser criado")
                                 
                                 with st.spinner("🤖 [Agente 4] Extraindo e formatando valores..."):
                                     normalized_records = multi_agent.agent_extract_and_format(
@@ -1155,13 +1081,70 @@ if uploaded_file:
                                     )
                                 
                                 target_columns = multi_agent._get_target_columns(import_type)
+                                
+                                # Validação: verifica se dados normalizados têm colunas destino
+                                missing_cols_found = False
                                 for record in normalized_records:
                                     for col in target_columns:
                                         if col not in record:
                                             record[col] = None
+                                            missing_cols_found = True
+                                
+                                # Se faltam colunas, aplica mapeamento direto aos dados originais
+                                if missing_cols_found and normalized_records:
+                                    st.info("ℹ️ Aplicando mapeamento direto para colunas faltantes...")
+                                    for idx, record in enumerate(normalized_records):
+                                        if idx < len(processed_data):
+                                            original_record = processed_data[idx]
+                                            # Aplica mapeamento direto para colunas que faltam
+                                            for src_col, tgt_col in mapping.items():
+                                                if tgt_col not in record or record.get(tgt_col) is None:
+                                                    if src_col in original_record:
+                                                        record[tgt_col] = original_record[src_col]
+                                
+                                # Valida se dados têm pelo menos algumas colunas destino
+                                sample_record = normalized_records[0] if normalized_records else {}
+                                cols_present = [col for col in target_columns if col in sample_record and sample_record.get(col) is not None]
+                                if len(cols_present) == 0:
+                                    st.warning("⚠️ Dados normalizados não têm colunas destino. Aplicando mapeamento direto...")
+                                    # Aplica mapeamento direto a todos os registros
+                                    normalized_records = []
+                                    for original_record in processed_data:
+                                        new_record = {}
+                                        for src_col, tgt_col in mapping.items():
+                                            if src_col in original_record:
+                                                new_record[tgt_col] = original_record[src_col]
+                                        # Garante todas as colunas destino
+                                        for col in target_columns:
+                                            if col not in new_record:
+                                                new_record[col] = None
+                                        normalized_records.append(new_record)
+                                    st.info(f"✅ Mapeamento direto aplicado a {len(normalized_records)} registro(s)")
                                 
                                 with st.spinner("🤖 [Agente 5] Validando dados estruturados..."):
                                     validation = multi_agent.agent_validate(normalized_records, import_type)
+                                
+                                # Validação final: verifica se normalização foi bem-sucedida
+                                if not normalized_records:
+                                    st.warning("⚠️ Normalização retornou vazio. Usando dados originais com mapeamento direto...")
+                                    # Aplica mapeamento direto aos dados originais
+                                    normalized_records = []
+                                    for original_record in processed_data:
+                                        new_record = {}
+                                        for src_col, tgt_col in mapping.items():
+                                            if src_col in original_record:
+                                                new_record[tgt_col] = original_record[src_col]
+                                        # Garante todas as colunas destino
+                                        for col in target_columns:
+                                            if col not in new_record:
+                                                new_record[col] = None
+                                        normalized_records.append(new_record)
+                                
+                                # Log final do resultado
+                                if normalized_records:
+                                    sample = normalized_records[0]
+                                    cols_mapped = [col for col in target_columns if col in sample]
+                                    st.success(f"✅ Processamento concluído: {len(normalized_records)} registro(s) com {len(cols_mapped)}/{len(target_columns)} colunas destino")
                                 
                                 normalization_result = {
                                     'normalized_data': normalized_records,
@@ -1169,7 +1152,8 @@ if uploaded_file:
                                         'total_rows_processed': len(processed_data),
                                         'successfully_normalized': len(normalized_records),
                                         'validation': validation,
-                                        'mapping_applied': mapping
+                                        'mapping_applied': mapping,
+                                        'columns_mapped': len(mapping) if mapping else 0
                                     }
                                 }
                                 
@@ -1383,7 +1367,11 @@ Estrutura do arquivo origem:
                         record['group_id'] = None
                         record['subgroup_id'] = None
                     
-                    st.session_state.processed_data = processed_data
+                    # CRÍTICO: Salva cópia profunda dos dados normalizados/mapeados
+                    st.session_state.processed_data = [dict(record) for record in processed_data]
+                    # Reseta editing_data quando processed_data é atualizado
+                    st.session_state.editing_data = [dict(record) for record in processed_data]
+                    st.session_state.has_pending_changes = False
                     st.session_state.processed_data_is_structured = structure_successful
                     st.session_state.structure_method = structure_method
                     if structure_successful:
@@ -1407,7 +1395,11 @@ Estrutura do arquivo origem:
                         for record in processed_data:
                             record['group_id'] = None
                             record['subgroup_id'] = None
-                        st.session_state.processed_data = processed_data
+                        # Salva cópia profunda
+                        st.session_state.processed_data = [dict(record) for record in processed_data]
+                        # Reseta editing_data quando processed_data é atualizado
+                        st.session_state.editing_data = [dict(record) for record in processed_data]
+                        st.session_state.has_pending_changes = False
                         st.session_state.last_structure_hash = structure_hash
                         st.session_state.processed_data_is_structured = False
                 
@@ -1433,70 +1425,42 @@ Estrutura do arquivo origem:
                     for record in processed_data:
                         record['imported_at'] = current_timestamp
                 
-                # Validação: verifica se todas as linhas foram processadas
-                original_rows = len(df)
-                processed_rows = len(processed_data)
-                rows_diff = original_rows - processed_rows
-                
-                if rows_diff > 0:
-                    st.warning(
-                        f"⚠️ **ATENÇÃO:** {rows_diff} linha(s) não foram processadas. "
-                        f"Esperado: {original_rows}, Processado: {processed_rows}."
-                    )
-                else:
-                    st.success(f"✅ Processamento concluído! Todas as {processed_rows} linhas foram processadas com sucesso.")
-                
-                # Exibe estatísticas
+                # Exibe estatísticas simplificadas
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Total Processado", processed_rows)
+                    st.metric("Registros Processados", len(processed_data))
                 with col2:
-                    st.metric("Pronto para Edição", "✅")
+                    st.metric("Status", "✅ Pronto")
                 
                 st.markdown("---")
-                st.subheader("5️⃣ Configurações e Edição")
+                st.subheader("✏️ Revisão e Edição")
                 
-                # Exibe e permite editar nome do banco se aplicável
+                # CRÍTICO: Sempre usa os dados do session_state se disponíveis
+                # Os dados normalizados foram salvos em st.session_state.processed_data após o mapeamento
+                if 'processed_data' in st.session_state and st.session_state.processed_data:
+                    # Sempre usa dados do session_state (contêm dados normalizados/mapeados)
+                    processed_data = [dict(record) for record in st.session_state.processed_data]
+                
+                # Configuração de nome do banco (se aplicável)
                 if import_type == 'bank_statements':
-                    # Tenta extrair nome do banco dos dados
                     extracted_bank_name = None
                     for record in processed_data:
                         if record.get('bank_name'):
                             extracted_bank_name = record.get('bank_name')
                             break
                     
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        if extracted_bank_name:
-                            st.info(f"🏦 **Nome do banco identificado:** {extracted_bank_name}")
-                        else:
-                            st.info("🏦 Nome do banco não foi identificado automaticamente")
+                    if 'bank_name_override' not in st.session_state:
+                        st.session_state.bank_name_override = extracted_bank_name if extracted_bank_name else ""
                     
-                    with col2:
-                        # Armazena o nome do banco no session state para uso posterior
-                        if 'bank_name_override' not in st.session_state:
-                            st.session_state.bank_name_override = extracted_bank_name if extracted_bank_name else ""
-                        
-                        edited_bank_name = st.text_input(
-                            "Editar nome do banco:",
-                            value=st.session_state.bank_name_override if st.session_state.bank_name_override else extracted_bank_name if extracted_bank_name else "Banco",
-                            key="bank_name_input_config"
-                        )
-                        
-                        # Atualiza o session state
-                        st.session_state.bank_name_override = edited_bank_name
-                        
-                        # Botão para aplicar o nome do banco a todos os registros
-                        if st.button("🔄 Aplicar a Todos os Registros", width='stretch', key="apply_bank_name"):
-                            if 'processed_data' in st.session_state:
-                                for record in st.session_state.processed_data:
-                                    record['bank_name'] = edited_bank_name
-                                st.success(f"✅ Nome do banco '{edited_bank_name}' aplicado a todos os registros!")
-                                st.rerun()
-                        
-                        st.caption("💡 Clique no botão acima para aplicar o nome a todos os registros, ou edite individualmente na tabela abaixo.")
+                    bank_name = st.text_input(
+                        "Nome do banco:",
+                        value=st.session_state.bank_name_override if st.session_state.bank_name_override else extracted_bank_name if extracted_bank_name else "Banco",
+                        key="bank_name_input_config"
+                    )
+                    st.session_state.bank_name_override = bank_name
                 
                 # Prepara dados processados (cria uma cópia para não modificar os originais)
+                # IMPORTANTE: working_data deve conter os dados normalizados/mapeados
                 working_data = [dict(record) for record in processed_data]  # Cópia profunda
                 
                 # Remove colunas internas se existirem
@@ -1527,39 +1491,29 @@ Estrutura do arquivo origem:
                 if 'last_file_hash' not in st.session_state or st.session_state.last_file_hash != file_hash:
                     # Cria cópia profunda para o session state
                     st.session_state.processed_data = [dict(record) for record in working_data]
+                    # Reseta editing_data quando processed_data é atualizado (novo arquivo)
+                    st.session_state.editing_data = [dict(record) for record in working_data]
+                    st.session_state.has_pending_changes = False
                     st.session_state.selected_rows = set(range(len(working_data)))
                     st.session_state.last_file_hash = file_hash
                 elif 'processed_data' not in st.session_state:
                     # Cria cópia profunda para o session state
                     st.session_state.processed_data = [dict(record) for record in working_data]
+                    # Reseta editing_data quando processed_data é atualizado
+                    st.session_state.editing_data = [dict(record) for record in working_data]
+                    st.session_state.has_pending_changes = False
                     st.session_state.selected_rows = set(range(len(working_data)))
                 
                 st.markdown("---")
-                st.subheader("6️⃣ Importação")
+                st.subheader("📥 Importação")
                 
                 # Garante que selected_rows está inicializado
                 if 'selected_rows' not in st.session_state:
                     st.session_state.selected_rows = set(range(len(st.session_state.processed_data))) if 'processed_data' in st.session_state else set()
                 
-                # A IA já classificou cada linha individualmente com grupo/subgrupo
-                # Não há necessidade de seleção manual, pois cada transação pode ser entrada, saída, resgate, etc.
-                group_id = None
-                subgroup_id = None
-                bank_name = "Banco"
-                
-                st.info("💡 **Classificação Automática:** A IA já classificou cada linha individualmente com grupo e subgrupo baseado no contexto (entrada, saída, resgate, etc.). Você pode editar a classificação na tabela de revisão acima se necessário.")
-                
-                # Configurações específicas por tipo
-                if import_type == 'bank_statements':
-                    # Usa nome do banco do session state (que pode ter sido editado)
-                    bank_name = st.session_state.get('bank_name_override', extracted_bank_name if extracted_bank_name else "Banco")
-                    st.info(f"🏦 Nome do banco que será usado na importação: **{bank_name}**")
-                    st.caption("💡 Você pode alterar o nome do banco na seção de configurações acima, ou editar individualmente na tabela de revisão.")
-                    st.info("ℹ️ **Importante:** Os extratos serão salvos na tabela de extratos bancários E automaticamente convertidos em transações para aparecer nos relatórios DRE/DFC.")
-                
                 # Botão de importar
                 import_btn = st.button(
-                    "📥 Importar Dados Selecionados",
+                    "📥 Importar Dados",
                     key="import_selected_data",
                     width='stretch',
                     disabled=len(st.session_state.selected_rows) == 0,
@@ -1715,6 +1669,13 @@ Estrutura do arquivo origem:
         'inventory': '📦 Controle de Estoque'
     }
     
+    # IMPORTANTE: Sempre usa os dados do session_state se disponíveis (contêm dados normalizados/mapeados)
+    if 'processed_data' in st.session_state and st.session_state.processed_data:
+        processed_data = [dict(record) for record in st.session_state.processed_data]
+    elif not processed_data:
+        st.error("❌ Nenhum dado processado encontrado. Por favor, reprocesse o arquivo.")
+        st.stop()
+    
     # Normaliza dados
     # Garante que todos os registros têm group_id e subgroup_id como None
     for record in processed_data:
@@ -1764,25 +1725,22 @@ Estrutura do arquivo origem:
         else:
             st.metric("✓ Classificado", "Sim")
     
-    st.markdown("---")
-    st.subheader("5️⃣ Edição e Seleção de Dados")
-    
     # Controles de seleção simplificados
-    col1, col2, col3 = st.columns([2, 2, 3])
+    col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
-        if st.button("✅ Selecionar Todas", width='stretch', key="select_all_review"):
+        if st.button("✅ Todas", width='stretch', key="select_all_review"):
             st.session_state.selected_rows = set(range(len(processed_data)))
             st.rerun()
     
     with col2:
-        if st.button("❌ Desselecionar Todas", width='stretch', key="deselect_all_review"):
+        if st.button("❌ Nenhuma", width='stretch', key="deselect_all_review"):
             st.session_state.selected_rows = set()
             st.rerun()
         
     with col3:
         total_selected = len(st.session_state.selected_rows)
-        st.info(f"📌 **{total_selected} de {len(processed_data)}** registros selecionados para importação")
+        st.caption(f"📌 {total_selected} de {len(processed_data)} selecionados")
     
     # Prepara dados para edição
     db_edit = SessionLocal()
@@ -1807,10 +1765,27 @@ Estrutura do arquivo origem:
     finally:
         db_edit.close()
     
+    # CRÍTICO: Sempre usa dados do session_state se disponíveis (contêm dados normalizados/mapeados)
+    if 'processed_data' in st.session_state and st.session_state.processed_data:
+        processed_data = [dict(record) for record in st.session_state.processed_data]
+    
+    # Inicializa editing_data a partir de processed_data se não existir
+    # editing_data armazena dados sendo editados (não confirmados)
+    if 'editing_data' not in st.session_state or not st.session_state.editing_data:
+        # Cria cópia profunda dos dados processados para edição
+        st.session_state.editing_data = [dict(record) for record in processed_data]
+        st.session_state.has_pending_changes = False
+    
+    # Usa editing_data para preparar dados de edição
+    editing_data = st.session_state.editing_data
+    
     edit_data = []
-    for idx, row in enumerate(processed_data):
+    for idx, row in enumerate(editing_data):
         row_copy = row.copy()
         # Garante que _select seja sempre boolean (True/False), nunca string ou NaN
+        # Usa selected_rows do session_state ou inicializa com todos selecionados
+        if 'selected_rows' not in st.session_state:
+            st.session_state.selected_rows = set(range(len(editing_data)))
         row_copy['_select'] = bool(idx in st.session_state.selected_rows)
         row_copy['_row_num'] = idx + 1
         edit_data.append(row_copy)
@@ -1900,23 +1875,11 @@ Estrutura do arquivo origem:
     if 'bank_name' in edit_df.columns:
         column_config["bank_name"] = st.column_config.TextColumn("Banco", width="medium")
     
-    # Dica de uso
-    if len(edit_df) > 10:
-        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados aparecerão. Use as checkboxes para selecionar quais importar.")
-    else:
-        st.caption("💡 Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados aparecerão. Selecione quais registros importar.")
-    
-    # Cria mapeamento reverso: subgrupo -> grupo (para identificar grupo quando subgrupo é selecionado)
+    # Cria mapeamento reverso: subgrupo -> grupo
     subgroup_to_group = {}
     for group_id, subs_data in subgroups_by_group.items():
         for sg_id in subs_data['mapping'].keys():
             subgroup_to_group[sg_id] = group_id
-    
-    # Dica de uso melhorada
-    if len(edit_df) > 10:
-        st.caption(f"💡 **{len(edit_df)} registros encontrados.** Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados estarão disponíveis. Se selecionar um subgrupo primeiro, o grupo será identificado automaticamente.")
-    else:
-        st.caption("💡 Edite os dados diretamente na tabela. Ao selecionar um grupo, apenas os subgrupos relacionados estarão disponíveis. Se selecionar um subgrupo primeiro, o grupo será identificado automaticamente.")
     
     # Exibe tabela editável única
     edited_df = st.data_editor(
@@ -1929,190 +1892,250 @@ Estrutura do arquivo origem:
         key="data_editor_import"
     )
     
-    # Processa os dados editados para garantir relacionamentos corretos
-    # Esta lógica garante que:
-    # 1. Se um subgrupo foi selecionado, identifica e define o grupo automaticamente
-    # 2. Se um grupo foi selecionado, valida que o subgrupo pertence a ele
-    for idx, row in edited_df.iterrows():
-        current_group_id = row.get('group_id')
-        current_subgroup_id = row.get('subgroup_id')
-        
-        # Converte para int se necessário
-        if pd.notna(current_group_id) and current_group_id is not None:
-            try:
-                current_group_id = int(float(current_group_id))
-            except:
+    # Armazena edited_df em editing_data temporariamente (não confirma ainda)
+    # Isso permite que o usuário faça múltiplas edições antes de aplicar
+    # A confirmação só acontece quando o botão "Aplicar Alterações" for clicado
+    
+    # Verifica se há alterações pendentes comparando edited_df com edit_df
+    # Usa uma comparação mais robusta que não depende de equals (que pode falhar com tipos diferentes)
+    has_changes = False
+    try:
+        # Compara valores principais (não estrutura completa)
+        if len(edited_df) != len(edit_df):
+            has_changes = True
+        else:
+            # Compara colunas principais que podem ter sido editadas
+            key_cols = ['_select', 'group_id', 'subgroup_id', 'date', 'value', 'description']
+            for col in key_cols:
+                if col in edited_df.columns and col in edit_df.columns:
+                    if not edited_df[col].equals(edit_df[col]):
+                        has_changes = True
+                        break
+    except:
+        # Se houver erro na comparação, assume que há mudanças
+        has_changes = True
+    
+    if has_changes:
+        st.session_state.has_pending_changes = True
+    
+    # Mostra indicador visual de alterações pendentes
+    if st.session_state.get('has_pending_changes', False):
+        st.info("⚠️ **Alterações pendentes** - Clique em 'Aplicar Alterações' para confirmar as mudanças.")
+    
+    # Botões de ação: Aplicar e Descartar
+    col_apply, col_discard, col_spacer = st.columns([1, 1, 2])
+    
+    with col_apply:
+        apply_btn = st.button(
+            "✅ Aplicar Alterações",
+            key="apply_changes_btn",
+            type="primary",
+            disabled=not st.session_state.get('has_pending_changes', False),
+            use_container_width=True
+        )
+    
+    with col_discard:
+        discard_btn = st.button(
+            "❌ Descartar Alterações",
+            key="discard_changes_btn",
+            disabled=not st.session_state.get('has_pending_changes', False),
+            use_container_width=True
+        )
+    
+    # Handler do botão "Descartar Alterações"
+    if discard_btn:
+        # Restaura editing_data a partir de processed_data
+        st.session_state.editing_data = [dict(record) for record in processed_data]
+        st.session_state.has_pending_changes = False
+        st.success("✅ Alterações descartadas. Dados restaurados ao estado anterior.")
+        st.rerun()
+    
+    # Handler do botão "Aplicar Alterações"
+    if apply_btn:
+        # Processa os dados editados para garantir relacionamentos corretos
+        # Esta lógica garante que:
+        # 1. Se um subgrupo foi selecionado, identifica e define o grupo automaticamente
+        # 2. Se um grupo foi selecionado, valida que o subgrupo pertence a ele
+        for idx, row in edited_df.iterrows():
+            current_group_id = row.get('group_id')
+            current_subgroup_id = row.get('subgroup_id')
+            
+            # Converte para int se necessário
+            if pd.notna(current_group_id) and current_group_id is not None:
+                try:
+                    current_group_id = int(float(current_group_id))
+                except:
+                    current_group_id = None
+            else:
                 current_group_id = None
-        else:
-            current_group_id = None
-        
-        if pd.notna(current_subgroup_id) and current_subgroup_id is not None:
-            try:
-                current_subgroup_id = int(float(current_subgroup_id))
-            except:
+            
+            if pd.notna(current_subgroup_id) and current_subgroup_id is not None:
+                try:
+                    current_subgroup_id = int(float(current_subgroup_id))
+                except:
+                    current_subgroup_id = None
+            else:
                 current_subgroup_id = None
-        else:
-            current_subgroup_id = None
-        
-        # REGRA 1: Se subgrupo foi selecionado mas grupo não, identifica o grupo do subgrupo
-        if current_subgroup_id and not current_group_id:
-            if current_subgroup_id in subgroup_to_group:
-                edited_df.at[idx, 'group_id'] = subgroup_to_group[current_subgroup_id]
-                current_group_id = subgroup_to_group[current_subgroup_id]
-                # Feedback visual (será mostrado após rerun)
-                if 'group_subgroup_updates' not in st.session_state:
-                    st.session_state.group_subgroup_updates = []
-                st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Grupo identificado automaticamente a partir do subgrupo selecionado")
-        
-        # REGRA 2: Se grupo foi selecionado, valida se o subgrupo pertence a ele
-        if current_group_id and current_subgroup_id:
-            if current_group_id in subgroups_by_group:
-                if current_subgroup_id not in subgroups_by_group[current_group_id]['mapping']:
-                    # Subgrupo não pertence ao grupo, remove o subgrupo
-                    edited_df.at[idx, 'subgroup_id'] = None
+            
+            # REGRA 1: Se subgrupo foi selecionado mas grupo não, identifica o grupo do subgrupo
+            if current_subgroup_id and not current_group_id:
+                if current_subgroup_id in subgroup_to_group:
+                    edited_df.at[idx, 'group_id'] = subgroup_to_group[current_subgroup_id]
+                    current_group_id = subgroup_to_group[current_subgroup_id]
+                    # Feedback visual (será mostrado após rerun)
                     if 'group_subgroup_updates' not in st.session_state:
                         st.session_state.group_subgroup_updates = []
-                    st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Subgrupo removido (não pertence ao grupo selecionado)")
-            else:
-                # Grupo não existe mais, remove ambos
-                edited_df.at[idx, 'group_id'] = None
+                    st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Grupo identificado automaticamente a partir do subgrupo selecionado")
+            
+            # REGRA 2: Se grupo foi selecionado, valida se o subgrupo pertence a ele
+            if current_group_id and current_subgroup_id:
+                if current_group_id in subgroups_by_group:
+                    if current_subgroup_id not in subgroups_by_group[current_group_id]['mapping']:
+                        # Subgrupo não pertence ao grupo, remove o subgrupo
+                        edited_df.at[idx, 'subgroup_id'] = None
+                        if 'group_subgroup_updates' not in st.session_state:
+                            st.session_state.group_subgroup_updates = []
+                        st.session_state.group_subgroup_updates.append(f"Linha {row.get('_row_num', idx+1)}: Subgrupo removido (não pertence ao grupo selecionado)")
+                else:
+                    # Grupo não existe mais, remove ambos
+                    edited_df.at[idx, 'group_id'] = None
+                    edited_df.at[idx, 'subgroup_id'] = None
+            
+            # REGRA 3: Se grupo foi removido, remove também o subgrupo
+            if not current_group_id and current_subgroup_id:
                 edited_df.at[idx, 'subgroup_id'] = None
         
-        # REGRA 3: Se grupo foi removido, remove também o subgrupo
-        if not current_group_id and current_subgroup_id:
-            edited_df.at[idx, 'subgroup_id'] = None
+        # Processa dados editados e atualiza processed_data e selected_rows
+        new_selection = set()
+        updated_data = []
+        
+        for idx, row in edited_df.iterrows():
+            row_num = int(row.get('_row_num', idx + 1)) - 1
+            
+            # Conversão robusta de _select para boolean
+            select_value = row.get('_select', False)
+            if isinstance(select_value, str):
+                # Trata strings "True", "False", "true", "false", etc.
+                select_value = select_value.lower().strip() in ('true', '1', 'yes', 'sim')
+            elif pd.isna(select_value) or select_value is None:
+                select_value = False
+            else:
+                # Converte para boolean (trata int, float, etc.)
+                select_value = bool(select_value)
+            
+            if select_value:
+                new_selection.add(row_num)
+            
+            # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
+            row_dict = row.to_dict()
+            row_dict.pop('_row_num', None)
+            row_dict.pop('_select', None)
+            row_dict.pop('group_name', None)
+            row_dict.pop('subgroup_name', None)
+            
+            # PRESERVA group_id e subgroup_id (converte NaN para None e valida)
+            if 'group_id' in row_dict:
+                group_id_val = row_dict.get('group_id')
+                if pd.isna(group_id_val) or group_id_val is None:
+                    row_dict['group_id'] = None
+                else:
+                    try:
+                        group_id_int = int(float(group_id_val))
+                        # Valida se o group_id existe na lista de grupos disponíveis
+                        if 'groups_dict' in locals() and group_id_int in groups_dict:
+                            row_dict['group_id'] = group_id_int
+                        else:
+                            # Se groups_dict não está disponível, aceita o valor
+                            row_dict['group_id'] = group_id_int
+                    except (ValueError, TypeError):
+                        row_dict['group_id'] = None
+            else:
+                row_dict['group_id'] = None
+            
+            if 'subgroup_id' in row_dict:
+                subgroup_id_val = row_dict.get('subgroup_id')
+                if pd.isna(subgroup_id_val) or subgroup_id_val is None:
+                    row_dict['subgroup_id'] = None
+                else:
+                    try:
+                        subgroup_id_int = int(float(subgroup_id_val))
+                        # Valida se o subgroup_id existe (se all_subgroups_mapping estiver disponível)
+                        if 'all_subgroups_mapping' in locals() and subgroup_id_int in all_subgroups_mapping:
+                            # Valida se o subgrupo pertence ao grupo selecionado (se houver)
+                            group_id_selected = row_dict.get('group_id')
+                            if group_id_selected and 'subgroups_by_group' in locals() and group_id_selected in subgroups_by_group:
+                                if subgroup_id_int in subgroups_by_group[group_id_selected]['mapping']:
+                                    row_dict['subgroup_id'] = subgroup_id_int
+                                else:
+                                    # Subgrupo não pertence ao grupo selecionado, remove
+                                    row_dict['subgroup_id'] = None
+                            else:
+                                # Aceita o subgrupo se não houver validação de grupo
+                                row_dict['subgroup_id'] = subgroup_id_int
+                        else:
+                            # Se all_subgroups_mapping não está disponível, aceita o valor
+                            row_dict['subgroup_id'] = subgroup_id_int
+                    except (ValueError, TypeError):
+                        row_dict['subgroup_id'] = None
+            else:
+                row_dict['subgroup_id'] = None
+            
+            # Converte datas
+            if 'date' in row_dict and pd.notna(row_dict.get('date')):
+                if isinstance(row_dict['date'], pd.Timestamp):
+                    row_dict['date'] = row_dict['date'].strftime('%Y-%m-%d')
+            
+            # Converte valores
+            for col in ['value', 'balance']:
+                if col in row_dict and pd.notna(row_dict.get(col)):
+                    try:
+                        row_dict[col] = float(row_dict[col])
+                    except:
+                        pass
+            
+            updated_data.append(row_dict)
+        
+        # Atualiza estado confirmado (processed_data e selected_rows)
+        st.session_state.selected_rows = new_selection
+        st.session_state.processed_data = updated_data
+        # Atualiza editing_data para refletir as mudanças confirmadas
+        st.session_state.editing_data = [dict(record) for record in updated_data]
+        st.session_state.has_pending_changes = False
+        
+        st.success(f"✅ Alterações aplicadas com sucesso! {len(new_selection)} registro(s) selecionado(s) para importação.")
+        st.rerun()
     
-    # Mostra feedback se houver atualizações automáticas
+    # Se não há botão aplicado, apenas mostra feedback se houver atualizações automáticas
     if 'group_subgroup_updates' in st.session_state and st.session_state.group_subgroup_updates:
-        with st.expander("ℹ️ Atualizações automáticas de grupos/subgrupos", expanded=True):
-            for update_msg in st.session_state.group_subgroup_updates:
-                st.info(update_msg)
-        # Limpa após mostrar
+        for update_msg in st.session_state.group_subgroup_updates:
+            st.info(update_msg)
         st.session_state.group_subgroup_updates = []
     
-    # Atualiza seleção e dados
-    new_selection = set()
-    updated_data = []
-    
-    for idx, row in edited_df.iterrows():
-        row_num = int(row.get('_row_num', idx + 1)) - 1
-        
-        # Conversão robusta de _select para boolean
-        select_value = row.get('_select', False)
-        if isinstance(select_value, str):
-            # Trata strings "True", "False", "true", "false", etc.
-            select_value = select_value.lower().strip() in ('true', '1', 'yes', 'sim')
-        elif pd.isna(select_value) or select_value is None:
-            select_value = False
-        else:
-            # Converte para boolean (trata int, float, etc.)
-            select_value = bool(select_value)
-        
-        if select_value:
-            new_selection.add(row_num)
-        
-        # Atualiza dados (remove colunas internas e nomes, mantém apenas IDs)
-        row_dict = row.to_dict()
-        row_dict.pop('_row_num', None)
-        row_dict.pop('_select', None)
-        row_dict.pop('group_name', None)
-        row_dict.pop('subgroup_name', None)
-        
-        # PRESERVA group_id e subgroup_id (converte NaN para None e valida)
-        if 'group_id' in row_dict:
-            group_id_val = row_dict.get('group_id')
-            if pd.isna(group_id_val) or group_id_val is None:
-                row_dict['group_id'] = None
-            else:
-                try:
-                    group_id_int = int(float(group_id_val))
-                    # Valida se o group_id existe na lista de grupos disponíveis
-                    if 'groups_dict' in locals() and group_id_int in groups_dict:
-                        row_dict['group_id'] = group_id_int
-                    else:
-                        # Se groups_dict não está disponível, aceita o valor
-                        row_dict['group_id'] = group_id_int
-                except (ValueError, TypeError):
-                    row_dict['group_id'] = None
-        else:
-            row_dict['group_id'] = None
-        
-        if 'subgroup_id' in row_dict:
-            subgroup_id_val = row_dict.get('subgroup_id')
-            if pd.isna(subgroup_id_val) or subgroup_id_val is None:
-                row_dict['subgroup_id'] = None
-            else:
-                try:
-                    subgroup_id_int = int(float(subgroup_id_val))
-                    # Valida se o subgroup_id existe (se all_subgroups_mapping estiver disponível)
-                    if 'all_subgroups_mapping' in locals() and subgroup_id_int in all_subgroups_mapping:
-                        # Valida se o subgrupo pertence ao grupo selecionado (se houver)
-                        group_id_selected = row_dict.get('group_id')
-                        if group_id_selected and 'subgroups_by_group' in locals() and group_id_selected in subgroups_by_group:
-                            if subgroup_id_int in subgroups_by_group[group_id_selected]['mapping']:
-                                row_dict['subgroup_id'] = subgroup_id_int
-                            else:
-                                # Subgrupo não pertence ao grupo selecionado, remove
-                                row_dict['subgroup_id'] = None
-                        else:
-                            # Aceita o subgrupo se não houver validação de grupo
-                            row_dict['subgroup_id'] = subgroup_id_int
-                    else:
-                        # Se all_subgroups_mapping não está disponível, aceita o valor
-                        row_dict['subgroup_id'] = subgroup_id_int
-                except (ValueError, TypeError):
-                    row_dict['subgroup_id'] = None
-        else:
-            row_dict['subgroup_id'] = None
-        
-        # Converte datas
-        if 'date' in row_dict and pd.notna(row_dict.get('date')):
-            if isinstance(row_dict['date'], pd.Timestamp):
-                row_dict['date'] = row_dict['date'].strftime('%Y-%m-%d')
-        
-        # Converte valores
-        for col in ['value', 'balance']:
-            if col in row_dict and pd.notna(row_dict.get(col)):
-                try:
-                    row_dict[col] = float(row_dict[col])
-                except:
-                    pass
-        
-        updated_data.append(row_dict)
-    
-    # Atualiza estado sem forçar rerun (st.data_editor já atualiza automaticamente)
-    st.session_state.selected_rows = new_selection
-    st.session_state.processed_data = updated_data
-    
     st.markdown("---")
-    st.subheader("📥 Importação")
     
     # Garante que selected_rows está inicializado
     if 'selected_rows' not in st.session_state:
         st.session_state.selected_rows = set(range(len(processed_data))) if processed_data else set()
     
-    # Configurações específicas por tipo (apenas se necessário)
+    # Configurações específicas por tipo
     import_type = summary.get('import_type', 'transactions')
     bank_name = "Banco"
     if import_type == 'bank_statements':
-        # Usa o nome do banco já configurado na seção de configurações acima
         bank_name = st.session_state.get('bank_name_override', summary.get('bank_name', 'Banco'))
-        if bank_name:
-            st.info(f"🏦 **Nome do banco:** {bank_name}")
     
-    # Botão de importar (mais destacado)
-    col1, col2 = st.columns([1, 2])
+    # Botão de importar
+    col1, col2 = st.columns([2, 1])
     with col1:
         import_btn = st.button(
-            "📥 **Importar Dados**",
+            "📥 Importar Dados",
             key="import_data_final",
             width='stretch',
             disabled=len(st.session_state.selected_rows) == 0,
             type="primary"
         )
     with col2:
-        if len(st.session_state.selected_rows) == 0:
-            st.warning("⚠️ Selecione pelo menos um registro para importar")
+        total_selected = len(st.session_state.selected_rows)
+        st.caption(f"{total_selected} selecionado(s)")
     
     if import_btn and len(st.session_state.selected_rows) > 0:
         # Garante que selected_rows está atualizado e válido
@@ -2210,25 +2233,6 @@ Estrutura do arquivo origem:
                 st.error("❌ **Nenhum registro válido para importar.** Todos os registros selecionados estão faltando dados obrigatórios (data ou valor).")
                 st.stop()
         
-        # Debug: mostra informações sobre os dados
-        debug_info = st.expander("🔍 Debug: Informações dos dados selecionados", expanded=False)
-        with debug_info:
-            st.write(f"**Total de registros selecionados:** {len(import_df)}")
-            st.write(f"**Colunas:** {list(import_df.columns)}")
-            if 'date' in import_df.columns:
-                date_valid = import_df['date'].notna().sum()
-                st.write(f"**Datas válidas:** {date_valid}/{len(import_df)}")
-                st.write(f"**Exemplo de datas:** {import_df['date'].head(3).tolist()}")
-            if 'value' in import_df.columns:
-                value_valid = import_df['value'].notna().sum()
-                st.write(f"**Valores válidos:** {value_valid}/{len(import_df)}")
-                st.write(f"**Exemplo de valores:** {import_df['value'].head(3).tolist()}")
-            if 'group_id' in import_df.columns:
-                group_valid = import_df['group_id'].notna().sum()
-                st.write(f"**Group IDs válidos:** {group_valid}/{len(import_df)}")
-            if 'subgroup_id' in import_df.columns:
-                subgroup_valid = import_df['subgroup_id'].notna().sum()
-                st.write(f"**Subgroup IDs válidos:** {subgroup_valid}/{len(import_df)}")
         
         # Container para progresso
         import_progress_container = st.empty()
@@ -2396,14 +2400,7 @@ Estrutura do arquivo origem:
                             st.write("- Dados duplicados que foram ignorados")
                             st.write("- Erro silencioso durante o processamento")
                     
-                    st.info("""
-                    **Soluções:**
-                    - Verifique os dados na tabela e corrija campos obrigatórios (data e valor)
-                    - Certifique-se de que as datas estão no formato correto (DD/MM/YYYY ou YYYY-MM-DD)
-                    - Verifique se os valores são números válidos
-                    - Verifique se os grupos/subgrupos estão corretos
-                    - Tente importar novamente após fazer as correções
-                    """)
+                    st.info("💡 Verifique os dados na tabela e corrija campos obrigatórios (data e valor) antes de importar novamente.")
     
         except Exception as e:
             st.error(f"❌ Erro ao importar: {str(e)}")
@@ -2412,36 +2409,11 @@ Estrutura do arquivo origem:
             db.close()
 
 else:
-    st.info("💡 **Como funciona:** Faça upload do arquivo e o sistema processará automaticamente com IA Vision, detectando o tipo de dado e classificando por grupos/subgrupos. Para PDFs protegidos por senha, você poderá inserir a senha durante o processo. Após a importação bem-sucedida, use o botão 'Finalizar Importação' para limpar o estado e iniciar uma nova importação.")
+    st.info("💡 Faça upload do arquivo e o sistema processará automaticamente. Formatos suportados: CSV, Excel, PDF, Imagens, OFX.")
 
-    st.markdown("---")
-    with st.expander("ℹ️ Sobre o Processamento Automático"):
-        st.markdown("""
-        **Formatos Suportados:**
-        - 📄 CSV, Excel, TXT
-        - 📑 PDF (incluindo PDFs escaneados/imagens e protegidos por senha)
-        - 🖼️ Imagens (JPG, PNG, TIFF, etc)
-        - 💳 OFX (extratos bancários)
-        
-        **O que a IA faz automaticamente:**
-        - ✅ Detecta o tipo de dado (transações, extratos, contratos, etc)
-        - ✅ Extrai todos os dados estruturados
-        - ✅ Filtra automaticamente linhas em branco e linhas de "saldo do dia"
-        - ✅ Classifica por grupos e subgrupos
-        - ✅ Normaliza datas e valores
-        - ✅ Identifica tipo de transação (entrada/saída)
-        
-        **Recursos especiais:**
-        - 🔒 **PDFs protegidos por senha:** O sistema detecta automaticamente e solicita a senha
-        - ⚙️ **Edição de prompts de IA:** Administradores podem personalizar os prompts dos agentes de IA
-        - ✅ **Finalizar Importação:** Após importação bem-sucedida, use o botão para limpar o estado
-        
-        **Você só precisa:**
-        1. Fazer upload do arquivo (inserir senha se o PDF estiver protegido)
-        2. Revisar e editar se necessário
-        3. Selecionar os registros desejados
-        4. Importar e finalizar!
-        """)
+
+
+
 
 
 

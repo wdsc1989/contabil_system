@@ -1,0 +1,14 @@
+Nome Produto,Quantidade,Valor Unitário,Data Movimento,Tipo Movimento,Descrição
+Produto A,10,25.50,2024-01-15,entrada,Compra inicial
+Produto B,5,45.00,2024-01-16,entrada,Reposição estoque
+Produto A,3,,2024-01-17,saída,Venda
+Produto C,20,15.75,2024-01-18,entrada,Compra fornecedor
+Produto B,2,,2024-01-19,saída,Venda
+Produto D,8,30.00,2024-01-20,entrada,Compra
+Produto A,5,,2024-01-21,saída,Venda
+Produto C,10,,2024-01-22,saída,Venda
+Produto E,15,22.50,2024-01-23,entrada,Reposição
+Produto D,3,,2024-01-24,saída,Venda
+
+
+

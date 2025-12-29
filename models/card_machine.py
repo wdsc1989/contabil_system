@@ -51,3 +51,13 @@ class CardMachineStatement(Base):
 
 
 
+
+
+
+
+
+
+
+
+
+

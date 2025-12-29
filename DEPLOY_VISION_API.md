@@ -101,3 +101,8 @@ journalctl -u contabil.service -f
 
 
 
+
+
+
+
+

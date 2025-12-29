@@ -1,6 +1,7 @@
 """
-Serviço de IA com arquitetura Multi-Agente
+Serviço de IA com arquitetura Multi-Agente usando MCP Tools
 Cada agente tem responsabilidade específica para reduzir alucinações
+Refatorado para usar MCP Tools ao invés de prompts longos
 """
 import pandas as pd
 from typing import Dict, List, Optional, Any
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from config.ai_config import AIConfigManager
 from utils.validators import parse_currency, parse_date
+from services.mcp_tools import MCPTools
+from services.mcp_schema_generator import MCPSchemaGenerator
 
 
 class AIMultiAgent:
@@ -35,6 +38,8 @@ class AIMultiAgent:
         self.db = db
         self.config = AIConfigManager.get_config_dict(db)
         self._client = None
+        self.mcp_tools = MCPTools(db_session=db)
+        self.schema_generator = MCPSchemaGenerator()
     
     def _get_client(self):
         """Obtém cliente de IA"""
@@ -93,106 +98,22 @@ class AIMultiAgent:
         except Exception as e:
             return None, f"Erro ao chamar API: {str(e)}"
     
-    # ==================== AGENTE 1: DETECÇÃO DE TIPO ====================
+    # ==================== AGENTE 1: DETECÇÃO DE TIPO (MCP) ====================
     
     def agent_detect_type(self, columns: List[str], data_sample: str) -> Dict[str, Any]:
         """
-        Agente 1: Detecta o tipo de dado
-        Responsabilidade: Apenas identificar o tipo, nada mais
+        Agente 1: Detecta o tipo de dado usando MCP Tool
+        Responsabilidade: Identificar o tipo e incluir informações sobre estrutura destino
         """
         sample_text = data_sample or "Nenhum dado disponível"
         
-        # Inicializa prompt como None para garantir que sempre será definido
-        prompt = None
+        # Usa MCP Tool para gerar prompt estruturado
+        prompt = self.mcp_tools.get_tool_prompt(
+            "detect_data_type",
+            columns=columns,
+            data_sample=sample_text
+        )
         
-        # Verifica se há prompt customizado
-        custom_prompt = self._get_custom_prompt('agent1')
-        if custom_prompt:
-            # Substitui placeholders no prompt customizado
-            try:
-                prompt = custom_prompt.format(
-                    columns=', '.join(columns),
-                    data_sample=sample_text
-                )
-            except Exception as e:
-                # Se houver qualquer erro ao formatar, usa prompt padrão
-                prompt = None
-        
-        # Se não há prompt customizado ou houve erro, usa prompt padrão
-        if prompt is None:
-            prompt = f"""Você é um AGENTE ESPECIALIZADO em detectar tipos de dados financeiros.
-
-SUA ÚNICA TAREFA: Identificar qual dos 9 tipos abaixo melhor descreve os dados.
-
-**TIPOS DISPONÍVEIS:**
-1. transactions - Movimentações financeiras gerais
-2. bank_statements - Extratos bancários com saldo
-3. credit_card_invoices - Faturas de cartão de crédito
-4. contracts - Contratos/eventos
-5. accounts_payable - Contas a pagar (fornecedor + vencimento)
-6. accounts_receivable - Contas a receber (cliente + vencimento)
-7. financial_investments - Aplicações/Resgates financeiros
-8. card_machine_statements - Extratos de máquina de cartão (valor bruto/taxa/líquido)
-9. inventory - Controle de estoque (produto + quantidade)
-
-**DADOS PARA ANÁLISE:**
-Colunas: {', '.join(columns)}
-Amostra completa (primeiras 20 linhas em JSON estruturado):
-{sample_text}
-
-**INDICADORES FORTES E FRACOS (avalie nesta ordem):**
-- transactions:
-  - Fortes: valores sem saldo acumulado, descrições genéricas, ausência total de bandeira/cartão/parcela.
-  - Fracos: termos como "estabelecimento" dentro da descrição, porém sem colunas específicas de cartão.
-  - Negativos: presença de coluna de saldo, bandeira, parcela ou campos de contrato.
-- bank_statements:
-  - Fortes: coluna de saldo, saldo acumulado após cada valor, informações de agência/conta/banco.
-  - Fracos: palavras como "saldo" no texto, mas sem coluna dedicada.
-  - Negativos: colunas de bandeira/parcela ou de produto.
-- credit_card_invoices:
-  - Fortes: colunas explícitas de estabelecimento/bandeira/cartão/parcela, número da fatura/cartão, termos Visa/Mastercard.
-  - Fracos: nomes de estabelecimentos em descrições sem demais campos; isso sozinho NÃO basta.
-  - Negativos: presença de saldo final, fornecedor/cliente + vencimento, ou termos de aplicação financeira.
-- contracts:
-  - Fortes: contratante, data do evento, valor de serviço, campos de status/serviço vendido.
-  - Fracos: descrições com “evento” sem campos estruturados.
-  - Negativos: colunas de saldo ou cartão.
-- accounts_payable:
-  - Fortes: fornecedor/credor, data de vencimento, indicador “pago/quitado”, número de parcelas.
-  - Fracos: termos “pagar” nas descrições, sem vencimento.
-  - Negativos: referências a cliente/recebimento.
-- accounts_receivable:
-  - Fortes: cliente/devedor, data de vencimento, valor previsto de entrada, vínculo com contrato/evento.
-  - Fracos: descrições com “receber” sem campos claros.
-  - Negativos: menção a fornecedor/credor.
-- financial_investments:
-  - Fortes: colunas “aplicado”, “resgatado”, “rendimento”, tipo de investimento, instituição financeira.
-  - Fracos: palavras “investimento” no texto apenas.
-  - Negativos: saldo bancário ou parcelas.
-- card_machine_statements:
-  - Fortes: valor bruto, taxa/fee, valor líquido, bandeira da transação e tipo (débito/crédito).
-  - Fracos: apenas referência a POS sem valores separados.
-  - Negativos: saldo acumulado ou parcelas do cartão do cliente.
-- inventory:
-  - Fortes: produto, quantidade, valor unitário/total, tipo de movimento (entrada/saída).
-  - Fracos: descrições de itens sem quantidade/valor.
-  - Negativos: presença de datas de vencimento ou campos financeiros.
-
-**EXEMPLOS RÁPIDOS:**
-- Transactions (positivo): colunas date/description/value/type; nenhuma menção a bandeira, saldo ou parcelas.
-- Credit-card invoices (positivo): date, establishment, value, card_brand, installment_number, total_installments.
-- Bank statements vs card machine (negativo): extrato tem saldo acumulado; extrato de máquina tem colunas gross_value, fee, net_value (sem saldo).
-
-**IMPORTANTE:** Sempre retorne o tipo mais provável, mas lembre-se de que o usuário humano confirmará manualmente antes de continuar o fluxo.
-
-**RESPONDA APENAS JSON (sem markdown, sem texto):**
-{{
-    "suggested_type": "tipo_identificado",
-    "confidence": 0.0-1.0,
-    "reasoning": "explicação curta (1-2 frases)",
-    "key_indicators": ["indicador1", "indicador2"]
-}}
-"""
         response, error = self._call_ai(prompt, max_tokens=1000)
         if error:
             return {'success': False, 'error': error}
@@ -205,110 +126,119 @@ Amostra completa (primeiras 20 linhas em JSON estruturado):
             
             result = json.loads(response.strip())
             result['success'] = True
+            
+            # Adiciona informações sobre estrutura destino após detecção
+            if 'suggested_type' in result:
+                suggested_type = result['suggested_type']
+                try:
+                    # Adiciona informações sobre a estrutura destino
+                    target_columns = self._get_target_columns(suggested_type)
+                    column_specs = self._get_column_specifications(suggested_type)
+                    required_columns = [col for col, spec in column_specs.items() if spec.get('required', False)]
+                    
+                    result['target_structure'] = {
+                        'table_name': suggested_type,
+                        'total_columns': len(target_columns),
+                        'required_columns': required_columns,
+                        'optional_columns': [col for col in target_columns if col not in required_columns],
+                        'column_specs': {col: spec for col, spec in list(column_specs.items())[:5]}  # Primeiras 5 para referência
+                    }
+                except:
+                    pass  # Se houver erro, continua sem essas informações
+            
             return result
         except:
             return {'success': False, 'error': 'Erro ao parsear resposta', 'raw': response[:200]}
     
-    # ==================== AGENTE 2: ANÁLISE ESTRUTURAL ====================
+    # ==================== AGENTE 2: MAPEAMENTO E NORMALIZAÇÃO (MCP) ====================
     
     def agent_analyze_structure(self, df: pd.DataFrame, import_type: str) -> Dict[str, Any]:
         """
-        Agente 2: Analisa estrutura origem
-        Responsabilidade: Analisar colunas origem e entender como mapear para tabela destino
+        Agente 2: Analisa estrutura origem (mantido para compatibilidade)
+        Agora usa MCP tools internamente e inclui informações sobre estrutura destino
         """
         # Filtra linhas em branco e saldos antes de analisar estrutura
         df = self._filter_invalid_rows(df, import_type)
         
         columns = list(df.columns)
-        sample_data = df.head(10).to_dict('records')  # Mais amostras para melhor análise
+        sample_data = df.head(10).to_dict('records')
         sample_json = json.dumps(sample_data, indent=2, default=str, ensure_ascii=False)
         
+        # Adiciona informações sobre estrutura destino para ajudar no mapeamento
         target_columns = self._get_target_columns(import_type)
         column_specs = self._get_column_specifications(import_type)
         table_structure = self._get_table_structure_description(import_type)
+        required_columns = [col for col, spec in column_specs.items() if spec.get('required', False)]
         
-        # Inicializa prompt como None para garantir que sempre será definido
-        prompt = None
-        
-        # Verifica se há prompt customizado
-        custom_prompt = self._get_custom_prompt('agent2')
-        if custom_prompt:
-            # Substitui placeholders no prompt customizado
-            try:
-                prompt = custom_prompt.format(
-                    import_type=import_type,
-                    table_structure=table_structure,
-                    column_specs=json.dumps(column_specs, indent=2, ensure_ascii=False),
-                    columns=', '.join(columns),
-                    sample_json=sample_json
-                )
-            except Exception as e:
-                # Se houver qualquer erro ao formatar, usa prompt padrão
-                prompt = None
-        
-        # Se não há prompt customizado ou houve erro, usa prompt padrão
-        if prompt is None:
-            prompt = self._get_default_prompt_template_agent2().format(
-                import_type=import_type,
-                table_structure=table_structure,
-                column_specs=json.dumps(column_specs, indent=2, ensure_ascii=False),
-                columns=', '.join(columns),
-                sample_json=sample_json
-            )
-        response, error = self._call_ai(prompt, max_tokens=2000)
-        if error:
-            return {'success': False, 'error': error}
-        
-        try:
-            if '```json' in response:
-                response = response.split('```json')[1].split('```')[0]
-            elif '```' in response:
-                response = response.split('```')[1].split('```')[0]
-            
-            result = json.loads(response.strip())
-            result['success'] = True
-            return result
-        except:
-            return {'success': False, 'error': 'Erro ao parsear resposta', 'raw': response[:200]}
-    
-    # ==================== AGENTE 3: MAPEAMENTO DE COLUNAS ====================
+        # Retorna estrutura compatível com código existente + informações destino
+        return {
+            'success': True,
+            'columns_analysis': {col: {'type': 'unknown'} for col in columns},
+            'sample_json': sample_json,
+            'target_structure': {
+                'import_type': import_type,
+                'target_columns': target_columns,
+                'required_columns': required_columns,
+                'table_structure': table_structure,
+                'column_specs': column_specs
+            },
+            'df': df  # Inclui DataFrame para extrair colunas se necessário
+        }
     
     def agent_map_columns(self, structure_analysis: Dict, import_type: str) -> Dict[str, str]:
         """
-        Agente 3: Mapeia colunas origem → destino
-        Responsabilidade: Criar mapeamento preciso baseado na estrutura das tabelas destino
+        Agente 2: Mapeia colunas origem → destino usando MCP Tool
+        Responsabilidade: Criar mapeamento preciso baseado no schema da tabela destino
+        Foca apenas nas colunas necessárias para a tabela final
         """
+        source_columns = list(structure_analysis.get('columns_analysis', {}).keys())
+        
+        # Tenta extrair colunas do sample_json se não encontrou
+        if not source_columns and 'sample_json' in structure_analysis:
+            try:
+                sample_data = json.loads(structure_analysis['sample_json'])
+                if sample_data and isinstance(sample_data, list) and len(sample_data) > 0:
+                    source_columns = list(sample_data[0].keys())
+            except:
+                pass
+        
+        # Tenta obter do DataFrame se disponível (prioridade)
+        if 'df' in structure_analysis:
+            df_columns = list(structure_analysis['df'].columns)
+            if df_columns:
+                # Usa colunas do DataFrame como fonte principal
+                source_columns = df_columns
+            elif not source_columns:
+                source_columns = df_columns
+        
+        # Se ainda não tem colunas, retorna vazio (será tratado no código chamador)
+        if not source_columns:
+            return {}
+        
+        columns_analysis = json.dumps(structure_analysis.get('columns_analysis', {}), indent=2, ensure_ascii=False)
+        
+        # Obtém informações da estrutura destino para incluir no prompt
         target_columns = self._get_target_columns(import_type)
         column_specs = self._get_column_specifications(import_type)
-        table_structure = self._get_table_structure_description(import_type)
-        columns_analysis = structure_analysis.get('columns_analysis', {})
+        required_columns = [col for col, spec in column_specs.items() if spec.get('required', False)]
         
-        # Inicializa prompt como None para garantir que sempre será definido
-        prompt = None
+        # Usa MCP Tool para gerar prompt estruturado com foco na estrutura destino
+        prompt = self.mcp_tools.get_tool_prompt(
+            "map_columns",
+            import_type=import_type,
+            source_columns=source_columns,
+            columns_analysis=columns_analysis if columns_analysis != '{}' else None
+        )
         
-        # Verifica se há prompt customizado
-        custom_prompt = self._get_custom_prompt('agent3')
-        if custom_prompt:
-            # Substitui placeholders no prompt customizado
-            try:
-                prompt = custom_prompt.format(
-                    import_type=import_type,
-                    table_structure=table_structure,
-                    column_specs=json.dumps(column_specs, indent=2, ensure_ascii=False),
-                    columns_analysis=json.dumps(columns_analysis, indent=2, ensure_ascii=False)
-                )
-            except Exception as e:
-                # Se houver qualquer erro ao formatar, usa prompt padrão
-                prompt = None
+        # Adiciona informação adicional sobre colunas obrigatórias
+        prompt += f"""
+
+**INFORMAÇÃO ADICIONAL:**
+- Colunas destino obrigatórias que DEVEM ser mapeadas: {', '.join(required_columns)}
+- Total de colunas destino disponíveis: {len(target_columns)}
+- Foque em mapear as obrigatórias primeiro, depois as opcionais se houver correspondência clara.
+"""
         
-        # Se não há prompt customizado ou houve erro, usa prompt padrão
-        if prompt is None:
-            prompt = self._get_default_prompt_template_agent3().format(
-                import_type=import_type,
-                table_structure=table_structure,
-                column_specs=json.dumps(column_specs, indent=2, ensure_ascii=False),
-                columns_analysis=json.dumps(columns_analysis, indent=2, ensure_ascii=False)
-            )
         response, error = self._call_ai(prompt, max_tokens=1500)
         if error:
             return {}
@@ -320,11 +250,27 @@ Amostra completa (primeiras 20 linhas em JSON estruturado):
                 response = response.split('```')[1].split('```')[0]
             
             result = json.loads(response.strip())
-            return result.get('mapping', {})
-        except:
+            mapping = result.get('mapping', {})
+            
+            # Validação: remove mapeamentos para colunas que não existem na tabela destino
+            valid_mapping = {}
+            for source_col, target_col in mapping.items():
+                if target_col in target_columns:
+                    valid_mapping[source_col] = target_col
+                # Se target_col não existe, ignora o mapeamento
+            
+            # Verifica se mapeou as colunas obrigatórias
+            mapped_targets = set(valid_mapping.values())
+            missing_required = set(required_columns) - mapped_targets
+            if missing_required:
+                print(f"⚠️  Aviso: Colunas obrigatórias não mapeadas: {', '.join(missing_required)}")
+            
+            return valid_mapping
+        except Exception as e:
+            print(f"Erro ao processar mapeamento: {e}")
             return {}
     
-    # ==================== AGENTE 4: EXTRAÇÃO E FORMATAÇÃO ====================
+    # ==================== AGENTE 3: NORMALIZAÇÃO (MCP) ====================
     
     def agent_extract_and_format(self, records: List[Dict], import_type: str, mapping: Dict[str, str]) -> List[Dict]:
         """
@@ -333,19 +279,25 @@ Amostra completa (primeiras 20 linhas em JSON estruturado):
         """
         target_columns = self._get_target_columns(import_type)
         column_specs = self._get_column_specifications(import_type)
+        table_structure = self._get_table_structure_description(import_type)
         
-        # Processa em lotes de 10 registros
+        # Processa em lotes de 10 registros usando MCP Tool
         all_normalized = []
         batch_size = 10
         
         for i in range(0, len(records), batch_size):
             batch = records[i:i+batch_size]
+            
+            # Converte batch para JSON para uso nos prompts
             batch_json = json.dumps(batch, indent=2, default=str, ensure_ascii=False)
             
-            table_structure = self._get_table_structure_description(import_type)
-            
-            # Instruções específicas por tipo de importação
-            type_specific_instructions = ""
+            # Usa MCP Tool para normalização
+            prompt = self.mcp_tools.get_tool_prompt(
+                "normalize_data",
+                import_type=import_type,
+                mapping=mapping,
+                records=batch
+            )
             
             if import_type == 'bank_statements':
                 type_specific_instructions = """
@@ -597,7 +549,7 @@ Amostra completa (primeiras 20 linhas em JSON estruturado):
                 )
             response, error = self._call_ai(prompt, max_tokens=4000)
             if error:
-                # Se falhar, cria registros com todas as colunas destino
+                # Se falhar, cria registros com todas as colunas destino (fallback)
                 for record in batch:
                     normalized_record = {}
                     for col in target_columns:
@@ -763,63 +715,23 @@ Amostra completa (primeiras 20 linhas em JSON estruturado):
         
         return all_normalized
     
-    # ==================== AGENTE 5: VALIDAÇÃO ====================
+    # ==================== AGENTE 3: VALIDAÇÃO (MCP) ====================
     
     def agent_validate(self, records: List[Dict], import_type: str) -> Dict[str, Any]:
         """
-        Agente 5: Valida dados finais
+        Agente 3: Valida dados finais usando MCP Tool
         Responsabilidade: Apenas validar estrutura e tipos, sem modificar
         """
-        target_columns = self._get_target_columns(import_type)
-        sample = records[:5] if len(records) > 5 else records
-        sample_json = json.dumps(sample, indent=2, default=str, ensure_ascii=False)
+        # Usa MCP Tool para validação
+        prompt = self.mcp_tools.get_tool_prompt(
+            "validate_data",
+            import_type=import_type,
+            normalized_records=records
+        )
         
-        # Inicializa prompt como None para garantir que sempre será definido
-        prompt = None
-        
-        # Verifica se há prompt customizado
-        custom_prompt = self._get_custom_prompt('agent5')
-        if custom_prompt:
-            # Substitui placeholders no prompt customizado
-            try:
-                prompt = custom_prompt.format(
-                    import_type=import_type,
-                    target_columns=', '.join(target_columns),
-                    sample_json=sample_json
-                )
-            except Exception as e:
-                # Se houver qualquer erro ao formatar, usa prompt padrão
-                prompt = None
-        
-        # Se não há prompt customizado ou houve erro, usa prompt padrão
-        if prompt is None:
-            prompt = f"""Você é um AGENTE ESPECIALIZADO em validar dados.
-
-SUA ÚNICA TAREFA: Validar se os dados estão corretamente estruturados.
-
-**TIPO:** {import_type}
-**COLUNAS ESPERADAS:** {', '.join(target_columns)}
-
-**AMOSTRA DE DADOS (5 registros):**
-{sample_json}
-
-**TAREFA:**
-1. Verifique se todos os registros têm todas as colunas esperadas
-2. Verifique se tipos de dados estão corretos (datas como string YYYY-MM-DD, valores como números)
-3. Identifique problemas ou inconsistências
-
-**RESPONDA APENAS JSON (sem markdown, sem texto):**
-{{
-    "is_valid": true/false,
-    "issues": ["problema1", "problema2"],
-    "records_with_issues": [0, 2, 5],
-    "missing_columns": ["coluna1", "coluna2"],
-    "type_errors": ["campo X deveria ser número mas é string"]
-}}
-"""
         response, error = self._call_ai(prompt, max_tokens=1000)
         if error:
-            return {'is_valid': True, 'issues': [f'Erro na validação: {error}']}
+            return {'success': True, 'is_valid': True, 'issues': [f'Erro na validação: {error}']}
         
         try:
             if '```json' in response:
@@ -828,20 +740,31 @@ SUA ÚNICA TAREFA: Validar se os dados estão corretamente estruturados.
                 response = response.split('```')[1].split('```')[0]
             
             result = json.loads(response.strip())
+            # Garante que tem 'success' para compatibilidade
+            if 'success' not in result:
+                result['success'] = result.get('is_valid', True)
             return result
         except:
-            return {'is_valid': True, 'issues': ['Erro ao parsear validação']}
+            return {'success': True, 'is_valid': True, 'issues': ['Erro ao parsear validação']}
     
     # ==================== MÉTODOS AUXILIARES ====================
     
     def _get_target_columns(self, import_type: str) -> List[str]:
-        """Retorna colunas destino para tipo de importação"""
-        specs = self._get_column_specifications(import_type)
-        return list(specs.keys())
+        """Retorna colunas destino para tipo de importação usando schema generator"""
+        try:
+            return self.schema_generator.get_target_columns(import_type)
+        except:
+            # Fallback para método antigo
+            specs = self._get_column_specifications(import_type)
+            return list(specs.keys())
     
     def _get_column_specifications(self, import_type: str) -> Dict[str, Dict[str, Any]]:
-        """Retorna especificações de colunas"""
-        specs = {
+        """Retorna especificações de colunas usando schema generator"""
+        try:
+            return self.schema_generator.get_column_specifications(import_type)
+        except:
+            # Fallback para especificações hardcoded (mantido para compatibilidade)
+            specs = {
             'transactions': {
                 'date': {'type': 'date', 'format': 'YYYY-MM-DD', 'required': True},
                 'description': {'type': 'string', 'required': True},
@@ -954,8 +877,12 @@ SUA ÚNICA TAREFA: Validar se os dados estão corretamente estruturados.
         return specs.get(import_type, {})
     
     def _get_table_structure_description(self, import_type: str) -> str:
-        """Descrição textual resumida de cada tabela destino"""
-        descriptions = {
+        """Descrição textual resumida de cada tabela destino usando schema generator"""
+        try:
+            return self.schema_generator.get_table_structure_description(import_type)
+        except:
+            # Fallback para descrições hardcoded (mantido para compatibilidade)
+            descriptions = {
             'transactions': (
                 "Tabela transactions: (date, description, value, type, category, account, group_id, subgroup_id).\n"
                 "- date: data da transação (YYYY-MM-DD)\n"
@@ -1422,53 +1349,56 @@ SUA ÚNICA TAREFA: Validar se os dados estão corretamente estruturados.
 """
     
     def get_prompts(self) -> Dict[str, Dict]:
-        """Retorna todos os prompts (customizados ou padrão) dos 5 agentes"""
+        """Retorna todos os prompts (customizados ou padrão) dos agentes MCP"""
         import streamlit as st
         
-        # Retorna estrutura com informações dos prompts
+        # Retorna estrutura com informações dos prompts alinhada com MCP Tools
         prompts = {
             'agent1': {
                 'name': 'Agente 1: Detecção de Tipo',
-                'description': 'Identifica o tipo de dado financeiro (transactions, bank_statements, etc.)',
+                'description': 'Identifica o tipo de dado financeiro usando MCP Tool detect_data_type',
+                'mcp_tool': 'detect_data_type',
                 'custom': self._get_custom_prompt('agent1'),
                 'has_placeholders': True,
                 'placeholders': ['columns', 'data_sample'],
-                'default_template': self._get_default_prompt_template_agent1()
+                'default_template': self._get_default_prompt_template_agent1(),
+                'note': 'Este agente usa o MCP Tool detect_data_type. O prompt customizado será aplicado ao tool.'
             },
             'agent2': {
-                'name': 'Agente 2: Análise Estrutural',
-                'description': 'Analisa a estrutura das colunas origem e entende como mapear para tabela destino',
+                'name': 'Agente 2: Mapeamento e Normalização',
+                'description': 'Mapeia colunas e normaliza dados usando MCP Tools map_columns e normalize_data',
+                'mcp_tools': ['map_columns', 'normalize_data'],
                 'custom': self._get_custom_prompt('agent2'),
                 'has_placeholders': True,
-                'placeholders': ['import_type', 'table_structure', 'column_specs', 'columns', 'sample_json'],
-                'default_template': self._get_default_prompt_template_agent2()
+                'placeholders': ['import_type', 'table_structure', 'column_specs', 'source_columns', 'mapping', 'records'],
+                'default_template': 'Usa MCP Tools internamente. Prompts são gerados automaticamente baseados nos schemas.',
+                'note': 'Este agente combina map_columns (mapeamento) e normalize_data (normalização). Schemas são gerados automaticamente pelo MCPSchemaGenerator.'
             },
             'agent3': {
-                'name': 'Agente 3: Mapeamento de Colunas',
-                'description': 'Cria mapeamento preciso de colunas origem → destino',
+                'name': 'Agente 3: Validação',
+                'description': 'Valida dados normalizados usando MCP Tool validate_data',
+                'mcp_tool': 'validate_data',
                 'custom': self._get_custom_prompt('agent3'),
                 'has_placeholders': True,
-                'placeholders': ['import_type', 'table_structure', 'column_specs', 'columns_analysis'],
-                'default_template': self._get_default_prompt_template_agent3()
-            },
-            'agent4': {
-                'name': 'Agente 4: Extração e Formatação',
-                'description': 'Extrai dados dos registros origem e formata conforme estrutura destino',
-                'custom': self._get_custom_prompt('agent4'),
-                'has_placeholders': True,
-                'placeholders': ['import_type', 'table_structure', 'column_specs', 'mapping', 'batch_size', 'batch_json', 'type_specific_instructions'],
-                'default_template': self._get_default_prompt_template_agent4()
-            },
-            'agent5': {
-                'name': 'Agente 5: Validação',
-                'description': 'Valida se os dados estão corretamente estruturados',
-                'custom': self._get_custom_prompt('agent5'),
-                'has_placeholders': True,
-                'placeholders': ['import_type', 'target_columns', 'sample_json'],
-                'default_template': self._get_default_prompt_template_agent5()
+                'placeholders': ['import_type', 'normalized_records'],
+                'default_template': self._get_default_prompt_template_agent5(),
+                'note': 'Este agente usa o MCP Tool validate_data. O prompt customizado será aplicado ao tool.'
             }
         }
         return prompts
+    
+    def get_mcp_tools_info(self) -> Dict[str, Dict]:
+        """Retorna informações sobre os MCP Tools disponíveis"""
+        tools_info = {}
+        for tool_def in self.mcp_tools.get_all_tool_definitions():
+            tool_name = tool_def.get('name')
+            tools_info[tool_name] = {
+                'name': tool_def.get('name'),
+                'description': tool_def.get('description'),
+                'input_schema': tool_def.get('inputSchema', {}),
+                'required_params': tool_def.get('inputSchema', {}).get('required', [])
+            }
+        return tools_info
     
     def update_prompt(self, agent_name: str, new_prompt: str):
         """Atualiza prompt customizado de um agente"""

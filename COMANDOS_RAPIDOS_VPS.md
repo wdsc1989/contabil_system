@@ -46,3 +46,8 @@ journalctl -u contabil.service -n 20
 
 
 
+
+
+
+
+

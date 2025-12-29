@@ -42,3 +42,13 @@ class AIConfig(Base):
 
 
 
+
+
+
+
+
+
+
+
+
+

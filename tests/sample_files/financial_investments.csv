@@ -1,0 +1,11 @@
+Data,Tipo Investimento,Instituição,Tipo Operação,Valor Aplicado,Valor Resgatado,Valor Rendimento,Saldo
+2024-01-15,CDB,Banco Inter,aplicação,10000.00,,,10000.00
+2024-01-20,Tesouro Direto,Nubank,aplicação,5000.00,,,5000.00
+2024-02-01,CDB,Banco Inter,rendimento,,,150.00,10150.00
+2024-02-15,CDB,Banco Inter,resgate,,8000.00,,2150.00
+2024-02-20,Tesouro Direto,Nubank,rendimento,,,75.00,5075.00
+2024-03-01,LCI,Itaú,aplicação,15000.00,,,15000.00
+2024-03-15,CDB,Banco Inter,rendimento,,,32.25,2182.25
+
+
+
